@@ -2,6 +2,7 @@
   (:require
    [plumbing.core :refer :all]
    [qbits.alia.manifold :as aliam]
+   [manifold.deferred :as d]
    [qbits.hayt :as h]
    [clj-uuid :as uuid]))
 
@@ -47,6 +48,13 @@
       (h/->raw
        (h/select table
                  (h/where key-clause)))))))
+
+(defn select-one
+  ([session table key record-or-key-value]
+   (select-one session table key record-or-key-value {}))
+  ([session table key record-or-key-value opts]
+   (d/chain (select session table key record-or-key-value opts)
+            first)))
 
 (defn upsert
   "upsert a single record"
