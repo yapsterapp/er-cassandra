@@ -6,13 +6,7 @@
         (sequential? v) v
         :else [v]))
 
-(defn extract-key-value
-  "extract a key value from some combination of explicit value
-   and a record"
-
-  ([key record-or-key-value]
-   (extract-key-value key record-or-key-value {}))
-
+(defn extract-key-value*
   ([key record-or-key-value {:keys [key-value]}]
    (let [key (make-sequential key)
          key-value (or (make-sequential key-value)
@@ -34,6 +28,16 @@
           key
           key-value))))
 
+(defn extract-key-value
+  "extract a key value from some combination of explicit value
+   and a record"
+
+  ([key record-or-key-value]
+   (extract-key-value key record-or-key-value {}))
+
+  ([key record-or-key-value {:keys [collection] :as opts}]
+   (extract-key-value* key record-or-key-value opts)))
+
 (defn extract-key-equality-clause
   "returns a Hayt key equality clause for use in a (when...) form"
 
@@ -47,3 +51,23 @@
              [:= k v])
            key
            kv))))
+
+(defn extract-collection-key-components
+  [coll opts]
+  (cond
+    (map? coll) (keys coll)
+    (sequential? coll) coll
+    :else (throw (ex-info "not a collection" {:coll coll}))))
+
+(defn extract-key-value-collection
+  ([key record-or-key-value]
+   (extract-key-value-collection key record-or-key-value {}))
+
+  ([key record-or-key-value opts]
+   (let [kv (extract-key-value* key record-or-key-value opts)]
+     (let [pre (into [] (take (dec (count kv)) kv))
+           coll (last kv)
+           lkvs (extract-collection-key-components coll opts)]
+       (->> lkvs
+            (map (fn [lkv] (conj pre lkv )))
+            set)))))
