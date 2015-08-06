@@ -87,9 +87,11 @@
   ([table
     key
     record
-    {:keys [only-if if-exists using] :as opts}]
+    {:keys [only-if if-exists using set-columns] :as opts}]
    (let [key-clause (extract-key-equality-clause key record opts)
-         set-cols (apply dissoc record (make-sequential key))]
+         set-cols (if (not-empty set-columns)
+                    (select-keys record set-columns)
+                    (apply dissoc record (make-sequential key)))]
      (h/update table
                (h/set-columns set-cols)
                (h/where key-clause)
