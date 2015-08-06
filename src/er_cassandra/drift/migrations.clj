@@ -138,4 +138,4 @@
 (def ns-content
   (str "\n  (:require [qbits.alia :as alia]"
        "\n            [qbits.hayt :as h]"
-       "\n            [er-cassandra.drift-migration-helpers :refer :all])"))
+       "\n            [er-cassandra.drift.migration-helpers :refer :all])"))
