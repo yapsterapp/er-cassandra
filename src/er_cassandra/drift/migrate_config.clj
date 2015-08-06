@@ -1,7 +1,7 @@
-(ns er-cassandra.drift-migrate-config
+(ns er-cassandra.drift.migrate-config
   (:require
    [plumbing.core :refer :all]
-   [er-cassandra.drift-migrations :as m]))
+   [er-cassandra.drift.migrations :as m]))
 
 (defnk cassandra
   [alia-session keyspace namespace directory]

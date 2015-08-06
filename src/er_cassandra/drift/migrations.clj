@@ -1,4 +1,4 @@
-(ns er-cassandra.drift-migrations
+(ns er-cassandra.drift.migrations
   (:require
    [clojure.string :as str]
    [clojure.tools.cli :refer [cli]]

@@ -1,4 +1,4 @@
-(ns er-cassandra.drift-migration-helpers
+(ns er-cassandra.drift.migration-helpers
   (:require [drift.config :as config]
             [qbits.alia]))
 
