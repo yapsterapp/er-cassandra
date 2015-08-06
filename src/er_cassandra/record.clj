@@ -8,16 +8,29 @@
    [clj-uuid :as uuid]
    [er-cassandra.key :refer [make-sequential extract-key-equality-clause]]))
 
+;; low-level record-based cassandra statement generation and execution
+;;
+;; keys can be extracted from records, provided explicitly or mixed.
+;;
+;; execution is async and returns a manifold Deferred
+
 (defn select-statement
   "returns a Hayt select statement"
 
   ([table key record-or-key-value]
    (select-statement table key record-or-key-value {}))
 
-  ([table key record-or-key-value opts]
+  ([table
+    key
+    record-or-key-value
+    {:keys [columns only-if order-by limit]:as opts}]
    (let [key-clause (extract-key-equality-clause key record-or-key-value opts)]
      (h/select table
-               (h/where key-clause)))))
+               (h/where key-clause)
+               (when columns (apply h/columns columns))
+               (when only-if (h/only-if only-if))
+               (when order-by (h/order-by order-by))
+               (when limit (h/limit limit))))))
 
 (defn select
   "select records"
@@ -33,8 +46,10 @@
 
 (defn select-one
   "select a single record"
+
   ([session table key record-or-key-value]
    (select-one session table key record-or-key-value {}))
+
   ([session table key record-or-key-value opts]
    (d/chain (select session table key record-or-key-value opts)
             first)))
