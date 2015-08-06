@@ -1,87 +1,123 @@
 (ns er-cassandra.record
+  (:refer-clojure :exclude [update])
   (:require
    [plumbing.core :refer :all]
    [qbits.alia.manifold :as aliam]
    [manifold.deferred :as d]
    [qbits.hayt :as h]
-   [clj-uuid :as uuid]))
+   [clj-uuid :as uuid]
+   [er-cassandra.key :refer [make-sequential extract-key-equality-clause]]))
 
-(defn make-sequential
-  [v]
-  (cond (nil? v) v
-        (sequential? v) v
-        :else [v]))
+(defn select-statement
+  "returns a Hayt select statement"
 
-(defn extract-key-clause
-  ([key record] (extract-key-clause key record {}))
-  ([key record {:keys [key-value]}]
-   (let [key (make-sequential key)
-         use-key-value (or (make-sequential key-value)
-                           (repeat nil))
-         use-key-value (map (fn [k dv]
-                              (let [kv (or dv (get record k))]
-                                (when-not kv
-                                  (throw (ex-info "no key value"
-                                                  {:key key
-                                                   :record record
-                                                   :key-value key-value})))
-                                kv))
-                            key
-                            use-key-value)]
-     (mapv (fn [k v]
-             [:= k v])
-           key
-           use-key-value))))
+  ([table key record-or-key-value]
+   (select-statement table key record-or-key-value {}))
+
+  ([table key record-or-key-value opts]
+   (let [key-clause (extract-key-equality-clause key record-or-key-value opts)]
+     (h/select table
+               (h/where key-clause)))))
 
 (defn select
+  "select records"
+
   ([session table key record-or-key-value]
    (select session table key record-or-key-value {}))
-  ([session table key record-or-key-value {:keys [key-value] :as opts}]
-   (let [key-value (or key-value
-                       (when-not (map? record-or-key-value)
-                         record-or-key-value))
-         record (when (map? record-or-key-value)
-                  record-or-key-value)
-         key-clause (extract-key-clause key record {:key-value key-value})]
-     (aliam/execute
-      session
-      (h/->raw
-       (h/select table
-                 (h/where key-clause)))))))
+
+  ([session table key record-or-key-value opts]
+   (aliam/execute
+    session
+    (h/->raw
+     (select-statement table key record-or-key-value opts)))))
 
 (defn select-one
+  "select a single record"
   ([session table key record-or-key-value]
    (select-one session table key record-or-key-value {}))
   ([session table key record-or-key-value opts]
    (d/chain (select session table key record-or-key-value opts)
             first)))
 
-(defn upsert
-  "upsert a single record"
+(defn insert-statement
+  "returns a Hayt insert statement"
+
+  ([table key record] (insert-statement table key record {}))
+
+  ([table
+    key
+    record
+    {:keys [if-not-exists using] :as opts}]
+   (h/insert table
+             (h/values record)
+             (when if-not-exists (h/if-not-exists true))
+             (when (not-empty using) (apply h/using (flatten (seq using)))))))
+
+(defn insert
+  "insert a single record"
+
   ([session table key record]
-   (upsert session table key record {}))
-  ([session table key record {:keys [key-value] :as opts}]
-   (let [key-clause (extract-key-clause key record opts)
+   (insert session table key record {}))
+
+  ([session table key record opts]
+   (aliam/execute
+    session
+    (h/->raw (insert-statement table key record opts)))))
+
+(defn update-statement
+  "returns a Hayt update statement"
+
+  ([table key record] (update-statement table key record {}))
+
+  ([table
+    key
+    record
+    {:keys [only-if if-exists using] :as opts}]
+   (let [key-clause (extract-key-equality-clause key record opts)
          set-cols (apply dissoc record (make-sequential key))]
-     (aliam/execute
-      session
-      (h/->raw
-       (h/update table
-                 (h/set-columns set-cols)
-                 (h/where key-clause)))))))
+     (h/update table
+               (h/set-columns set-cols)
+               (h/where key-clause)
+               (when only-if (h/only-if only-if))
+               (when if-exists (h/if-exists true))
+               (when (not-empty using) (apply h/using (flatten (seq using))))))))
+
+(defn update
+  "update a single record"
+
+  ([session table key record]
+   (update session table key record {}))
+
+  ([session table key record opts]
+   (aliam/execute
+    session
+    (h/->raw (update-statement table key record opts)))))
+
+(defn delete-statement
+  "returns a Hayt delete statement"
+
+  ([table key record-or-key-value]
+   (delete-statement table key record-or-key-value {}))
+
+  ([table
+    key
+    record-or-key-value
+    {:keys [only-if if-exists using] :as opts}]
+   (let [key-clause (extract-key-equality-clause key record-or-key-value opts)]
+     (h/delete table
+               (h/where key-clause)
+               (when only-if (h/only-if only-if))
+               (when if-exists (h/if-exists true))
+               (when (not-empty using) (apply h/using (flatten (seq using))))))))
 
 (defn delete
+  "delete a record"
+
   ([session table key record-or-key-value]
    (delete session table key record-or-key-value {}))
-  ([session table key record-or-key-value {:keys [key-value] :as opts}]
-   (let [key-value (or key-value
-                       (when-not (map? record-or-key-value)
-                         record-or-key-value))
-         record (when (map? record-or-key-value)
-                  record-or-key-value)
-         key-clause (extract-key-clause key record {:key-value key-value})]
-     (aliam/execute
-      session
-      (h/->raw
-       (h/delete table
-                 (h/where key-clause)))))))
+
+  ([session table key record-or-key-value opts]
+   (aliam/execute
+    session
+    (h/->raw
+     (delete-statement table key record-or-key-value opts)))))
