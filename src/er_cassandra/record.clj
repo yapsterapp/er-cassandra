@@ -119,9 +119,11 @@
    (update session table key record {}))
 
   ([session table key record opts]
-   (aliam/execute
-    session
-    (h/->raw (update-statement table key record opts)))))
+   (d/chain
+    (aliam/execute
+     session
+     (h/->raw (update-statement table key record opts)))
+    first)))
 
 (defn combine-where
   [& clauses]
@@ -154,7 +156,9 @@
    (delete session table key record-or-key-value {}))
 
   ([session table key record-or-key-value opts]
-   (aliam/execute
-    session
-    (h/->raw
-     (delete-statement table key record-or-key-value opts)))))
+   (d/chain
+    (aliam/execute
+     session
+     (h/->raw
+      (delete-statement table key record-or-key-value opts)))
+    first)))
