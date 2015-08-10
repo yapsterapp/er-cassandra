@@ -38,6 +38,15 @@
   ([key record-or-key-value {:keys [collection] :as opts}]
    (extract-key-value* key record-or-key-value opts)))
 
+(defn key-equality-clause
+  [key key-value]
+  (let [key (make-sequential key)
+        key-value (make-sequential key-value)]
+    (mapv (fn [k v]
+            [:= k v])
+          key
+          key-value)))
+
 (defn extract-key-equality-clause
   "returns a Hayt key equality clause for use in a (when...) form"
 
@@ -47,10 +56,7 @@
   ([key record-or-key-value opts]
    (let [key (make-sequential key)
          kv (extract-key-value key record-or-key-value opts)]
-     (mapv (fn [k v]
-             [:= k v])
-           key
-           kv))))
+     (key-equality-clause key kv))))
 
 (defn extract-collection-key-components
   [coll record-or-key-value]
