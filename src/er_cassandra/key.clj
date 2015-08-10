@@ -53,11 +53,15 @@
            kv))))
 
 (defn extract-collection-key-components
-  [coll opts]
+  [coll record-or-key-value]
   (cond
     (map? coll) (keys coll)
     (sequential? coll) coll
-    :else (throw (ex-info "not a collection" {:coll coll}))))
+    (set? coll) coll
+    :else (throw (ex-info
+                  "not a supported key collection"
+                  {:coll coll
+                   :record-or-key-value record-or-key-value}))))
 
 (defn extract-key-value-collection
   ([key record-or-key-value]
