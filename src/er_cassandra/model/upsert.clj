@@ -32,12 +32,12 @@
    returns a Deferred[Either], with Right values describing how
    they were successful, and Left values describing errors"
 
-  [session ^Model model unique-key-table record]
+  [session ^Model model unique-key-table unique-key-record]
 
   (m/with-monad dm/either-deferred-monad
     (m/mlet [insert-response (re/insert session
                                         (:name unique-key-table)
-                                        record
+                                        unique-key-record
                                         {:if-not-exists true})
 
              inserted? (m/return (applied? insert-response))
@@ -45,7 +45,7 @@
              owned? (m/return
                       (applied-or-owned?
                        model
-                       (t/extract-uber-key-value model record)
+                       (t/extract-uber-key-value model unique-key-record)
                        insert-response))
 
              live-ref? (if-not owned?
@@ -63,7 +63,7 @@
                                       session
                                       (:name unique-key-table)
                                       (:key unique-key-table)
-                                      record
+                                      unique-key-record
                                       {:only-if
                                        (t/extract-uber-key-equality-clause
                                         model
@@ -111,6 +111,26 @@
                                    :key-value key-value}
                                   reason]))))))
 
+(defn remove-unique-key
+  "remove a single unique key"
+  [session ^Model model unique-key-table uber-key-value key-value]
+  (let [uber-key (t/uber-key model)
+        key (:key unique-key-table)]
+    (m/with-monad dm/either-deferred-monad
+      (m/mlet [delete-result (re/delete session
+                                        (:name unique-key-table)
+                                        key
+                                        key-value
+                                        {:only-if
+                                         (k/key-equality-clause
+                                          uber-key
+                                          uber-key-value)})
+               deleted? (m/return (applied? delete-result))]
+              (m/return
+               (cond
+                 deleted? [:ok :deleted]
+                 :else    [:ok :stale]))))))
+
 (defn acquire-singular-unique-key
   "attempt to acquire a singular unique key, returning a
    Deferred[Right[[:ok key info]]] or a Deferred[Right[[:fail key reason]]]"
@@ -149,7 +169,6 @@
                                         (:name lookup-key-table)
                                         record)]
             (m/return :upserted))))
-
 
 
 
