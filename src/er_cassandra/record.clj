@@ -2,6 +2,7 @@
   (:refer-clojure :exclude [update])
   (:require
    [plumbing.core :refer :all]
+   [qbits.alia :as alia]
    [qbits.alia.manifold :as aliam]
    [manifold.deferred :as d]
    [qbits.hayt :as h]
@@ -14,6 +15,17 @@
 ;;
 ;; execution is async and returns a manifold Deferred
 
+(defn execute-batch
+  ([session statements] (execute-batch session statements {}))
+  ([session statements {:keys [type] :as opts}]
+   (let [type (or type :logged)
+         stmts (map h/->raw statements)]
+     (aliam/execute
+      session
+      (alia/batch
+       stmts
+       type)))))
+
 (defn select-statement
   "returns a Hayt select statement"
 
@@ -23,7 +35,7 @@
   ([table
     key
     record-or-key-value
-    {:keys [columns only-if order-by limit]:as opts}]
+    {:keys [columns only-if order-by limit] :as opts}]
    (let [key-clause (extract-key-equality-clause key record-or-key-value opts)]
      (h/select table
                (h/where key-clause)
@@ -57,10 +69,9 @@
 (defn insert-statement
   "returns a Hayt insert statement"
 
-  ([table key record] (insert-statement table key record {}))
+  ([table record] (insert-statement table record {}))
 
   ([table
-    key
     record
     {:keys [if-not-exists using] :as opts}]
    (h/insert table
@@ -71,13 +82,15 @@
 (defn insert
   "insert a single record"
 
-  ([session table key record]
-   (insert session table key record {}))
+  ([session table record]
+   (insert session table record {}))
 
-  ([session table key record opts]
-   (aliam/execute
-    session
-    (h/->raw (insert-statement table key record opts)))))
+  ([session table record opts]
+   (d/chain
+    (aliam/execute
+     session
+     (h/->raw (insert-statement table record opts)))
+    first)))
 
 (defn update-statement
   "returns a Hayt update statement"
@@ -110,6 +123,13 @@
     session
     (h/->raw (update-statement table key record opts)))))
 
+(defn combine-where
+  [& clauses]
+  (into []
+        (->> clauses
+             (filter identity)
+             (apply concat))))
+
 (defn delete-statement
   "returns a Hayt delete statement"
 
@@ -119,10 +139,10 @@
   ([table
     key
     record-or-key-value
-    {:keys [only-if if-exists using] :as opts}]
+    {:keys [only-if if-exists using where] :as opts}]
    (let [key-clause (extract-key-equality-clause key record-or-key-value opts)]
      (h/delete table
-               (h/where key-clause)
+               (h/where (combine-where key-clause where))
                (when only-if (h/only-if only-if))
                (when if-exists (h/if-exists true))
                (when (not-empty using) (apply h/using (flatten (seq using))))))))
