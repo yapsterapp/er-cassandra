@@ -27,7 +27,8 @@
 
   ([session table key record-or-key-value opts]
    (dm/either-deferred
-    (r/select session table key record-or-key-value opts))))
+    (r/select session table key record-or-key-value opts)
+    alia-error-transformer)))
 
 (defn select-one
   "select a single record : returns a Deferred[Either]"
@@ -36,7 +37,8 @@
 
   ([session table key record-or-key-value opts]
    (dm/either-deferred
-    (r/select-one session table key record-or-key-value opts))))
+    (r/select-one session table key record-or-key-value opts)
+    alia-error-transformer)))
 
 (import-vars [er-cassandra.record insert-statement])
 
@@ -48,7 +50,8 @@
 
   ([session table record opts]
    (dm/either-deferred
-    (r/insert session table record opts))))
+    (r/insert session table record opts)
+    alia-error-transformer)))
 
 (import-vars [er-cassandra.record update-statement])
 
@@ -60,7 +63,8 @@
 
   ([session table key record opts]
    (dm/either-deferred
-    (r/update session table key record opts))))
+    (r/update session table key record opts)
+    alia-error-transformer)))
 
 (import-vars [er-cassandra.record delete-statement])
 
@@ -72,4 +76,5 @@
 
   ([session table key record-or-key-value opts]
    (dm/either-deferred
-    (r/delete session table key record-or-key-value opts))))
+    (r/delete session table key record-or-key-value opts)
+    alia-error-transformer)))
