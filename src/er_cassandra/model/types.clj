@@ -19,7 +19,7 @@
 
 (s/defschema LookupTableSchema
   (merge TableSchema
-         {(s/optional-key :collection) s/Bool}))
+         {(s/optional-key :collection) (s/pred #{:list :set :map})}))
 
 (s/defschema ModelSchema
   {:primary-table TableSchema
