@@ -196,6 +196,38 @@
           record
           acquire-key-responses))
 
+(defn describe-acquire-failures
+  [^Model model requested-record acquire-key-responses]
+  (let [failures (filter (fn [[status key-desc reason]]
+                           (not= :ok status))
+                         acquire-key-responses)
+        by-key (group-by (fn [[status {:keys [key key-value]} reason]]
+                           key)
+                         failures)]
+    (into
+     {}
+     (filter
+      identity
+      (for [t (:unique-key-tables model)]
+        (when-let [kfs (get by-key (:key t))]
+          [(:key t)
+           (let [key-col (last (:key t))
+                 kvs (map (fn [[_ {:keys [key key-value]} _]]
+                            key-value)
+                          kfs)
+                 first-kv (first kvs)
+                 prefix (into [] (take (dec (count first-kv)) first-kv))]
+             (condp = (:collection t)
+               :list (let [lv (mapv last kvs)]
+                       (conj prefix lv))
+               :set (let [sv (set (map last kvs))]
+                      (conj prefix sv))
+               :map (let [mv (select-keys
+                              (get requested-record key-col)
+                              (map last kvs))]
+                      (conj prefix mv))
+               first-kv))]))))))
+
 (defn responses-for-key
   [match-key responses]
   (filter (fn [[_ {:keys [key]} _]]
@@ -223,7 +255,7 @@
 
 (defn update-unique-keys
   "attempts to acquire unique keys for an owner... returns
-   a Deferred[Right[[:ok updated-owner-record :failed-keys]]] with an updated
+   a Deferred[Right[[updated-owner-record failed-keys]]] with an updated
    owner record containing only the keys that could be acquired"
   [session ^Model model new-record]
   (m/with-monad dm/either-deferred-monad
@@ -245,6 +277,11 @@
                                     session
                                     model
                                     new-record)
+             acquire-failures (m/return
+                               (describe-acquire-failures
+                                model
+                                new-record
+                                acquire-key-responses))
              updated-record (m/return
                              (update-record-by-key-responses
                               model
@@ -255,4 +292,6 @@
                               session
                               (get-in model [:primary-table :name])
                               updated-record)]
-            (m/return updated-record))))
+            (m/return [updated-record
+                       (when (not-empty acquire-failures)
+                         acquire-failures)]))))

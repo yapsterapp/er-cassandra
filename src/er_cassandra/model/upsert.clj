@@ -125,15 +125,20 @@
 (defn upsert
   "upsert a single instance, upserting primary, secondary, unique-key and
    lookup records as required and deleting stale secondary, unique-key and
-   lookup records"
+   lookup records
+   returns a Deferred[Right[[updated-record key-failures]]] where
+   updated-record is the record as currently in the db and key-failures
+   is a map of {key values} for unique keys which were requested but
+   could not be acquired"
 
   ([session ^Model model record]
 
    (m/with-monad dm/either-deferred-monad
-     (m/mlet [old-record-with-keys (unique-key/update-unique-keys
-                                    session
-                                    model
-                                    record)
+     (m/mlet [[old-record-with-keys
+               acquire-failures] (unique-key/update-unique-keys
+                                  session
+                                  model
+                                  record)
 
               new-record-with-keys (m/return
                                     (copy-unique-keys
@@ -161,8 +166,11 @@
               lookup-responses (upsert-lookups
                                 session
                                 model
-                                new-record-with-keys)]
-             (r/select-one session
-                           (get-in model [:primary-table :name])
-                           (get-in model [:primary-table :key])
-                           (t/extract-uber-key-value model record))))))
+                                new-record-with-keys)
+              current-record (r/select-one
+                              session
+                              (get-in model [:primary-table :name])
+                              (get-in model [:primary-table :key])
+                              (t/extract-uber-key-value model record))]
+             (m/return [current-record
+                        acquire-failures])))))
