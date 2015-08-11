@@ -61,29 +61,29 @@
    (select session model key record-or-key-value {}))
 
   ([session model key record-or-key-value opts]
+   (let [key (k/make-sequential key)]
+     (if-let [table (or (if-primary-key-table model key)
+                        (if-secondary-key-table model key))]
 
-   (if-let [table (or (if-primary-key-table model key)
-                      (if-secondary-key-table model key))]
+       (select-from-full-table session
+                               model
+                               table
+                               record-or-key-value
+                               opts)
 
-     (select-from-full-table session
-                             model
-                             table
-                             record-or-key-value
-                             opts)
+       (if-let [lookup-table (if-lookup-key-table model key)]
 
-     (if-let [lookup-table (if-lookup-key-table model key)]
+         (select-from-lookup-table session
+                                   model
+                                   lookup-table
+                                   record-or-key-value
+                                   opts)
 
-       (select-from-lookup-table session
-                                 model
-                                 lookup-table
-                                 record-or-key-value
-                                 opts)
-
-       (let [r (d/deferred)]
-         (d/error! r
-                   (ex-info "no model table matches key"
-                            {:model model :key key}))
-         r)))))
+         (let [r (d/deferred)]
+           (d/error! r
+                     (ex-info "no model table matches key"
+                              {:model model :key key}))
+           r))))))
 
 (defn select-one
   "select a single record, using an index table if necessary"
