@@ -1,11 +1,14 @@
 (ns er-cassandra.model.select
   (:require [manifold.deferred :as d]
+            [cats.core :as m]
+            [cats.monad.either :as either]
+            [cats.monad.deferred :as dm]
             [qbits.alia :as alia]
             [qbits.alia.manifold :as aliam]
             [qbits.hayt :as h]
             [er-cassandra.key :as k]
-            [er-cassandra.record :as r]
-            [er-cassandra.model.types])
+            [er-cassandra.record-either :as r]
+            [er-cassandra.model.types :as t])
   (:import [er_cassandra.model.types Model]))
 
 (defn if-primary-key-table
@@ -21,12 +24,19 @@
             t))
         (:secondary-tables model)))
 
+(defn if-unique-key-table
+  [^Model model key]
+  (some (fn [t]
+          (when (= (:key t) key)
+            t))
+        (:unique-key-tables model)))
+
 (defn if-lookup-key-table
   [^Model model key]
   (some (fn [t]
           (when (= (:key t) key)
             t))
-        (:lookup-tables model)))
+        (:lookup-key-tables model)))
 
 (defn select-from-full-table
   "one fetch - straight from a table"
@@ -40,19 +50,19 @@
    get the record from the primary table"
 
   [session ^Model model table record-or-key-value opts]
-  (let [lkv (k/extract-key-value (:key table) record-or-key-value opts)
-        lr-def (r/select-one session (:name table) (:key table) lkv)]
-    (d/chain lr-def
-             (fn [lr]
-               (when lr ;; ignore dangling lookups
-                 (when-let [pkv (k/extract-key-value
-                                 (get-in model [:primary-table :key])
-                                 lr)]
-                   (r/select session
-                             (get-in model [:primary-table :name])
-                             (get-in model [:primary-table :key])
-                             pkv
-                             (dissoc opts :key-value))))))))
+  (let [lkv (k/extract-key-value (:key table) record-or-key-value opts)]
+    (m/with-monad dm/either-deferred-monad
+      (m/mlet [lr (r/select-one session (:name table) (:key table) lkv)
+               pkv (m/return
+                    (when lr
+                      (t/extract-uber-key-value model lr)))]
+              (if pkv
+                (r/select session
+                          (get-in model [:primary-table :name])
+                          (get-in model [:primary-table :key])
+                          pkv
+                          (dissoc opts :key-value))
+                (m/return nil))))))
 
 (defn select
   "select records from primary or lookup tables as required"
@@ -71,7 +81,8 @@
                                record-or-key-value
                                opts)
 
-       (if-let [lookup-table (if-lookup-key-table model key)]
+       (if-let [lookup-table (or (if-unique-key-table model key)
+                                 (if-lookup-key-table model key))]
 
          (select-from-lookup-table session
                                    model
@@ -79,11 +90,10 @@
                                    record-or-key-value
                                    opts)
 
-         (let [r (d/deferred)]
-           (d/error! r
-                     (ex-info "no model table matches key"
-                              {:model model :key key}))
-           r))))))
+         (dm/with-value (either/left [:fail
+                                      {:model model
+                                       :key key}
+                                      :no-matching-key])))))))
 
 (defn select-one
   "select a single record, using an index table if necessary"
@@ -92,5 +102,6 @@
    (select-one session model key record-or-key-value {}))
 
   ([session ^Model model key record-or-key-value opts]
-   (d/chain (select session model key record-or-key-value opts)
-            first)))
+   (m/with-monad dm/either-deferred-monad
+     (m/mlet [records (select session model key record-or-key-value opts)]
+             (m/return (first records))))))
