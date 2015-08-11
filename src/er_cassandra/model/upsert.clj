@@ -10,8 +10,7 @@
    [qbits.alia.manifold :as aliam]
    [qbits.hayt :as h]
    [er-cassandra.key :as k]
-   [er-cassandra.record :as r]
-   [er-cassandra.record-either :as re]
+   [er-cassandra.record-either :as r]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.util :refer [combine-responses create-lookup-record]]
    [er-cassandra.model.unique-key :as uk])
@@ -20,7 +19,7 @@
 (defn delete-record
   [session model table key-value]
   (m/with-monad dm/either-deferred-monad
-    (m/mlet [delete-result (re/delete session
+    (m/mlet [delete-result (r/delete session
                                       (:name table)
                                       (:key table)
                                       key-value)]
@@ -32,7 +31,7 @@
 (defn upsert-record
   [session ^Model model table record]
   (m/with-monad dm/either-deferred-monad
-    (m/mlet [insert-result (re/insert session
+    (m/mlet [insert-result (r/insert session
                                       (:name table)
                                       record)]
             (m/return
@@ -107,10 +106,10 @@
                                t
                                lookup-record))))
 
-          (let [key-value (k/extract-key-value key record)]
-            (when-let [lookup-record (create-lookup-record
-                                      uber-key uber-key-value
-                                      key key-value)]
+          (when-let [key-value (k/extract-key-value key record)]
+            (let [lookup-record (create-lookup-record
+                                 uber-key uber-key-value
+                                 key key-value)]
               [(upsert-record session model t lookup-record)]))))))))
 
 (defn upsert
@@ -147,7 +146,7 @@
                                  model
                                  record))]
              (m/return
-              (re/select-one session
+              (r/select-one session
                              (get-in model [:primary-table :name])
                              (get-in model [:primary-table :key])
                              (t/extract-uber-key-value model record)))))))
