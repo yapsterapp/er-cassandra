@@ -7,24 +7,14 @@
    [manifold.deferred :as d]
    [qbits.hayt :as h]
    [clj-uuid :as uuid]
-   [er-cassandra.key :refer [make-sequential extract-key-equality-clause]]))
+   [er-cassandra.key :refer [make-sequential extract-key-equality-clause]]
+   [er-cassandra.session :as session]))
 
 ;; low-level record-based cassandra statement generation and execution
 ;;
 ;; keys can be extracted from records, provided explicitly or mixed.
 ;;
 ;; execution is async and returns a manifold Deferred
-
-(defn execute-batch
-  ([session statements] (execute-batch session statements {}))
-  ([session statements {:keys [type] :as opts}]
-   (let [type (or type :logged)
-         stmts (map h/->raw statements)]
-     (aliam/execute
-      session
-      (alia/batch
-       stmts
-       type)))))
 
 (defn select-statement
   "returns a Hayt select statement"
@@ -51,10 +41,8 @@
    (select session table key record-or-key-value {}))
 
   ([session table key record-or-key-value opts]
-   (aliam/execute
-    session
-    (h/->raw
-     (select-statement table key record-or-key-value opts)))))
+   (session/execute
+    (select-statement table key record-or-key-value opts))))
 
 (defn select-one
   "select a single record"
@@ -87,9 +75,8 @@
 
   ([session table record opts]
    (d/chain
-    (aliam/execute
-     session
-     (h/->raw (insert-statement table record opts)))
+    (session/execute
+     (insert-statement table record opts))
     first)))
 
 (defn update-statement
@@ -120,9 +107,8 @@
 
   ([session table key record opts]
    (d/chain
-    (aliam/execute
-     session
-     (h/->raw (update-statement table key record opts)))
+    (session/execute
+     (update-statement table key record opts))
     first)))
 
 (defn combine-where
@@ -157,8 +143,6 @@
 
   ([session table key record-or-key-value opts]
    (d/chain
-    (aliam/execute
-     session
-     (h/->raw
-      (delete-statement table key record-or-key-value opts)))
+    (session/execute
+     (delete-statement table key record-or-key-value opts))
     first)))
