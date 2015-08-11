@@ -13,7 +13,7 @@
    [er-cassandra.record-either :as r]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.util :refer [combine-responses create-lookup-record]]
-   [er-cassandra.model.unique-key :as uk])
+   [er-cassandra.model.unique-key :as unique-key])
   (:import [er_cassandra.model.types Model]))
 
 (defn delete-record
@@ -75,7 +75,7 @@
         (if coll
           (let [old-kvs (set (k/extract-key-value-collection key old-record))
                 new-kvs (set (k/extract-key-value-collection key new-record))
-                stale-kvs (filter identity (set/difference new-kvs old-kvs))]
+                stale-kvs (filter identity (set/difference old-kvs new-kvs))]
             (for [kv stale-kvs]
               (delete-record session model t kv)))
 
@@ -113,6 +113,15 @@
                                  key key-value)]
               [(upsert-record session model t lookup-record)]))))))))
 
+(defn copy-unique-keys
+  [^Model model from to]
+  (let [unique-key-tables (:unique-key-tables model)]
+    (reduce (fn [r t]
+              (let [key-col (last (:key t))]
+                (assoc r key-col (get from key-col))))
+            to
+            unique-key-tables)))
+
 (defn upsert
   "upsert a single instance, upserting primary, secondary, unique-key and
    lookup records as required and deleting stale secondary, unique-key and
@@ -121,33 +130,39 @@
   ([session ^Model model record]
 
    (m/with-monad dm/either-deferred-monad
-     (m/mlet [with-unique-keys (uk/acquire-unique-keys session model record)
+     (m/mlet [old-record-with-keys (unique-key/update-unique-keys
+                                    session
+                                    model
+                                    record)
+
+              new-record-with-keys (m/return
+                                    (copy-unique-keys
+                                     model
+                                     old-record-with-keys
+                                     record))
 
               stale-secondary-responses (delete-stale-secondaries
                                          session
                                          model
-                                         with-unique-keys
-                                         record)
+                                         old-record-with-keys
+                                         new-record-with-keys)
 
               stale-lookup-responses (delete-stale-lookups
                                       session
                                       model
-                                      with-unique-keys
-                                      record)
+                                      old-record-with-keys
+                                      new-record-with-keys)
 
-              secondary-reponses (combine-responses
-                                  (upsert-secondaries
-                                   session
-                                   model
-                                   record))
+              secondary-reponses (upsert-secondaries
+                                  session
+                                  model
+                                  new-record-with-keys)
 
-              lookup-responses (combine-responses
-                                (upsert-lookups
-                                 session
-                                 model
-                                 record))]
-             (m/return
-              (r/select-one session
-                             (get-in model [:primary-table :name])
-                             (get-in model [:primary-table :key])
-                             (t/extract-uber-key-value model record)))))))
+              lookup-responses (upsert-lookups
+                                session
+                                model
+                                new-record-with-keys)]
+             (r/select-one session
+                           (get-in model [:primary-table :name])
+                           (get-in model [:primary-table :key])
+                           (t/extract-uber-key-value model record))))))
