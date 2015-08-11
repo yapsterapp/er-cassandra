@@ -76,9 +76,12 @@
 
 (defn extract-uber-key-value
   [^Model model record]
-  (k/extract-key-value
-   (get-in model [:primary-table :key])
-   record))
+  (let [kv (k/extract-key-value
+            (get-in model [:primary-table :key])
+            record)]
+    (when (nil? kv)
+      (throw (ex-info "nil uberkey" {:model model :record record})))
+    kv))
 
 (defn extract-uber-key-equality-clause
   [^Model model record]
