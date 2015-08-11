@@ -128,7 +128,7 @@
         (if coll
           (let [old-kvs (set (k/extract-key-value-collection key old-record))
                 new-kvs (set (k/extract-key-value-collection key new-record))
-                stale-kvs (filter identity (set/difference new-kvs old-kvs))]
+                stale-kvs (filter identity (set/difference old-kvs new-kvs))]
             (for [kv stale-kvs]
               (release-unique-key session model t uber-key-value kv)))
 
@@ -143,7 +143,7 @@
   (combine-responses
    (mapcat
     identity
-    (for [t (:lookup-tables model)]
+    (for [t (:unique-key-tables model)]
       (let [uber-key (t/uber-key model)
             uber-key-value (t/extract-uber-key-value model record)
             key (:key t)
@@ -170,30 +170,29 @@
 
 (defn update-with-acquire-responses
   [table acquire-key-responses record]
-  (reduce (fn [[status key-desc _]]
+  (reduce (fn [r [status key-desc _]]
             (let [coll (:collection table)
                   key-col (last (:key key-desc))
                   key-val (last (:key-value key-desc))]
-              (condp = coll
-                :set (when-not (= :ok status)
-                       (assoc record
+              (if (= :ok status)
+                r
+                (condp = coll
+
+                  :set (assoc r
                               key-col
                               (disj (get record key-col)
-                                    key-val)))
-                :list (when-not (= :ok status)
-                        (assoc record
+                                    key-val))
+                  :list (assoc r
                                key-col
                                (filterv #(not= key-val %)
-                                        (get record key-col))))
+                                        (get record key-col)))
 
-                :map (when-not (= :ok status)
-                       (assoc record
+                  :map (assoc r
                               key-col
                               (dissoc (get record key-col)
-                                      key-val)))
+                                      key-val))
 
-                :else (when-not (= :ok status)
-                        (assoc record key-col nil)))))
+                  (assoc r key-col nil)))))
           record
           acquire-key-responses))
 
@@ -212,7 +211,7 @@
           new-record
           (:unique-key-tables model)))
 
-(defn acquire-unique-keys
+(defn update-unique-keys
   "attempts to acquire unique keys for an owner... returns
    a Deferred[Right[[:ok updated-owner-record :failed-keys]]] with an updated
    owner record containing only the keys that could be acquired"
@@ -234,6 +233,7 @@
                                     new-record)]
             (m/return
              (update-record-by-key-responses
+              model
               old-record
               new-record
               acquire-key-responses)))))
