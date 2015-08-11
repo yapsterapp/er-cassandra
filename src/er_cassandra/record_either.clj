@@ -7,6 +7,10 @@
    [cats.monad.deferred :as dm]
    [er-cassandra.record :as r]))
 
+;; low-level record-based cassandra interface which
+;; puts responses into an Either monad Right value,
+;; and transforms Exceptions into Left values
+
 (defn alia-error-transformer
   "transforms an alia exception into an error map... doesn't
    do much more than extract the ex-data map and set a message"
