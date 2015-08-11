@@ -211,13 +211,27 @@
           new-record
           (:unique-key-tables model)))
 
+(defn without-unique-keys
+  "remove (the final part of) unique key columns from a record"
+  [^Model model record]
+  (let [unique-key-tables (:unique-key-tables model)]
+    (reduce (fn [r t]
+              (let [key-col (last (:key t))]
+                (dissoc r key-col)))
+            record
+            unique-key-tables)))
+
 (defn update-unique-keys
   "attempts to acquire unique keys for an owner... returns
    a Deferred[Right[[:ok updated-owner-record :failed-keys]]] with an updated
    owner record containing only the keys that could be acquired"
   [session ^Model model new-record]
   (m/with-monad dm/either-deferred-monad
-    (m/mlet [old-record (r/select-one session
+    (m/mlet [create-primary (r/insert session
+                                      (get-in model [:primary-table :name])
+                                      (without-unique-keys model new-record))
+
+             old-record (r/select-one session
                                       (get-in model [:primary-table :name])
                                       (get-in model [:primary-table :key])
                                       (t/extract-uber-key-value model new-record))
@@ -230,10 +244,15 @@
              acquire-key-responses (acquire-unique-keys
                                     session
                                     model
-                                    new-record)]
-            (m/return
-             (update-record-by-key-responses
-              model
-              old-record
-              new-record
-              acquire-key-responses)))))
+                                    new-record)
+             updated-record (m/return
+                             (update-record-by-key-responses
+                              model
+                              old-record
+                              new-record
+                              acquire-key-responses))
+             upsert-response (r/insert
+                              session
+                              (get-in model [:primary-table :name])
+                              updated-record)]
+            (m/return updated-record))))
