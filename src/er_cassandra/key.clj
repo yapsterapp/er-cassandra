@@ -61,9 +61,9 @@
 (defn extract-collection-key-components
   [coll record-or-key-value]
   (cond
-    (map? coll) (keys coll)
-    (sequential? coll) coll
-    (set? coll) coll
+    (map? coll) (filter identity (keys coll))
+    (sequential? coll) (filter identity coll)
+    (set? coll) (disj coll nil )
     :else (throw (ex-info
                   "not a supported key collection"
                   {:coll coll
@@ -74,7 +74,8 @@
    (extract-key-value-collection key record-or-key-value {}))
 
   ([key record-or-key-value opts]
-   (let [kv (extract-key-value* key record-or-key-value opts)]
+   (when-let [kv (not-empty
+                  (extract-key-value* key record-or-key-value opts))]
      (let [pre (into [] (take (dec (count kv)) kv))
            coll (last kv)
            lkvs (extract-collection-key-components coll opts)]
