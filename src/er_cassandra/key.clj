@@ -14,19 +14,13 @@
                          (make-sequential record-or-key-value)
                          (repeat (count key) nil)))
          record (when (map? record-or-key-value)
-                  record-or-key-value)]
-
-     (map (fn [k ev]
-            (let [kv (or ev (get record k))]
-              (when-not kv
-                (throw (ex-info "missing key value component"
-                                {:component k
-                                 :key key
-                                 :record record
-                                 :key-value key-value})))
-              kv))
-          key
-          key-value))))
+                  record-or-key-value)
+         dkv (map (fn [k ev]
+                    (or ev (get record k)))
+                  key
+                  key-value)]
+     (when-not (some nil? dkv)
+       dkv))))
 
 (defn extract-key-value
   "extract a key value from some combination of explicit value
