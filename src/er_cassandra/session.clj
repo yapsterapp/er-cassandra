@@ -9,4 +9,5 @@
    [er-cassandra.key :refer [make-sequential extract-key-equality-clause]]))
 
 (defprotocol Session
-  (execute [statement]))
+  (execute [this statement])
+  (close [this]))

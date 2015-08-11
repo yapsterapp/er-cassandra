@@ -4,11 +4,12 @@
 
 (defrecord MockSession [statement-responses]
   Session
-  (execute [statement]
+  (execute [_ statement]
     (if (contains? statement-responses statement)
       (get statement-responses statement)
 
-      (throw (ex-info "no matching response" {:statement statement})))))
+      (throw (ex-info "no matching response" {:statement statement}))))
+  (close [_]))
 
 (defn create-session
   [statement-responses]

@@ -1,5 +1,6 @@
 (ns er-cassandra.session.alia
   (:require
+   [plumbing.core :refer :all]
    [qbits.alia :as alia]
    [qbits.alia.manifold :as aliam]
    [qbits.hayt :as h]
@@ -9,11 +10,16 @@
 
 (defrecord AliaSession [alia-session]
   Session
-  (execute [statement]
+  (execute [_ statement]
     (aliam/execute
      alia-session
-     (h/->raw statement))))
+     (h/->raw statement)))
+  (close [_]
+    (.close alia-session)))
 
-(defn create-session
-  [alia-session]
-  (->AliaSession alia-session))
+(defnk create-session
+  [contact-points keyspace]
+  (let [cluster (alia/cluster {:contact-points contact-points})
+        alia-session (alia/connect cluster)]
+    (alia/execute alia-session (str "USE " keyspace ";"))
+    (->AliaSession alia-session)))

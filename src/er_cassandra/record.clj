@@ -42,6 +42,7 @@
 
   ([session table key record-or-key-value opts]
    (session/execute
+    session
     (select-statement table key record-or-key-value opts))))
 
 (defn select-one
@@ -76,6 +77,7 @@
   ([session table record opts]
    (d/chain
     (session/execute
+     session
      (insert-statement table record opts))
     first)))
 
@@ -108,6 +110,7 @@
   ([session table key record opts]
    (d/chain
     (session/execute
+     session
      (update-statement table key record opts))
     first)))
 
@@ -144,5 +147,6 @@
   ([session table key record-or-key-value opts]
    (d/chain
     (session/execute
+     session
      (delete-statement table key record-or-key-value opts))
     first)))
