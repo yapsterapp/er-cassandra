@@ -67,7 +67,8 @@
     identity
     (for [t (:lookup-tables model)]
       (let [uber-key (t/uber-key model)
-            uber-key-value (t/extract-uber-key-value model new-record)
+            uber-key-value (t/extract-uber-key-value model (or new-record
+                                                               old-record))
             key (:key t)
             coll (:collection t)]
 
