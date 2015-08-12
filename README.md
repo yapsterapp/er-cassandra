@@ -35,7 +35,7 @@ and create a _drift_ config namespace like this one, which puts the migrations i
 
   (mc/cassandra {:alia-session (s/get-an-er-cassandra-session)
                  :keyspace "a_keyspace"
-                 :namespace "er-api.migrate-config/cassandra"
+                 :namespace "api.migrate-config/cassandra"
                  :directory "src/api/migrations_cassandra"}))
 ```
 
