@@ -15,7 +15,7 @@ dependency and the _drift_ plugin into your
 project
 
 ```
-[employeerepublic/er-cassandra "0.2.8" ]
+[employeerepublic/er-cassandra "0.3.0" ]
 [drift "1.5.3"]
 ```
 
