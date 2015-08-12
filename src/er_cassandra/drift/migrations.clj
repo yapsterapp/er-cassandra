@@ -4,19 +4,19 @@
    [clojure.tools.cli :refer [cli]]
    [clojure.tools.logging :as log]
    [qbits.hayt :as h]
-   [qbits.alia :as alia]
    [drift.config]
+   [er-cassandra.session :as session]
    [er-cassandra.schema :as schema]))
 
 (def ^:private migrations-table-name "schema_migrations")
 
 (defn- create-migration-table-query
   []
-  (h/->raw (h/create-table migrations-table-name
-                           (h/column-definitions
-                            {:namespace :varchar
-                             :version :bigint
-                             :primary-key [:namespace :version]}))))
+  (h/create-table migrations-table-name
+                  (h/column-definitions
+                   {:namespace :varchar
+                    :version :bigint
+                    :primary-key [:namespace :version]})))
 
 (defn- create-migration-table
   "create a schema_migrations table if it doesn't already exist"
@@ -26,45 +26,48 @@
               keyspace
               migrations-table-name)
     (log/infof "creating migrations table: %s" migrations-table-name)
-    (alia/execute
-     session
-     (create-migration-table-query))))
+    (deref (session/execute
+            session
+            (create-migration-table-query)))))
 
 (defn- namespace-versions-query
   [namespace]
-  (h/->raw (h/select migrations-table-name
-                     (h/columns :version)
-                     (h/where {:namespace namespace}))))
+  (h/select migrations-table-name
+            (h/columns :version)
+            (h/where {:namespace namespace})))
 
 (defn- namespace-max-version
   [session namespace]
   (->> (namespace-versions-query namespace)
-       (alia/execute session)
+       (session/execute session)
+       deref
        (map :version)
        sort
        last))
 
 (defn- delete-namespace-version-query
   [namespace version]
-  (h/->raw (h/delete migrations-table-name
-                     (h/where {:namespace namespace
-                               :version version}))))
+  (h/delete migrations-table-name
+            (h/where {:namespace namespace
+                      :version version})))
 
 (defn- delete-namespace-version
   [session namespace version]
-  (alia/execute session (delete-namespace-version-query namespace version)))
+  (deref
+   (session/execute session (delete-namespace-version-query namespace version))))
 
 (defn- namespace-versions-above-query
   [namespace version]
-  (h/->raw (h/select migrations-table-name
-                     (h/columns :version)
-                     (h/where [[= :namespace namespace]
-                               [> :version version]]))))
+  (h/select migrations-table-name
+            (h/columns :version)
+            (h/where [[= :namespace namespace]
+                      [> :version version]])))
 
 (defn- namespace-versions-above
   [session namespace version]
   (->> (namespace-versions-above-query namespace version)
-       (alia/execute session)
+       (session/execute session)
+       deref
        (map :version)))
 
 (defn- delete-namespace-versions-above
@@ -76,17 +79,18 @@
 
 (defn- insert-namespace-version-query
   [namespace version]
-  (h/->raw (h/insert migrations-table-name
-                     (h/values {:namespace namespace
-                                :version version}))))
+  (h/insert migrations-table-name
+            (h/values {:namespace namespace
+                       :version version})))
 
 (defn- insert-namespace-version
   [session namespace version]
   (delete-namespace-versions-above session namespace version)
   (if (> version 0)
-    (alia/execute
-     session
-     (insert-namespace-version-query namespace version))))
+    (deref
+     (session/execute
+      session
+      (insert-namespace-version-query namespace version)))))
 
 (defn create-init-fn
   "create a drift init function"
@@ -106,7 +110,7 @@
       (create-migration-table session keyspace)
 
       (log/infof "migrating schema for prefix: %s)" (or prefix "<no prefix>"))
-      {:alia-session session
+      {:er-cassandra-session session
        :cassandra-keyspace keyspace
        :namespace namespace
        :prefix prefix})))
@@ -116,7 +120,7 @@
   []
   (let [config drift.config/*config-map*
         namespace (:namespace config)
-        session (:alia-session config)]
+        session (:er-cassandra-session config)]
 
     (log/infof "config: %s" (prn-str config))
     (or (namespace-max-version session namespace)
@@ -127,7 +131,7 @@
   [version]
   (let [config drift.config/*config-map*
         namespace (:namespace config)
-        session (:alia-session config)]
+        session (:er-cassandra-session config)]
     (insert-namespace-version session namespace version)))
 
 (defn finished

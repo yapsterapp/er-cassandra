@@ -13,7 +13,9 @@
   (execute [_ statement]
     (aliam/execute
      alia-session
-     (h/->raw statement)))
+     (if (string? statement)
+       statement
+       (h/->raw statement))))
   (close [_]
     (.close alia-session)))
 

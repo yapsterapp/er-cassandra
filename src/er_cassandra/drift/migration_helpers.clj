@@ -1,12 +1,12 @@
 (ns er-cassandra.drift.migration-helpers
   (:require [drift.config :as config]
-            [qbits.alia]))
+            [er-cassandra.session]))
 
-(defn alia-session
+(defn session
   "get the alia session"
   []
-  (:alia-session config/*config-map*))
+  (:er-cassandra-session config/*config-map*))
 
 (defmacro execute
   [& body]
-  `(qbits.alia/execute (alia-session) ~@body))
+  `(er-cassandra.session/execute (session) ~@body))

@@ -4,10 +4,10 @@
    [er-cassandra.drift.migrations :as m]))
 
 (defnk cassandra
-  [alia-session keyspace namespace directory]
+  [session keyspace namespace directory]
 
   {:directory directory
-   :init (m/create-init-fn alia-session keyspace namespace)
+   :init (m/create-init-fn session keyspace namespace)
    :current-version m/current-version
    :update-version m/update-version
    :ns-content m/ns-content
