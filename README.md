@@ -15,8 +15,12 @@ dependency and the _drift_ plugin into your
 project
 
 ```
-[employeerepublic/er-cassandra "0.3.0" ]
-[drift "1.5.3"]
+{:dependencies [...
+                [employeerepublic/er-cassandra "0.3.0" ]
+                ...}
+{:plugins      [...
+                [drift "1.5.3"]
+                ...}
 ```
 
 and create a _drift_ config namespace like this one, which puts the migrations in
