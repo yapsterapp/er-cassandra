@@ -4,7 +4,6 @@
    [plumbing.core :refer :all]
    [manifold.deferred :as d]
    [qbits.hayt :as h]
-   [clj-uuid :as uuid]
    [er-cassandra.key :refer [make-sequential extract-key-equality-clause]]
    [er-cassandra.session :as session]))
 
