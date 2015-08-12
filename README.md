@@ -1,9 +1,9 @@
 # er-cassandra
 
-an ER cassandra connector
+a  cassandra connector
 
-* migrations (from drift)
-* low-level async API (built on alia)
+* migrations (from [drift](https://github.com/macourtney/drift))
+* low-level async API (built on [alia](https://github.com/mpenet/alia))
 * higher-level async API dealing with unique keys, secondary and lookup tables
 
 ## Usage
