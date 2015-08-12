@@ -101,10 +101,14 @@ The simple API is simple
                           :email #{"foo@foo.com" "foo.mcfoo@foo.com"}})
 
 @(r/select session :users :id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f")
-;; => ({:id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f", :created_at nil, :device_id #{}, :email #{"foo.mcfoo@foo.com" "foo@foo.com"}, :name "Foo McFoo", :username "foo"})
+;; => ({:id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f",
+;;      :created_at nil, :device_id #{}, :email #{"foo.mcfoo@foo.com" "foo@foo.com"},
+;;      :name "Foo McFoo", :username "foo"})
 
 @(r/select-one session :users :id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f")
-;; => {:id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f", :created_at nil, :device_id #{}, :email #{"foo.mcfoo@foo.com" "foo@foo.com"}, :name "Foo McFoo", :username "foo"}
+;; => {:id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f", :created_at nil,
+;;     :device_id #{}, :email #{"foo.mcfoo@foo.com" "foo@foo.com"},
+;;     :name "Foo McFoo", :username "foo"}
 
 (r/update session :users :id {:username "foo.mcfoo"} {:key-value #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f"})
 
@@ -136,16 +140,27 @@ tables, lookup tables and unique-key acquisition with lightweight-transactions
                            :name "Foo McFoo"
                            :email #{"foo@foo.com" "foo.mcfoo@foo.com"}})
 
-;; => #object[cats.monad.either.Right 0xd4e215c {:status :ready, :val [{:id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f", :created_at nil, :device_id #{}, :email #{"foo.mcfoo@foo.com" "foo@foo.com"}, :name "Foo McFoo", :username "foo"} nil]}]
+;; => #object[cats.monad.either.Right 0xd4e215c {:status :ready,
+;;      :val [{:id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f",
+;;             :created_at nil, :device_id #{},
+;;             :email #{"foo.mcfoo@foo.com" "foo@foo.com"},
+;;             :name "Foo McFoo", :username "foo"}
+;;            nil]}]
 
 @(m/upsert session Users {:id #uuid "47d3a3a0-40ec-11e5-84fa-b7ba3fcfbef9"
                            :username "foo-too"
                            :name "Foo Too McFoo"
                            :email #{"foo@foo.com" "foo.too.mcfoo@foo.com"}})
 
-                           ;; -> #object[cats.monad.either.Right 0x1b5c287f {:status :ready, :val [{:id #uuid "47d3a3a0-40ec-11e5-84fa-b7ba3fcfbef9", :created_at nil, :device_id #{}, :email #{"foo.too.mcfoo@foo.com"}, :name "Foo Too McFoo", :username "foo-too"} {[:email] [#{"foo@foo.com"}]}]}]
+;; -> #object[cats.monad.either.Right 0x1b5c287f {:status :ready,
+;;      :val [{:id #uuid "47d3a3a0-40ec-11e5-84fa-b7ba3fcfbef9",
+;;             :created_at nil, :device_id #{},
+;;             :email #{"foo.too.mcfoo@foo.com"},
+;;             :name "Foo Too McFoo", :username "foo-too"}
+;;            {[:email] [#{"foo@foo.com"}]}]}]
 
-;; shows that the second upsert failed to acquire the  "foo@foo.com" [:email] unique key
+;; shows that the second upsert failed to acquire the
+;; "foo@foo.com" [:email] unique key
 
 ;; select automatically uses lookup or secondary tables
 @(m/select-one session Users :email "foo@foo.com")
