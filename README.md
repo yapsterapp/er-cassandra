@@ -63,18 +63,30 @@ these in to implement the migration like this -
                         name text,
                         created_at timestamp,
                         email set<text>,
-                        primary key (id))"))
+                        primary key (id))")
+  (execute
+   "create table users_by_username (id timeuuid,
+                                    username text,
+                                    name text,
+                                    created_at timestamp,
+                                    email set<text>,
+                                    primary key (username))")
+  (execute
+   "create table users_by_email (email varchar,
+                                 id timeuuid,
+                                 primary key (email))"))
 
 (defn down
   "Migrates the database down from version 20150804151456."
   []
   (println "er-api.migrations-cassandra.20150804151456-create-users down...")
-  (execute
-   "drop table users"))
+  (execute "drop table users")
+  (execute "drop table users_by_username")
+  (execute "drop table users_by_email"))
 ```
-### simple client
+### simple API
 
-The simple client is simple
+The simple API is simple
 
 ```
 (require '[er-cassandra.session.alia :as alia-session])
@@ -99,10 +111,55 @@ The simple client is simple
 (r/delete session :users :id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f")
 
 ```
-### higher-level client
+### higher-level API
 
-The higher-level client requires a model to be defined, and manages unique-keys,
+The higher-level API requires a model to be defined, and manages unique-keys,
 secondary tables and lookup tables
+
+A model must be defined, and then the high-level API will look after secondary
+tables, lookup tables and unique-key acquisition with lightweight-transactions
+
+```
+(require '[er-cassandra.model :as m])
+
+(m/defmodel Users
+  {:primary-table {:name :users
+                   :key :id}
+   :secondary-tables [{:name :users_by_username
+                       :key :username}]
+   :unique-key-tables [{:name :users_by_email
+                        :key :email
+                        :collection :set}]})
+
+@(m/upsert session Users  {:id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f"
+                           :username "foo"
+                           :name "Foo McFoo"
+                           :email #{"foo@foo.com" "foo.mcfoo@foo.com"}})
+
+;; => #object[cats.monad.either.Right 0xd4e215c {:status :ready, :val [{:id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f", :created_at nil, :device_id #{}, :email #{"foo.mcfoo@foo.com" "foo@foo.com"}, :name "Foo McFoo", :username "foo"} nil]}]
+
+@(m/upsert session Users {:id #uuid "47d3a3a0-40ec-11e5-84fa-b7ba3fcfbef9"
+                           :username "foo-too"
+                           :name "Foo Too McFoo"
+                           :email #{"foo@foo.com" "foo.too.mcfoo@foo.com"}})
+
+                           ;; -> #object[cats.monad.either.Right 0x1b5c287f {:status :ready, :val [{:id #uuid "47d3a3a0-40ec-11e5-84fa-b7ba3fcfbef9", :created_at nil, :device_id #{}, :email #{"foo.too.mcfoo@foo.com"}, :name "Foo Too McFoo", :username "foo-too"} {[:email] [#{"foo@foo.com"}]}]}]
+
+;; shows that the second upsert failed to acquire the  "foo@foo.com" [:email] unique key
+
+;; select automatically uses lookup or secondary tables
+@(m/select-one session Users :email "foo@foo.com")
+@(m/select-one session Users :email "foo.too.mcfoo@foo.com")
+@(m/select-one session Users :username "foo")
+```
+
+The high-level API calls are processed within the either-deferred monad
+from [Defurred](https://github.com/employeerepublic/defurred) and
+all return a Deferred[Either] result. Any errors
+(or exceptions) are put into an either/Left and all success results into
+an either/Right
+
+
 
 ## License
 
