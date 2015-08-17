@@ -133,44 +133,46 @@
 
   ([session ^Model model record]
 
-   (m/with-monad dm/either-deferred-monad
-     (m/mlet [[old-record-with-keys
-               acquire-failures] (unique-key/update-unique-keys
-                                  session
-                                  model
-                                  record)
+   (let [[record] (t/run-callbacks model :before-save [record])]
+     (prn record)
+     (m/with-monad dm/either-deferred-monad
+       (m/mlet [[old-record-with-keys
+                 acquire-failures] (unique-key/update-unique-keys
+                                    session
+                                    model
+                                    record)
 
-              new-record-with-keys (m/return
-                                    (copy-unique-keys
-                                     model
-                                     old-record-with-keys
-                                     record))
+                 new-record-with-keys (m/return
+                                       (copy-unique-keys
+                                        model
+                                        old-record-with-keys
+                                        record))
 
-              stale-secondary-responses (delete-stale-secondaries
+                 stale-secondary-responses (delete-stale-secondaries
+                                            session
+                                            model
+                                            old-record-with-keys
+                                            new-record-with-keys)
+
+                 stale-lookup-responses (delete-stale-lookups
                                          session
                                          model
                                          old-record-with-keys
                                          new-record-with-keys)
 
-              stale-lookup-responses (delete-stale-lookups
-                                      session
-                                      model
-                                      old-record-with-keys
-                                      new-record-with-keys)
+                 secondary-reponses (upsert-secondaries
+                                     session
+                                     model
+                                     new-record-with-keys)
 
-              secondary-reponses (upsert-secondaries
-                                  session
-                                  model
-                                  new-record-with-keys)
-
-              lookup-responses (upsert-lookups
-                                session
-                                model
-                                new-record-with-keys)
-              current-record (r/select-one
-                              session
-                              (get-in model [:primary-table :name])
-                              (get-in model [:primary-table :key])
-                              (t/extract-uber-key-value model record))]
-             (m/return [current-record
-                        acquire-failures])))))
+                 lookup-responses (upsert-lookups
+                                   session
+                                   model
+                                   new-record-with-keys)
+                 current-record (r/select-one
+                                 session
+                                 (get-in model [:primary-table :name])
+                                 (get-in model [:primary-table :key])
+                                 (t/extract-uber-key-value model record))]
+               (m/return [current-record
+                          acquire-failures]))))))

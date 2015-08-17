@@ -64,11 +64,11 @@
                           (dissoc opts :key-value))
                 (m/return nil))))))
 
-(defn select
+(defn select*
   "select records from primary or lookup tables as required"
 
   ([session ^Model model key record-or-key-value]
-   (select session model key record-or-key-value {}))
+   (select* session model key record-or-key-value {}))
 
   ([session model key record-or-key-value opts]
    (let [key (k/make-sequential key)]
@@ -94,6 +94,16 @@
                                       {:model model
                                        :key key}
                                       :no-matching-key])))))))
+
+(defn select
+  ([session ^Model model key record-or-key-value]
+   (select session model key record-or-key-value {}))
+
+  ([session ^Model model key record-or-key-value opts]
+   (t/run-callbacks
+    model
+    :after-load
+    (select* session model key record-or-key-value opts))))
 
 (defn select-one
   "select a single record, using an index table if necessary"

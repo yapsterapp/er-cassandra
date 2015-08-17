@@ -1,14 +1,15 @@
 (ns er-cassandra.model.types
   (:require
    [schema.core :as s]
+   [clj-time.core :as t]
    [er-cassandra.key :as k]))
 
 (s/defschema CallbackFnSchema
   (s/make-fn-schema s/Any [[{s/Keyword s/Any}]]))
 
 (s/defschema CallbacksSchema
-  {(s/optional-key :after-load) CallbackFnSchema
-   (s/optional-key :before-save) CallbackFnSchema})
+  {(s/optional-key :after-load) [CallbackFnSchema]
+   (s/optional-key :before-save) [CallbackFnSchema]})
 
 (s/defschema KeySchema
   (s/either s/Keyword [s/Keyword]))
@@ -88,3 +89,31 @@
   (k/extract-key-equality-clause
    (get-in model [:primary-table :key])
    record))
+
+(defn run-callbacks
+  [^Model model callback-key records]
+  (let [callbacks (get-in model [:callbacks callback-key])]
+    (reduce (fn [r callback]
+              (mapv callback r))
+            records
+            callbacks)))
+
+(defn create-protect-columns-callback
+  "create a callback which will remove cols from a record
+   unless the confirm-col is set and non-nil. always
+   removes confirm-col"
+  [confirm-col & cols]
+  (fn [r]
+    (if (get r confirm-col)
+      (apply dissoc r confirm-col cols)
+      (dissoc r confirm-col))))
+
+(defn create-updated-at-callback
+  "create a callback which will add an :updated_at column
+   if it's not already set"
+  ([] (create-updated-at-callback :updated_at))
+  ([updated-at-col]
+   (fn [r]
+     (if-not (get r updated-at-col)
+       (assoc r updated-at-col (.toDate (t/now)))
+       r))))
