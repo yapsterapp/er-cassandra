@@ -243,15 +243,16 @@
           new-record
           (:unique-key-tables model)))
 
-(defn without-unique-keys
-  "remove (the final part of) unique key columns from a record"
+(defn without-lookups
+  "remove (the final part of) lookup (including unique-key)
+   columns from a record"
   [^Model model record]
-  (let [unique-key-tables (:unique-key-tables model)]
+  (let [lookup-tables (concat (:unique-key-tables model) (:lookup-tables model))]
     (reduce (fn [r t]
               (let [key-col (last (:key t))]
                 (dissoc r key-col)))
             record
-            unique-key-tables)))
+            lookup-tables)))
 
 (defn update-unique-keys
   "attempts to acquire unique keys for an owner... returns
@@ -261,7 +262,7 @@
   (m/with-monad dm/either-deferred-monad
     (m/mlet [create-primary (r/insert session
                                       (get-in model [:primary-table :name])
-                                      (without-unique-keys model new-record))
+                                      (without-lookups model new-record))
 
              old-record (r/select-one session
                                       (get-in model [:primary-table :name])
