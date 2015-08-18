@@ -4,13 +4,12 @@
    [clojure.core.match :refer [match]]
    [manifold.deferred :as d]
    [cats.core :as m]
-   [cats.monad.either :as either]
    [cats.monad.deferred :as dm]
    [qbits.alia :as alia]
    [qbits.alia.manifold :as aliam]
    [qbits.hayt :as h]
    [er-cassandra.key :as k]
-   [er-cassandra.record-either :as r]
+   [er-cassandra.record :as r]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.util :refer [combine-responses create-lookup-record]])
   (:import [er_cassandra.model.types Model]))
@@ -30,8 +29,8 @@
 
 (defn acquire-unique-key
   "acquire a single unique key.
-   returns a Deferred[Right[:ok <keydesc> info]] if the key was acquired
-   successfully, a Deferred[Right[:fail <keydesc> reason]]"
+   returns a Deferred[[:ok <keydesc> info]] if the key was acquired
+   successfully, a ErrorDeferred[[:fail <keydesc> reason]]"
 
   [session ^Model model unique-key-table uber-key-value key-value]
   (let [uber-key (t/uber-key model)
@@ -42,7 +41,7 @@
         key-desc {:uber-key uber-key :uber-key-value uber-key-value
                   :key key :key-value key-value}]
 
-    (m/with-monad dm/either-deferred-monad
+    (m/with-monad dm/deferred-monad
       (m/mlet [insert-response (r/insert session
                                           (:name unique-key-table)
                                           unique-key-record
@@ -99,7 +98,7 @@
         key (:key unique-key-table)
         key-desc {:uber-key uber-key :uber-key-value uber-key-value
                   :key key :key-value key-value}]
-    (m/with-monad dm/either-deferred-monad
+    (m/with-monad dm/deferred-monad
       (m/mlet [delete-result (r/delete session
                                         (:name unique-key-table)
                                         key
@@ -259,7 +258,7 @@
    a Deferred[Right[[updated-owner-record failed-keys]]] with an updated
    owner record containing only the keys that could be acquired"
   [session ^Model model new-record]
-  (m/with-monad dm/either-deferred-monad
+  (m/with-monad dm/deferred-monad
     (m/mlet [create-primary (r/insert session
                                       (get-in model [:primary-table :name])
                                       (without-lookups model new-record))

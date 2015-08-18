@@ -1,13 +1,12 @@
 (ns er-cassandra.model.select
   (:require [manifold.deferred :as d]
             [cats.core :as m]
-            [cats.monad.either :as either]
             [cats.monad.deferred :as dm]
             [qbits.alia :as alia]
             [qbits.alia.manifold :as aliam]
             [qbits.hayt :as h]
             [er-cassandra.key :as k]
-            [er-cassandra.record-either :as r]
+            [er-cassandra.record :as r]
             [er-cassandra.model.types :as t])
   (:import [er_cassandra.model.types Model]))
 
@@ -51,7 +50,7 @@
 
   [session ^Model model table record-or-key-value opts]
   (let [lkv (k/extract-key-value (:key table) record-or-key-value opts)]
-    (m/with-monad dm/either-deferred-monad
+    (m/with-monad dm/deferred-monad
       (m/mlet [lr (r/select-one session (:name table) (:key table) lkv)
                pkv (m/return
                     (when lr
@@ -90,10 +89,10 @@
                                    record-or-key-value
                                    opts)
 
-         (dm/with-value (either/left [:fail
-                                      {:model model
-                                       :key key}
-                                      :no-matching-key])))))))
+         (dm/with-error [:fail
+                         {:model model
+                          :key key}
+                         :no-matching-key]))))))
 
 (defn select
   ([session ^Model model key record-or-key-value]
@@ -112,6 +111,6 @@
    (select-one session model key record-or-key-value {}))
 
   ([session ^Model model key record-or-key-value opts]
-   (m/with-monad dm/either-deferred-monad
+   (m/with-monad dm/deferred-monad
      (m/mlet [records (select session model key record-or-key-value opts)]
              (m/return (first records))))))

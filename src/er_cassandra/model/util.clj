@@ -4,16 +4,10 @@
    [cats.monad.either :as either]))
 
 (defn combine-responses
-  "combine a seq of Deferred[Either] responses into
-   a single Deferred[Either] response"
+  "combine a seq of Deferred responses into
+   a single Deferred response"
   [responses]
-  (d/chain
-   (apply d/zip responses)
-   (fn [responses]
-     (if (some either/left? responses)
-       (either/left responses)
-
-       (either/right (mapv deref responses))))))
+  (apply d/zip responses))
 
 (defn create-lookup-record
   "construct a lookup record"

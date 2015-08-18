@@ -4,13 +4,12 @@
    [clojure.core.match :refer [match]]
    [manifold.deferred :as d]
    [cats.core :as m]
-   [cats.monad.either :as either]
    [cats.monad.deferred :as dm]
    [qbits.alia :as alia]
    [qbits.alia.manifold :as aliam]
    [qbits.hayt :as h]
    [er-cassandra.key :as k]
-   [er-cassandra.record-either :as r]
+   [er-cassandra.record :as r]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.util :refer [combine-responses create-lookup-record]]
    [er-cassandra.model.unique-key :as unique-key]
@@ -24,7 +23,7 @@
 
   ([session ^Model model key record-or-key-value]
 
-   (m/with-monad dm/either-deferred-monad
+   (m/with-monad dm/deferred-monad
      (m/mlet [record (select/select-one session
                                         model
                                         key
