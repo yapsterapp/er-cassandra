@@ -1,4 +1,4 @@
-(defproject employeerepublic/er-cassandra "0.3.3"
+(defproject employeerepublic/er-cassandra "0.3.4"
   :description "a simple cassandra conector"
   :url "https://github.com/employeerepublic/er-cassandra"
   :license {:name "Eclipse Public License"
@@ -9,10 +9,8 @@
                  [prismatic/plumbing "0.4.4"]
                  [clj-time "0.10.0"]
                  [cc.qbits/alia "2.7.3" ] ;; :exclusions [com.google.guava/guava]
-                 [manifold "0.1.1-alpha3"]
                  [drift "1.5.3"]
-                 [defurred "0.0.3"]
-                 [funcool/cats "0.6.1"]]
+                 [defurred "0.1.1"]]
 
   :profiles {:dev {:dependencies [[org.clojure/clojure "1.7.0"]
                                   [expectations "2.1.2" :exclusions [com.google.guava/guava]]]
