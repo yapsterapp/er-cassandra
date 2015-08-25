@@ -6,9 +6,16 @@
         (sequential? v) v
         :else [v]))
 
+(defn partition-key
+  "given a primary key spec, return the partition key,
+   which is the first element of the primary key spec"
+  [key]
+  (let [key (make-sequential key)]
+    (make-sequential (first key))))
+
 (defn extract-key-value*
   ([key record-or-key-value {:keys [key-value]}]
-   (let [key (make-sequential key)
+   (let [key (flatten (make-sequential key)) ;; flatten partition key
          key-value (or (make-sequential key-value)
                        (if-not (map? record-or-key-value)
                          (make-sequential record-or-key-value)
@@ -34,7 +41,7 @@
 
 (defn key-equality-clause
   [key key-value]
-  (let [key (make-sequential key)
+  (let [key (flatten (make-sequential key))
         key-value (make-sequential key-value)]
     (mapv (fn [k v]
             [:= k v])

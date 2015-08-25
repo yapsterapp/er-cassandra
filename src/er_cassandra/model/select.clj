@@ -12,14 +12,15 @@
 
 (defn if-primary-key-table
   [^Model model key]
-  (when (= (get-in model [:primary-table :key])
-           key)
+  (when (or (t/satisfies-primary-key? (t/uber-key model) key)
+            (t/satisfies-partition-key? (t/uber-key model) key))
     (:primary-table model)))
 
 (defn if-secondary-key-table
   [^Model model key]
   (some (fn [t]
-          (when (= (:key t) key)
+          (when (or (t/satisfies-primary-key? (:key t) key)
+                    (t/satisfies-partition-key? (:key t) key))
             t))
         (:secondary-tables model)))
 
@@ -40,9 +41,9 @@
 (defn select-from-full-table
   "one fetch - straight from a table"
 
-  [session ^Model model table record-or-key-value opts]
-  (let [kv (k/extract-key-value (:key table) record-or-key-value opts)]
-    (r/select session (:name table) (:key table) kv (dissoc opts :key-value))))
+  [session ^Model model table key record-or-key-value opts]
+  (let [kv (k/extract-key-value key record-or-key-value opts)]
+    (r/select session (:name table) key kv (dissoc opts :key-value))))
 
 (defn select-from-lookup-table
   "two fetches - use the lookup-key to get the uber-key, then
@@ -77,6 +78,7 @@
        (select-from-full-table session
                                model
                                table
+                               key
                                record-or-key-value
                                opts)
 

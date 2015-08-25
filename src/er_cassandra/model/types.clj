@@ -71,6 +71,14 @@
   [name model-spec]
   `(def ~name (create-model ~model-spec)))
 
+(defn satisfies-primary-key?
+  [primary-key key]
+  (= (flatten primary-key) (flatten key)))
+
+(defn satisfies-partition-key?
+  [primary-key key]
+  (= (k/partition-key primary-key) key))
+
 (defn uber-key
   [^Model model]
   (get-in model [:primary-table :key]))
