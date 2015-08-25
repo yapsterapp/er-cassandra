@@ -12,7 +12,8 @@
    (s/optional-key :before-save) [CallbackFnSchema]})
 
 (s/defschema KeySchema
-  (s/either s/Keyword [s/Keyword]))
+  (s/either [(s/optional [s/Keyword] []) s/Keyword]
+            [s/Keyword]))
 
 (s/defschema TableSchema
   {:name s/Keyword
