@@ -41,6 +41,6 @@
 
 (import-vars
  [er-cassandra.model.types create-model defmodel]
- [er-cassandra.model.select select select-one]
+ [er-cassandra.model.select select select-one select-many]
  [er-cassandra.model.upsert upsert]
  [er-cassandra.model.delete delete])
