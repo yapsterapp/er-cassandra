@@ -22,10 +22,14 @@
   ([table
     key
     record-or-key-value
-    {:keys [columns only-if order-by limit] :as opts}]
-   (let [key-clause (extract-key-equality-clause key record-or-key-value opts)]
+    {:keys [columns where only-if order-by limit] :as opts}]
+   (let [key-clause (extract-key-equality-clause key record-or-key-value opts)
+         where-clause (if (sequential? (first where))
+                        where ;; it's already a seq of conditions
+                        (when (not-empty where) [where]))
+         where-clause (into key-clause where-clause)]
      (h/select table
-               (h/where key-clause)
+               (h/where where-clause)
                (when columns (apply h/columns columns))
                (when only-if (h/only-if only-if))
                (when order-by (h/order-by order-by))
@@ -49,7 +53,7 @@
    (select-one session table key record-or-key-value {}))
 
   ([session table key record-or-key-value opts]
-   (d/chain (select session table key record-or-key-value opts)
+   (d/chain (select session table key record-or-key-value (merge opts {:limit 1}))
             first)))
 
 (defn insert-statement
