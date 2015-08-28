@@ -8,6 +8,13 @@
   (:import
    [er_cassandra.session Session]))
 
+(def ^:dynamic debug nil)
+
+(defmacro with-debug
+  [& forms]
+  `(binding [debug true]
+     ~@forms))
+
 (defrecord AliaSession [alia-session]
   Session
   (execute [_ statement]
@@ -15,7 +22,10 @@
      alia-session
      (if (string? statement)
        statement
-       (h/->raw statement))))
+       (do
+         (when debug
+           (prn statement))
+         (h/->raw statement)))))
   (close [_]
     (.close alia-session)))
 
