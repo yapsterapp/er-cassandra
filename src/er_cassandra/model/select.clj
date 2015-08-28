@@ -141,7 +141,11 @@
 
   ([session ^Model model key record-or-key-value opts]
    (m/with-monad dm/deferred-monad
-     (m/mlet [records (select session model key record-or-key-value opts)]
+     (m/mlet [records (select session
+                              model
+                              key
+                              record-or-key-value
+                              (merge opts {:limit 1}))]
              (m/return (first records))))))
 
 (defn select-many
