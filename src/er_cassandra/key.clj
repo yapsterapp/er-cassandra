@@ -26,7 +26,9 @@
                     (or ev (get record k)))
                   key
                   key-value)]
-     (when-not (some nil? dkv)
+     (when (and
+            (= (count key) (count key-value))
+            (not (some nil? dkv)))
        dkv))))
 
 (defn extract-key-value
