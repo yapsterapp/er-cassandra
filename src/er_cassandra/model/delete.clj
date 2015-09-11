@@ -3,8 +3,8 @@
    [clojure.set :as set]
    [clojure.core.match :refer [match]]
    [manifold.deferred :as d]
-   [cats.core :as m]
-   [cats.monad.deferred :as dm]
+   [cats.core :as m :refer [with-monad mlet return]]
+   [cats.monad.deferred :as dm :refer [deferred-monad]]
    [qbits.alia :as alia]
    [qbits.alia.manifold :as aliam]
    [qbits.hayt :as h]
@@ -14,7 +14,8 @@
    [er-cassandra.model.util :refer [combine-responses create-lookup-record]]
    [er-cassandra.model.unique-key :as unique-key]
    [er-cassandra.model.upsert :as upsert]
-   [er-cassandra.model.select :as select])
+   [er-cassandra.model.select :as select]
+   [er-cassandra.model.util :as util])
   (:import [er_cassandra.model.types Model]))
 
 (defn delete
@@ -23,34 +24,52 @@
 
   ([session ^Model model key record-or-key-value]
 
-   (m/with-monad dm/deferred-monad
-     (m/mlet [record (select/select-one session
-                                        model
-                                        key
-                                        record-or-key-value)
+   (with-monad deferred-monad
+     (mlet [record (select/select-one session
+                                      model
+                                      key
+                                      record-or-key-value)
 
-              primary-response (upsert/delete-record
+            primary-response (if record
+                               (upsert/delete-record
                                 session
                                 model
                                 (:primary-table model)
-                                (t/extract-uber-key-value model record))
+                                (t/extract-uber-key-value
+                                 model
+                                 record))
+                               (return nil))
 
-              unique-responses (unique-key/release-stale-unique-keys
+            unique-responses (if record
+                               (unique-key/release-stale-unique-keys
                                 session
                                 model
                                 record
                                 nil)
+                               (return nil))
 
-              secondary-responses (upsert/delete-stale-secondaries
+            secondary-responses (if record
+                                  (upsert/delete-stale-secondaries
                                    session
                                    model
                                    record
                                    nil)
+                                  (return nil))
 
-              lookup-responses (upsert/delete-stale-lookups
+            lookup-responses (if record
+                               (upsert/delete-stale-lookups
                                 session
                                 model
                                 record
-                                nil)]
-             (m/return
-              [:ok record :deleted])))))
+                                nil)
+                               (return nil))]
+       (return
+        [:ok record :deleted])))))
+
+(defn delete-many
+  "issue one delete query for each record and combine the responses"
+  [session ^Model model key records]
+  (->> records
+       (map (fn [record]
+              (delete session model key record)))
+       util/combine-responses))
