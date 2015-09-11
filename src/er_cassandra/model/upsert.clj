@@ -12,7 +12,8 @@
    [er-cassandra.record :as r]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.util :refer [combine-responses create-lookup-record]]
-   [er-cassandra.model.unique-key :as unique-key])
+   [er-cassandra.model.unique-key :as unique-key]
+   [er-cassandra.model.util :as util])
   (:import [er_cassandra.model.types Model]))
 
 (defn delete-record
@@ -175,3 +176,11 @@
                                  (t/extract-uber-key-value model record))]
                (m/return [current-record
                           acquire-failures]))))))
+
+(defn upsert-many
+  "issue one upsert query for each record and combine the responses"
+  [session ^Model model records]
+  (->> records
+       (map (fn [record]
+              (upsert session model record)))
+       util/combine-responses))
