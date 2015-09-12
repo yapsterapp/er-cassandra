@@ -15,7 +15,7 @@
   `(binding [debug true]
      ~@forms))
 
-(defrecord AliaSession [alia-session]
+(defrecord AliaSession [keyspace alia-session]
   Session
   (execute [_ statement]
     (aliam/execute
@@ -34,4 +34,4 @@
   (let [cluster (alia/cluster {:contact-points contact-points})
         alia-session (alia/connect cluster)]
     (alia/execute alia-session (str "USE " keyspace ";"))
-    (->AliaSession alia-session)))
+    (->AliaSession keyspace alia-session)))
