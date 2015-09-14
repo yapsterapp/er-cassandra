@@ -46,7 +46,9 @@
   (let [key (flatten (make-sequential key))
         key-value (make-sequential key-value)]
     (mapv (fn [k v]
-            [:= k v])
+            (if (sequential? v)
+              [:in k v]
+              [:= k v]))
           key
           key-value)))
 
