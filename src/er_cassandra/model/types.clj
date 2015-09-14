@@ -1,5 +1,7 @@
 (ns er-cassandra.model.types
   (:require
+   [cats.core :as m :refer [with-monad mlet return]]
+   [cats.monad.deferred :as dm :refer [deferred-monad]]
    [schema.core :as s]
    [clj-time.core :as t]
    [er-cassandra.key :as k]))
@@ -100,12 +102,24 @@
    record))
 
 (defn run-callbacks
-  [^Model model callback-key records]
-  (let [callbacks (get-in model [:callbacks callback-key])]
-    (reduce (fn [r callback]
-              (mapv callback r))
-            records
-            callbacks)))
+  ([^Model model callback-key records]
+   (run-callbacks model callback-key records {}))
+  ([^Model model callback-key records opts]
+   (let [callbacks (concat (get-in model [:callbacks callback-key])
+                           (get-in opts [callback-key]))]
+     (reduce (fn [r callback]
+               (mapv callback r))
+             records
+             callbacks))))
+
+(defn run-deferred-callbacks
+  ([^Model model callback-key deferred-records]
+   (run-deferred-callbacks model callback-key deferred-records {}))
+  ([^Model model callback-key deferred-records opts]
+   (with-monad deferred-monad
+     (mlet [records deferred-records]
+       (return
+        (run-callbacks model callback-key records opts))))))
 
 (defn create-protect-columns-callback
   "create a callback which will remove cols from a record
@@ -126,3 +140,8 @@
      (if-not (get r updated-at-col)
        (assoc r updated-at-col (.toDate (t/now)))
        r))))
+
+(defn create-view-callback
+  [cols]
+  (fn [r]
+    (select-keys r cols)))

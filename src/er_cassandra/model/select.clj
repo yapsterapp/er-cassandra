@@ -128,10 +128,11 @@
    (select session model key record-or-key-value {}))
 
   ([session ^Model model key record-or-key-value opts]
-   (t/run-callbacks
+   (t/run-deferred-callbacks
     model
     :after-load
-    (select* session model key record-or-key-value opts))))
+    (select* session model key record-or-key-value opts)
+    opts)))
 
 (defn select-one
   "select a single record, using an index table if necessary"
