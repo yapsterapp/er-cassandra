@@ -3,8 +3,9 @@
    [clojure.set :as set]
    [clojure.core.match :refer [match]]
    [manifold.deferred :as d]
-   [cats.core :as m]
-   [cats.monad.deferred :as dm]
+   [cats.core :refer [mlet return]]
+   [cats.context :refer [with-context]]
+   [cats.labs.manifold :refer [deferred-context]]
    [qbits.alia :as alia]
    [qbits.alia.manifold :as aliam]
    [qbits.hayt :as h]
@@ -18,23 +19,23 @@
 
 (defn delete-record
   [session model table key-value]
-  (m/with-monad dm/deferred-monad
-    (m/mlet [delete-result (r/delete session
+  (with-context deferred-context
+    (mlet [delete-result (r/delete session
                                       (:name table)
                                       (:key table)
                                       key-value)]
-            (m/return
+            (return
              [:ok {:table (:name table)
                    :key (:key table)
                    :key-value key-value} :deleted]))))
 
 (defn upsert-record
   [session ^Model model table record]
-  (m/with-monad dm/deferred-monad
-    (m/mlet [insert-result (r/insert session
+  (with-context deferred-context
+    (mlet [insert-result (r/insert session
                                       (:name table)
                                       record)]
-            (m/return
+            (return
              [:ok record :upserted]))))
 
 (defn delete-stale-secondaries
@@ -135,14 +136,14 @@
 
    (let [[record] (t/run-callbacks model :before-save [record])]
      (prn record)
-     (m/with-monad dm/deferred-monad
-       (m/mlet [[old-record-with-keys
+     (with-context deferred-context
+       (mlet [[old-record-with-keys
                  acquire-failures] (unique-key/update-unique-keys
                                     session
                                     model
                                     record)
 
-                 new-record-with-keys (m/return
+                 new-record-with-keys (return
                                        (copy-unique-keys
                                         model
                                         old-record-with-keys
@@ -174,7 +175,7 @@
                                  (get-in model [:primary-table :name])
                                  (get-in model [:primary-table :key])
                                  (t/extract-uber-key-value model record))]
-               (m/return [current-record
+               (return [current-record
                           acquire-failures]))))))
 
 (defn upsert-many

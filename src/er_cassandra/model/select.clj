@@ -1,7 +1,8 @@
 (ns er-cassandra.model.select
   (:require [manifold.deferred :as d]
-            [cats.core :as m]
-            [cats.monad.deferred :as dm]
+            [cats.core :refer [mlet return]]
+            [cats.context :refer [with-context]]
+            [cats.labs.manifold :refer [deferred-context]]
             [qbits.alia :as alia]
             [qbits.alia.manifold :as aliam]
             [qbits.hayt :as h]
@@ -67,17 +68,17 @@
         opts (dissoc opts :key-value)
         lookup-opts (dissoc opts :columns)
         primary-opts (dissoc opts :where :only-if :order-by :limit)]
-    (m/with-monad dm/deferred-monad
-      (m/mlet [lrs (r/select session
+    (with-context deferred-context
+      (mlet [lrs (r/select session
                              (:name table)
                              (:key table)
                              lkv
                              lookup-opts)
-               pkvs (m/return
+               pkvs (return
                      (map (fn [lr]
                             (t/extract-uber-key-value model lr))
                           lrs))
-               prs (m/return
+               prs (return
                     (map (fn [pkv]
                            (r/select-one
                             session
@@ -86,7 +87,7 @@
                             pkv
                             primary-opts))
                          pkvs))]
-        (m/return
+        (return
          (d/chain
           (util/combine-responses prs)
           (fn [rs] (filter identity rs))))))))
@@ -118,10 +119,10 @@
                                    record-or-key-value
                                    opts)
 
-         (dm/with-error [:fail
-                         {:model model
-                          :key key}
-                         :no-matching-key]))))))
+         (d/error-deferred [:fail
+                            {:model model
+                             :key key}
+                            :no-matching-key]))))))
 
 (defn select
   ([session ^Model model key record-or-key-value]
@@ -141,13 +142,13 @@
    (select-one session model key record-or-key-value {}))
 
   ([session ^Model model key record-or-key-value opts]
-   (m/with-monad dm/deferred-monad
-     (m/mlet [records (select session
+   (with-context deferred-context
+     (mlet [records (select session
                               model
                               key
                               record-or-key-value
                               (merge opts {:limit 1}))]
-             (m/return (first records))))))
+             (return (first records))))))
 
 (defn select-many
   "issue one select-one query for each record-or-key-value and combine

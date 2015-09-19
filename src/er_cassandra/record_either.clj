@@ -2,14 +2,27 @@
   (:refer-clojure :exclude [update])
   (:require
    [potemkin :refer [import-vars]]
-   [cats.core :as m]
+   [manifold.deferred :as d]
    [cats.monad.either :as either]
-   [cats.monad.deferred :as dm]
    [er-cassandra.record :as r]))
 
 ;; low-level record-based cassandra interface which
 ;; puts responses into an Either monad Right value,
 ;; and transforms Exceptions into Left values
+
+;; convert Manifold Deferred error handling to Either
+
+(defn either-deferred
+  "convert the Deferred error handling model to
+   an Either value"
+  ([d] (either-deferred d identity))
+  ([d error-transformer]
+   (let [ed (d/deferred)]
+     (d/on-realized
+      d
+      (fn [v] (d/success! ed (either/right v)))
+      (fn [x] (d/success! ed (either/left (error-transformer x)))))
+     ed)))
 
 (defn alia-error-transformer
   "transforms an alia exception into an error map... doesn't
@@ -30,7 +43,7 @@
    (select session table key record-or-key-value {}))
 
   ([session table key record-or-key-value opts]
-   (dm/either-deferred
+   (either-deferred
     (r/select session table key record-or-key-value opts)
     alia-error-transformer)))
 
@@ -40,7 +53,7 @@
    (select-one session table key record-or-key-value {}))
 
   ([session table key record-or-key-value opts]
-   (dm/either-deferred
+   (either-deferred
     (r/select-one session table key record-or-key-value opts)
     alia-error-transformer)))
 
@@ -53,7 +66,7 @@
    (insert session table record {}))
 
   ([session table record opts]
-   (dm/either-deferred
+   (either-deferred
     (r/insert session table record opts)
     alia-error-transformer)))
 
@@ -66,7 +79,7 @@
    (update session table key record {}))
 
   ([session table key record opts]
-   (dm/either-deferred
+   (either-deferred
     (r/update session table key record opts)
     alia-error-transformer)))
 
@@ -79,6 +92,6 @@
    (delete session table key record-or-key-value {}))
 
   ([session table key record-or-key-value opts]
-   (dm/either-deferred
+   (either-deferred
     (r/delete session table key record-or-key-value opts)
     alia-error-transformer)))

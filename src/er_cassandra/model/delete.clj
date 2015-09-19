@@ -3,8 +3,9 @@
    [clojure.set :as set]
    [clojure.core.match :refer [match]]
    [manifold.deferred :as d]
-   [cats.core :as m :refer [with-monad mlet return]]
-   [cats.monad.deferred :as dm :refer [deferred-monad]]
+   [cats.core :refer [mlet return]]
+   [cats.context :refer [with-context]]
+   [cats.labs.manifold :refer [deferred-context]]
    [qbits.alia :as alia]
    [qbits.alia.manifold :as aliam]
    [qbits.hayt :as h]
@@ -24,7 +25,7 @@
 
   ([session ^Model model key record-or-key-value]
 
-   (with-monad deferred-monad
+   (with-context deferred-context
      (mlet [record (select/select-one session
                                       model
                                       key

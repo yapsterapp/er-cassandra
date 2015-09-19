@@ -3,8 +3,9 @@
    [clojure.set :as set]
    [clojure.core.match :refer [match]]
    [manifold.deferred :as d]
-   [cats.core :as m]
-   [cats.monad.deferred :as dm]
+   [cats.core :refer [mlet return]]
+   [cats.context :refer [with-context]]
+   [cats.labs.manifold :refer [deferred-context]]
    [qbits.alia :as alia]
    [qbits.alia.manifold :as aliam]
    [qbits.hayt :as h]
@@ -41,15 +42,15 @@
         key-desc {:uber-key uber-key :uber-key-value uber-key-value
                   :key key :key-value key-value}]
 
-    (m/with-monad dm/deferred-monad
-      (m/mlet [insert-response (r/insert session
+    (with-context deferred-context
+      (mlet [insert-response (r/insert session
                                           (:name unique-key-table)
                                           unique-key-record
                                           {:if-not-exists true})
 
-               inserted? (m/return (applied? insert-response))
+               inserted? (return (applied? insert-response))
 
-               owned? (m/return
+               owned? (return
                        (applied-or-owned?
                         model
                         (t/extract-uber-key-value model unique-key-record)
@@ -62,7 +63,7 @@
                                           (t/extract-uber-key-value
                                            model
                                            insert-response))
-                           (m/return nil))
+                           (return nil))
 
                ;; TODO - check that primary record has a live forward reference,
                ;;        or lookup is really stale despite primary existing
@@ -78,11 +79,11 @@
                                          (t/extract-uber-key-equality-clause
                                           model
                                           insert-response)})
-                                       (m/return nil))
+                                       (return nil))
 
-               updated? (m/return (applied? stale-update-response))]
+               updated? (return (applied? stale-update-response))]
 
-              (m/return
+              (return
                (cond
                  inserted? [:ok key-desc :inserted]    ;; new key
                  owned?    [:ok key-desc :owned]       ;; ours already
@@ -98,8 +99,8 @@
         key (:key unique-key-table)
         key-desc {:uber-key uber-key :uber-key-value uber-key-value
                   :key key :key-value key-value}]
-    (m/with-monad dm/deferred-monad
-      (m/mlet [delete-result (r/delete session
+    (with-context deferred-context
+      (mlet [delete-result (r/delete session
                                         (:name unique-key-table)
                                         key
                                         key-value
@@ -107,8 +108,8 @@
                                          (k/key-equality-clause
                                           uber-key
                                           uber-key-value)})
-               deleted? (m/return (applied? delete-result))]
-              (m/return
+               deleted? (return (applied? delete-result))]
+              (return
                (cond
                  deleted? [:ok key-desc :deleted]
                  :else    [:ok key-desc :stale]))))))
@@ -258,8 +259,8 @@
    a Deferred[Right[[updated-owner-record failed-keys]]] with an updated
    owner record containing only the keys that could be acquired"
   [session ^Model model new-record]
-  (m/with-monad dm/deferred-monad
-    (m/mlet [create-primary (r/insert session
+  (with-context deferred-context
+    (mlet [create-primary (r/insert session
                                       (get-in model [:primary-table :name])
                                       (without-lookups model new-record))
 
@@ -277,12 +278,12 @@
                                     session
                                     model
                                     new-record)
-             acquire-failures (m/return
+             acquire-failures (return
                                (describe-acquire-failures
                                 model
                                 new-record
                                 acquire-key-responses))
-             updated-record (m/return
+             updated-record (return
                              (update-record-by-key-responses
                               model
                               old-record
@@ -292,6 +293,6 @@
                               session
                               (get-in model [:primary-table :name])
                               updated-record)]
-            (m/return [updated-record
+            (return [updated-record
                        (when (not-empty acquire-failures)
                          acquire-failures)]))))

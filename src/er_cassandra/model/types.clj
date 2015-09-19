@@ -1,7 +1,8 @@
 (ns er-cassandra.model.types
   (:require
-   [cats.core :as m :refer [with-monad mlet return]]
-   [cats.monad.deferred :as dm :refer [deferred-monad]]
+   [cats.core :refer [mlet return]]
+   [cats.context :refer [with-context]]
+   [cats.labs.manifold :refer [deferred-context]]
    [schema.core :as s]
    [clj-time.core :as t]
    [er-cassandra.key :as k]))
@@ -116,7 +117,7 @@
   ([^Model model callback-key deferred-records]
    (run-deferred-callbacks model callback-key deferred-records {}))
   ([^Model model callback-key deferred-records opts]
-   (with-monad deferred-monad
+   (with-context deferred-context
      (mlet [records deferred-records]
        (return
         (run-callbacks model callback-key records opts))))))
