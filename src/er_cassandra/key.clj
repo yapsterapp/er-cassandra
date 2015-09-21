@@ -1,4 +1,6 @@
-(ns er-cassandra.key)
+(ns er-cassandra.key
+  (:require
+   [clojure.math.combinatorics :refer [cartesian-product]]))
 
 (defn make-sequential
   [v]
@@ -64,26 +66,55 @@
      (key-equality-clause key kv))))
 
 (defn extract-collection-key-components
-  [coll record-or-key-value]
-  (cond
-    (map? coll) (filter identity (keys coll))
-    (sequential? coll) (filter identity coll)
-    (set? coll) (disj coll nil )
-    :else (throw (ex-info
-                  "not a supported key collection"
-                  {:coll coll
-                   :record-or-key-value record-or-key-value}))))
+  "col-colls - map of col to collection type :list/:set/:map/nil
+   col - the col
+   val-or-coll - the col value
+   record - the record for reporting"
+  [col-colls col val-or-coll record]
+  (let [ctype (get col-colls col)]
+    (case ctype
+      nil [val-or-coll] ;; wrap for cartesian product
+
+      :map ;; return the non-nil keys
+      (if (or (nil? val-or-coll) (map? val-or-coll))
+        (filter identity (keys val-or-coll))
+        (throw (ex-info "col is not a map" {:col col
+                                            :val-or-coll val-or-coll
+                                            :record record})))
+
+      :set ;; return all non-nil values
+      (if (or (nil? val-or-coll) (set? val-or-coll))
+        (disj val-or-coll nil)
+        (throw (ex-info "col is not a set" {:col col
+                                            :val-or-coll val-or-coll
+                                            :record record})))
+
+      :list ;; return all non-nil values
+      (if (or (nil? val-or-coll) (sequential? val-or-coll))
+        (filter identity val-or-coll)
+        (throw (ex-info "col is not a list" {:col col
+                                             :val-or-coll val-or-coll
+                                             :record record})))
+
+      (throw (ex-info "unknown collection type" {:col-colls col-colls
+                                                 :col col
+                                                 :val-or-coll val-or-coll
+                                                 :record record})))))
 
 (defn extract-key-value-collection
-  ([key record-or-key-value]
-   (extract-key-value-collection key record-or-key-value {}))
-
-  ([key record-or-key-value opts]
+  "extracts a list of key-values. any column
+   in the key may be a collection, and the final list
+   will be the cartesian product of all values"
+  ([key record col-colls]
    (when-let [kv (not-empty
-                  (extract-key-value* key record-or-key-value opts))]
-     (let [pre (into [] (take (dec (count kv)) kv))
-           coll (last kv)
-           lkvs (extract-collection-key-components coll opts)]
-       (->> lkvs
-            (map (fn [lkv] (conj pre lkv )))
-            set)))))
+                  (extract-key-value* key record {}))]
+     (let [key (flatten (make-sequential key))
+           col-values (mapv (fn [k v]
+                              (extract-collection-key-components
+                               col-colls
+                               k
+                               v
+                               record))
+                            key
+                            kv)]
+       (apply cartesian-product col-values)))))

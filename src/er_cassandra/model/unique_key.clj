@@ -124,19 +124,16 @@
             uber-key-value (t/extract-uber-key-value model (or new-record
                                                                old-record))
             key (:key t)
-            coll (:collection t)]
-        (if coll
-          (let [old-kvs (set (k/extract-key-value-collection key old-record))
-                new-kvs (set (k/extract-key-value-collection key new-record))
-                stale-kvs (filter identity (set/difference old-kvs new-kvs))]
-            (for [kv stale-kvs]
-              (release-unique-key session model t uber-key-value kv)))
-
-          (let [old-kv (k/extract-key-value key old-record)
-                new-kv (k/extract-key-value key new-record)]
-            (when (and old-kv
-                       (not= old-kv new-kv))
-              [(release-unique-key session model t uber-key-value old-kv)]))))))))
+            col-colls (:collections t)]
+        (let [old-kvs (set (k/extract-key-value-collection key
+                                                           old-record
+                                                           col-colls))
+              new-kvs (set (k/extract-key-value-collection key
+                                                           new-record
+                                                           col-colls))
+              stale-kvs (filter identity (set/difference old-kvs new-kvs))]
+          (for [kv stale-kvs]
+            (release-unique-key session model t uber-key-value kv))))))))
 
 (defn acquire-unique-keys
   [session ^Model model record]
@@ -147,33 +144,34 @@
       (let [uber-key (t/uber-key model)
             uber-key-value (t/extract-uber-key-value model record)
             key (:key t)
-            coll (:collection t)]
-        (if coll
-          (let [kvs (filter identity
-                            (set (k/extract-key-value-collection key record)))]
-            (for [kv kvs]
-              (let [lookup-record (create-lookup-record
-                                   uber-key uber-key-value
-                                   key kv)]
-                (acquire-unique-key session
-                                    model
-                                    t
-                                    uber-key-value
-                                    kv))))
-
-          (when-let [key-value (k/extract-key-value key record)]
-            [(acquire-unique-key session
-                                 model
-                                 t
-                                 uber-key-value
-                                 key-value)])))))))
+            col-colls (:collections t)]
+        (let [kvs (filter identity
+                          (set (k/extract-key-value-collection key
+                                                               record
+                                                               col-colls)))]
+          (for [kv kvs]
+            (let [lookup-record (create-lookup-record
+                                 uber-key uber-key-value
+                                 key kv)]
+              (acquire-unique-key session
+                                  model
+                                  t
+                                  uber-key-value
+                                  kv)))))))))
 
 (defn update-with-acquire-responses
+  "assume the the very last column in the key is the
+   unique value that couldn't be acquired. perhaps this needs
+   to become more flexible"
   [table acquire-key-responses record]
-  (reduce (fn [r [status key-desc _]]
-            (let [coll (:collection table)
-                  key-col (last (:key key-desc))
-                  key-val (last (:key-value key-desc))]
+  (reduce (fn [r [status
+                  {:keys [uber-key uber-key-value
+                          key key-value]:as key-desc}
+                  _]]
+            (let [col-colls (:collections table)
+                  key-col (last key)
+                  coll (get col-colls key-col)
+                  key-val (last key-value)]
               (if (= :ok status)
                 r
                 (condp = coll

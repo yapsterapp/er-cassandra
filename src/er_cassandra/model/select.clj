@@ -65,14 +65,19 @@
 
   [session ^Model model table record-or-key-value opts]
   (let [lkv (k/extract-key-value (:key table) record-or-key-value opts)
+        key (if lkv (:key table) (k/partition-key (:key table)))
+        key-value (if lkv
+                    lkv
+                    (k/extract-key-value
+                     (k/partition-key (:key table)) record-or-key-value opts))
         opts (dissoc opts :key-value)
         lookup-opts (dissoc opts :columns)
         primary-opts (dissoc opts :where :only-if :order-by :limit)]
     (with-context deferred-context
       (mlet [lrs (r/select session
                              (:name table)
-                             (:key table)
-                             lkv
+                             key
+                             key-value
                              lookup-opts)
                pkvs (return
                      (map (fn [lr]
@@ -98,31 +103,56 @@
   ([session ^Model model key record-or-key-value]
    (select* session model key record-or-key-value {}))
 
-  ([session model key record-or-key-value opts]
-   (let [key (k/make-sequential key)]
-     (if-let [table (or (if-primary-key-table model key)
-                        (if-secondary-key-table model key))]
+  ([session model key record-or-key-value {:keys [from] :as opts}]
+   (let [key (k/make-sequential key)
+         opts (dissoc opts :from)]
+     (if from
+       (if-let [full-table (or (t/is-primary-table model from)
+                               (t/is-secondary-table model from))]
+         (select-from-full-table session
+                                 model
+                                 full-table
+                                 key
+                                 record-or-key-value
+                                 opts)
 
-       (select-from-full-table session
-                               model
-                               table
-                               key
-                               record-or-key-value
-                               opts)
+         (if-let [lookup-table (or (t/is-unique-key-table model from)
+                                   (t/is-lookup-key-table model from))]
+           (select-from-lookup-table session
+                                     model
+                                     lookup-table
+                                     record-or-key-value
+                                     opts)
 
-       (if-let [lookup-table (or (if-unique-key-table model key)
-                                 (if-lookup-key-table model key))]
+           (d/error-deferred [:fail
+                              {:model model
+                               :key key
+                               :from from}
+                              :no-matching-table])))
 
-         (select-from-lookup-table session
-                                   model
-                                   lookup-table
-                                   record-or-key-value
-                                   opts)
+       (if-let [table (or (if-primary-key-table model key)
+                          (if-secondary-key-table model key))]
 
-         (d/error-deferred [:fail
-                            {:model model
-                             :key key}
-                            :no-matching-key]))))))
+         (select-from-full-table session
+                                 model
+                                 table
+                                 key
+                                 record-or-key-value
+                                 opts)
+
+         (if-let [lookup-table (or (if-unique-key-table model key)
+                                   (if-lookup-key-table model key))]
+
+           (select-from-lookup-table session
+                                     model
+                                     lookup-table
+                                     record-or-key-value
+                                     opts)
+
+           (d/error-deferred [:fail
+                              {:model model
+                               :key key}
+                              :no-matching-key])))))))
 
 (defn select
   ([session ^Model model key record-or-key-value]

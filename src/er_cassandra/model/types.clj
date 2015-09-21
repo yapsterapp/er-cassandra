@@ -22,9 +22,16 @@
   {:name s/Keyword
    :key KeySchema})
 
+;; some of the (non-partition) columns in a lookup-table
+;; key may be collections... these will be expanded to the
+;; the list of values formed by the cartesian product of all
+;; the collection columns in the key. the
+;; :collections metadata describes the type of each
+;; collection column
 (s/defschema LookupTableSchema
   (merge TableSchema
-         {(s/optional-key :collection) (s/pred #{:list :set :map})}))
+         {(s/optional-key :collections) {s/Keyword
+                                         (s/pred #{:list :set :map})}}))
 
 (s/defschema ModelSchema
   {:primary-table TableSchema
@@ -82,6 +89,27 @@
 (defn satisfies-partition-key?
   [primary-key key]
   (= (k/partition-key primary-key) key))
+
+(defn- is-table-name
+  [tables table]
+  (some (fn [t] (when (= table (:name t)) t))
+        tables))
+
+(defn is-primary-table
+  [^Model model table]
+  (is-table-name [(:primary-table model)] table))
+
+(defn is-secondary-table
+  [^Model model table]
+  (is-table-name (:secondary-tables model) table))
+
+(defn is-unique-key-table
+  [^Model model table]
+  (is-table-name (:unique-key-tables model) table))
+
+(defn is-lookup-key-table
+  [^Model model table]
+  (is-table-name (:lookup-key-tables model) table))
 
 (defn uber-key
   [^Model model]

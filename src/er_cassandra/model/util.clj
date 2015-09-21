@@ -14,5 +14,5 @@
   [uber-key uber-key-value key key-value]
   (into
    {}
-   (concat (map vector uber-key uber-key-value)
-           (map vector key key-value))))
+   (concat (map vector (flatten uber-key) uber-key-value)
+           (map vector (flatten key) key-value))))

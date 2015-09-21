@@ -66,53 +66,39 @@
   (combine-responses
    (mapcat
     identity
-    (for [t (:lookup-tables model)]
+    (for [t (:lookup-key-tables model)]
       (let [uber-key (t/uber-key model)
             uber-key-value (t/extract-uber-key-value model (or new-record
                                                                old-record))
             key (:key t)
-            coll (:collection t)]
+            col-colls (:collections t)]
 
-        (if coll
-          (let [old-kvs (set (k/extract-key-value-collection key old-record))
-                new-kvs (set (k/extract-key-value-collection key new-record))
-                stale-kvs (filter identity (set/difference old-kvs new-kvs))]
-            (for [kv stale-kvs]
-              (delete-record session model t kv)))
-
-          (let [old-kv (k/extract-key-value key old-record)
-                new-kv (k/extract-key-value key new-record)]
-            (when (and old-kv
-                       (not= old-kv new-kv))
-              [(delete-record session model t old-kv)]))))))))
+        (let [old-kvs (set (k/extract-key-value-collection key old-record col-colls))
+              new-kvs (set (k/extract-key-value-collection key new-record col-colls))
+              stale-kvs (filter identity (set/difference old-kvs new-kvs))]
+          (for [kv stale-kvs]
+            (delete-record session model key kv))))))))
 
 (defn upsert-lookups
   [session ^Model model record]
   (combine-responses
    (mapcat
     identity
-    (for [t (:lookup-tables model)]
+    (for [t (:lookup-key-tables model)]
       (let [uber-key (t/uber-key model)
             uber-key-value (t/extract-uber-key-value model record)
             key (:key t)
-            coll (:collection t)]
-        (if coll
-          (let [kvs (filter identity
-                            (set (k/extract-key-value-collection key record)))]
-            (for [kv kvs]
-              (let [lookup-record (create-lookup-record
-                                   uber-key uber-key-value
-                                   key kv)]
-                (upsert-record session
-                               model
-                               t
-                               lookup-record))))
-
-          (when-let [key-value (k/extract-key-value key record)]
+            col-colls (:collections t)]
+        (let [kvs (filter identity
+                          (set (k/extract-key-value-collection key record col-colls)))]
+          (for [kv kvs]
             (let [lookup-record (create-lookup-record
                                  uber-key uber-key-value
-                                 key key-value)]
-              [(upsert-record session model t lookup-record)]))))))))
+                                 key kv)]
+              (upsert-record session
+                             model
+                             t
+                             lookup-record)))))))))
 
 (defn copy-unique-keys
   [^Model model from to]
