@@ -18,9 +18,19 @@
   (s/either [(s/optional [s/Keyword] []) s/Keyword]
             [s/Keyword]))
 
+(s/defschema SecondaryKeySchema
+  s/Keyword)
+
+;; the :key is the primary-key of the table, which may
+;; have a compound parition key [[pk1 pk2] ck1 ck2]
+;; the :entity-key is an optional unique identifier for which
+;; a value taken from the primary record will be used to
+;; delete with a secondary index from seocondary and lookup tables
+;; TODO use the :entity-key to delete stale secondary and lookup records
 (s/defschema TableSchema
   {:name s/Keyword
-   :key KeySchema})
+   :key KeySchema
+   (s/optional-key :entity-key) SecondaryKeySchema})
 
 ;; some of the (non-partition) columns in a lookup-table
 ;; key may be collections... these will be expanded to the

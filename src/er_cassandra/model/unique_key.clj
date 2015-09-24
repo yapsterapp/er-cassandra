@@ -44,53 +44,53 @@
 
     (with-context deferred-context
       (mlet [insert-response (r/insert session
-                                          (:name unique-key-table)
-                                          unique-key-record
-                                          {:if-not-exists true})
+                                       (:name unique-key-table)
+                                       unique-key-record
+                                       {:if-not-exists true})
 
-               inserted? (return (applied? insert-response))
+             inserted? (return (applied? insert-response))
 
-               owned? (return
-                       (applied-or-owned?
-                        model
-                        (t/extract-uber-key-value model unique-key-record)
-                        insert-response))
+             owned? (return
+                     (applied-or-owned?
+                      model
+                      (t/extract-uber-key-value model unique-key-record)
+                      insert-response))
 
-               live-ref? (if-not owned?
-                           (r/select-one session
-                                          (get-in model [:primary-table :name])
-                                          (get-in model [:primary-table :key])
-                                          (t/extract-uber-key-value
-                                           model
-                                           insert-response))
-                           (return nil))
+             live-ref? (if-not owned?
+                         (r/select-one session
+                                       (get-in model [:primary-table :name])
+                                       (get-in model [:primary-table :key])
+                                       (t/extract-uber-key-value
+                                        model
+                                        insert-response))
+                         (return nil))
 
-               ;; TODO - check that primary record has a live forward reference,
-               ;;        or lookup is really stale despite primary existing
+             ;; TODO - check that primary record has a live forward reference,
+             ;;        or lookup is really stale despite primary existing
 
-               stale-update-response (if (and (not owned?)
-                                              (not live-ref?))
-                                       (r/update
-                                        session
-                                        (:name unique-key-table)
-                                        (:key unique-key-table)
-                                        unique-key-record
-                                        {:only-if
-                                         (t/extract-uber-key-equality-clause
-                                          model
-                                          insert-response)})
-                                       (return nil))
+             stale-update-response (if (and (not owned?)
+                                            (not live-ref?))
+                                     (r/update
+                                      session
+                                      (:name unique-key-table)
+                                      (:key unique-key-table)
+                                      unique-key-record
+                                      {:only-if
+                                       (t/extract-uber-key-equality-clause
+                                        model
+                                        insert-response)})
+                                     (return nil))
 
-               updated? (return (applied? stale-update-response))]
+             updated? (return (applied? stale-update-response))]
 
-              (return
-               (cond
-                 inserted? [:ok key-desc :inserted]    ;; new key
-                 owned?    [:ok key-desc :owned]       ;; ours already
-                 updated?  [:ok key-desc :updated]     ;; ours now
-                 live-ref? [:fail key-desc :notunique] ;; not ours
-                 :else     [:fail key-desc :notunique] ;; someone else won
-                 ))))))
+        (return
+         (cond
+           inserted? [:ok key-desc :inserted]    ;; new key
+           owned?    [:ok key-desc :owned]       ;; ours already
+           updated?  [:ok key-desc :updated]     ;; ours now
+           live-ref? [:fail key-desc :notunique] ;; not ours
+           :else     [:fail key-desc :notunique] ;; someone else won
+           ))))))
 
 (defn release-unique-key
   "remove a single unique key"
@@ -101,18 +101,18 @@
                   :key key :key-value key-value}]
     (with-context deferred-context
       (mlet [delete-result (r/delete session
-                                        (:name unique-key-table)
-                                        key
-                                        key-value
-                                        {:only-if
-                                         (k/key-equality-clause
-                                          uber-key
-                                          uber-key-value)})
-               deleted? (return (applied? delete-result))]
-              (return
-               (cond
-                 deleted? [:ok key-desc :deleted]
-                 :else    [:ok key-desc :stale]))))))
+                                     (:name unique-key-table)
+                                     key
+                                     key-value
+                                     {:only-if
+                                      (k/key-equality-clause
+                                       uber-key
+                                       uber-key-value)})
+             deleted? (return (applied? delete-result))]
+        (return
+         (cond
+           deleted? [:ok key-desc :deleted]
+           :else    [:ok key-desc :stale]))))))
 
 (defn release-stale-unique-keys
   [session ^Model model old-record new-record]
@@ -241,16 +241,15 @@
           new-record
           (:unique-key-tables model)))
 
-(defn without-lookups
-  "remove (the final part of) lookup (including unique-key)
-   columns from a record"
+(defn without-unique-keys
+  "remove (the final part of) unique key columns from a record"
   [^Model model record]
-  (let [lookup-tables (concat (:unique-key-tables model) (:lookup-tables model))]
+  (let [unique-key-tabless (:unique-key-tables model)]
     (reduce (fn [r t]
               (let [key-col (last (:key t))]
                 (dissoc r key-col)))
             record
-            lookup-tables)))
+            unique-key-tabless)))
 
 (defn update-unique-keys
   "attempts to acquire unique keys for an owner... returns
@@ -258,39 +257,40 @@
    owner record containing only the keys that could be acquired"
   [session ^Model model new-record]
   (with-context deferred-context
-    (mlet [create-primary (r/insert session
-                                      (get-in model [:primary-table :name])
-                                      (without-lookups model new-record))
+    (mlet [old-record (r/select-one session
+                                    (get-in model [:primary-table :name])
+                                    (get-in model [:primary-table :key])
+                                    (t/extract-uber-key-value model new-record))
 
-             old-record (r/select-one session
-                                      (get-in model [:primary-table :name])
-                                      (get-in model [:primary-table :key])
-                                      (t/extract-uber-key-value model new-record))
+           create-primary (r/insert session
+                                    (get-in model [:primary-table :name])
+                                    (without-unique-keys model new-record))
 
-             release-key-responses (release-stale-unique-keys
-                                    session
-                                    model
-                                    old-record
-                                    new-record)
-             acquire-key-responses (acquire-unique-keys
-                                    session
-                                    model
-                                    new-record)
-             acquire-failures (return
-                               (describe-acquire-failures
-                                model
-                                new-record
-                                acquire-key-responses))
-             updated-record (return
-                             (update-record-by-key-responses
+           release-key-responses (release-stale-unique-keys
+                                  session
+                                  model
+                                  old-record
+                                  new-record)
+           acquire-key-responses (acquire-unique-keys
+                                  session
+                                  model
+                                  new-record)
+           acquire-failures (return
+                             (describe-acquire-failures
                               model
-                              old-record
                               new-record
                               acquire-key-responses))
-             upsert-response (r/insert
-                              session
-                              (get-in model [:primary-table :name])
-                              updated-record)]
-            (return [updated-record
-                       (when (not-empty acquire-failures)
-                         acquire-failures)]))))
+           updated-record (return
+                           (update-record-by-key-responses
+                            model
+                            old-record
+                            new-record
+                            acquire-key-responses))
+           upsert-response (r/insert
+                            session
+                            (get-in model [:primary-table :name])
+                            updated-record)]
+      (return [old-record
+               updated-record
+               (when (not-empty acquire-failures)
+                 acquire-failures)]))))
