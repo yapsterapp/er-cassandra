@@ -180,7 +180,14 @@
        (assoc r updated-at-col (.toDate (t/now)))
        r))))
 
-(defn create-view-callback
+(defn create-select-view-callback
+  "selects the given columns from a record"
   [cols]
   (fn [r]
     (select-keys r cols)))
+
+(defn create-filter-view-callback
+  "filers the given columns from a record"
+  [cols]
+  (fn [r]
+    (apply dissoc r cols)))
