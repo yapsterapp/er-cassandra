@@ -7,6 +7,7 @@
 (defn normalize-string
   [s]
   (-> s
+      str/trim
       (Normalizer/normalize Normalizer$Form/NFD)
       (str/replace #"\p{InCombiningDiacriticalMarks}+", "")
       .toLowerCase))
