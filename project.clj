@@ -7,7 +7,7 @@
                  [org.clojure/core.match "0.2.2"]
                  [org.clojure/math.combinatorics "0.1.1"]
                  [potemkin "0.4.1"]
-                 [prismatic/plumbing "0.5.0"]
+                 [prismatic/plumbing "0.4.4"]
                  [clj-time "0.10.0"]
                  [cc.qbits/alia "2.7.3" ] ;; :exclusions [com.google.guava/guava]
                  [drift "1.5.3" :exclusions [org.clojure/clojure]]
