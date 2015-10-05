@@ -124,11 +124,13 @@
                                      record-or-key-value
                                      opts)
 
-           (d/error-deferred [:fail
-                              {:model model
-                               :key key
-                               :from from}
-                              :no-matching-table])))
+           (d/error-deferred (ex-info
+                              "no matching table"
+                              {:reason [:fail
+                                        {:model model
+                                         :key key
+                                         :from from}
+                                        :no-matching-table]}))))
 
        (if-let [table (or (if-primary-key-table model key)
                           (if-secondary-key-table model key))]
@@ -149,10 +151,12 @@
                                      record-or-key-value
                                      opts)
 
-           (d/error-deferred [:fail
-                              {:model model
-                               :key key}
-                              :no-matching-key])))))))
+           (d/error-deferred (ex-info
+                              "no matching key"
+                              {:reason [:fail
+                                        {:model model
+                                         :key key}
+                                        :no-matching-key]}))))))))
 
 (defn select
   ([session ^Model model key record-or-key-value]
