@@ -1,4 +1,4 @@
-(defproject employeerepublic/er-cassandra "0.5.6"
+(defproject employeerepublic/er-cassandra "0.6.0"
   :description "a simple cassandra conector"
   :url "https://github.com/employeerepublic/er-cassandra"
   :license {:name "Eclipse Public License"
