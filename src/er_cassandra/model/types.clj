@@ -151,6 +151,17 @@
              records
              callbacks))))
 
+(defn run-callbacks-single
+  ([^Model model callback-key record]
+   (run-callbacks-single model callback-key record {}))
+  ([^Model model callback-key record opts]
+   (let [callbacks (concat (get-in model [:callbacks callback-key])
+                           (get-in opts [callback-key]))]
+     (reduce (fn [r callback]
+               (callback r))
+             record
+             callbacks))))
+
 (defn run-deferred-callbacks
   ([^Model model callback-key deferred-records]
    (run-deferred-callbacks model callback-key deferred-records {}))
@@ -159,6 +170,15 @@
      (mlet [records deferred-records]
        (return
         (run-callbacks model callback-key records opts))))))
+
+(defn run-deferred-callbacks-single
+  ([^Model model callback-key deferred-record]
+   (run-deferred-callbacks-single model callback-key deferred-record {}))
+  ([^Model model callback-key deferred-record opts]
+   (with-context deferred-context
+     (mlet [record deferred-record]
+       (return
+        (run-callbacks-single model callback-key record opts))))))
 
 (defn create-protect-columns-callback
   "create a callback which will remove cols from a record
