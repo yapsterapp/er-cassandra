@@ -211,3 +211,9 @@
   [cols]
   (fn [r]
     (apply dissoc r cols)))
+
+(defn create-update-col-callback
+  "a callback which updates a column with a function"
+  [col f]
+  (fn [r]
+    (update r col f)))
