@@ -16,6 +16,17 @@
   (d/chain (session/execute session (table-metadata-query keyspace table))
            first))
 
+(defn ^:private usertype-metadata-query
+  [keyspace type]
+  (h/select :system.schema_usertypes
+            (h/where {:keyspace_name keyspace
+                      :type_name type})))
+
+(defn usertype-metadata
+  [session keyspace type]
+  (d/chain (session/execute session (usertype-metadata-query keyspace type))
+           first))
+
 (defn ^:private column-metadata-query
   [keyspace table]
   (h/select :system.schema_columns
