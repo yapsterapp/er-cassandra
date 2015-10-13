@@ -9,7 +9,7 @@
                  [potemkin "0.4.1"]
                  [prismatic/plumbing "0.4.4"]
                  [clj-time "0.10.0"]
-                 [cc.qbits/alia "2.7.3" ] ;; :exclusions [com.google.guava/guava]
+                 [cc.qbits/alia "2.10.0"] ;; :exclusions [com.google.guava/guava]
                  [drift "1.5.3" :exclusions [org.clojure/clojure]]
                  [manifold "0.1.1-alpha4"]
                  [mccraigmccraig/cats "1.1.0-20150920.154602-1"]]
