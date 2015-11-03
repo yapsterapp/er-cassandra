@@ -97,17 +97,24 @@
   [session ^Model model unique-key-table uber-key-value key-value]
   (let [uber-key (t/uber-key model)
         key (:key unique-key-table)
+        ;; only-if can't reference primary-key components
+        [npk-uber-key npk-uber-key-value] (k/remove-key-components
+                                           uber-key
+                                           uber-key-value
+                                           key)
         key-desc {:uber-key uber-key :uber-key-value uber-key-value
                   :key key :key-value key-value}]
+    (prn [npk-uber-key npk-uber-key-value])
     (with-context deferred-context
       (mlet [delete-result (r/delete session
                                      (:name unique-key-table)
                                      key
                                      key-value
-                                     {:only-if
-                                      (k/key-equality-clause
-                                       uber-key
-                                       uber-key-value)})
+                                     (when (not-empty npk-uber-key)
+                                       {:only-if
+                                        (k/key-equality-clause
+                                         npk-uber-key
+                                         npk-uber-key-value)}))
              deleted? (return (applied? delete-result))]
         (return
          (cond

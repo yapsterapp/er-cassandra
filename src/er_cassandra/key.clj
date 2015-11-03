@@ -43,6 +43,17 @@
   ([key record-or-key-value {:keys [collection] :as opts}]
    (extract-key-value* key record-or-key-value opts)))
 
+(defn remove-key-components
+  "remove components from a [key key-value] pair, returning
+   a new [key key-value] pair with the components removed"
+  [key key-value remove-components]
+  (let [kvs (map vector (flatten key) key-value)
+        rcs (set remove-components)
+        fkvs (filter (fn [[k v]] (not (contains? rcs k)))
+                     kvs)]
+    (when (> (count fkvs) 0)
+      [(map first fkvs) (map second fkvs)])))
+
 (defn key-equality-clause
   [key key-value]
   (let [key (flatten (make-sequential key))
