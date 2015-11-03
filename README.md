@@ -172,13 +172,9 @@ tables, lookup tables and unique-key acquisition with lightweight-transactions
 @(m/select-one session Users :username "foo")
 ```
 
-The high-level API calls are processed within the either-deferred monad
-from [Defurred](https://github.com/employeerepublic/defurred) and
-all return a Deferred[Either] result. Any errors
-(or exceptions) are put into an either/Left and all success results into
-an either/Right
-
-
+The high-level API calls are processed within the manifold monad from
+[cats](https://github.com/funcool/cats/blob/master/src/cats/labs/manifold.clj)
+and all return a `Deferred` result.
 
 ## License
 
