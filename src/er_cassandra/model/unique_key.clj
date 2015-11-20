@@ -12,6 +12,7 @@
    [er-cassandra.key :as k]
    [er-cassandra.record :as r]
    [er-cassandra.model.types :as t]
+   [er-cassandra.model.error :as e]
    [er-cassandra.model.util :refer [combine-responses create-lookup-record]])
   (:import [er_cassandra.model.types Model]))
 
@@ -210,28 +211,17 @@
                            key)
                          failures)]
     (into
-     {}
-     (filter
-      identity
-      (for [t (:unique-key-tables model)]
-        (when-let [kfs (get by-key (:key t))]
-          [(:key t)
-           (let [key-col (last (:key t))
-                 kvs (map (fn [[_ {:keys [key key-value]} _]]
-                            key-value)
-                          kfs)
-                 first-kv (first kvs)
-                 prefix (into [] (take (dec (count first-kv)) first-kv))]
-             (condp = (:collection t)
-               :list (let [lv (mapv last kvs)]
-                       (conj prefix lv))
-               :set (let [sv (set (map last kvs))]
-                      (conj prefix sv))
-               :map (let [mv (select-keys
-                              (get requested-record key-col)
-                              (map last kvs))]
-                      (conj prefix mv))
-               first-kv))]))))))
+     []
+     (for [[status
+            {:keys [key key-value] :as key-desc}
+            reason] failures]
+       (let [field (last key)
+             field-value (last key-value)]
+         (e/field-error-log-entry
+          field
+          reason
+          (str field " is not unique")
+          field-value))))))
 
 (defn responses-for-key
   [match-key responses]
@@ -299,5 +289,4 @@
                             updated-record)]
       (return [old-record
                updated-record
-               (when (not-empty acquire-failures)
-                 acquire-failures)]))))
+               acquire-failures]))))

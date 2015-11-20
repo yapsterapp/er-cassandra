@@ -4,6 +4,7 @@
    [clojure.core.match :refer [match]]
    [manifold.deferred :as d]
    [cats.core :refer [mlet return]]
+   [cats.data :refer [pair]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
    [qbits.alia :as alia]
@@ -115,10 +116,13 @@
   "upsert a single instance, upserting primary, secondary, unique-key and
    lookup records as required and deleting stale secondary, unique-key and
    lookup records
-   returns a Deferred[Right[[updated-record key-failures]]] where
+
+   returns a Deferred[Pair[updated-record key-failures]] where
    updated-record is the record as currently in the db and key-failures
    is a map of {key values} for unique keys which were requested but
-   could not be acquired"
+   could not be acquired
+
+  this type is, not coincidentally, the type of writer-t(deferred)"
 
   ([session ^Model model record]
 
@@ -159,8 +163,9 @@
                               (get-in model [:primary-table :key])
                               (t/extract-uber-key-value model record))]
 
-         (return [current-record
-                  acquire-failures]))))))
+         (return
+          (pair current-record
+                acquire-failures)))))))
 
 (defn upsert-many
   "issue one upsert query for each record and combine the responses"
