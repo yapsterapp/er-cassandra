@@ -1,14 +1,23 @@
 (ns er-cassandra.schema
   (:require
+   [environ.core :refer [env]]
    [manifold.deferred :as d]
    [qbits.hayt :as h]
    [er-cassandra.session :as session]))
 
+;; HACK ALERT
+(def cassandra-version (or (some-> (env :cassandra-version) Integer/parseInt)
+                           3))
+
 (defn ^:private table-metadata-query
   [keyspace table]
-  (h/select :system.schema_columnfamilies
-            (h/where {:keyspace_name keyspace
-                      :columnfamily_name table})))
+  (if (< cassandra-version 3)
+    (h/select :system.schema_columnfamilies
+              (h/where {:keyspace_name keyspace
+                        :columnfamily_name table}))
+    (h/select :system_schema.tables
+              (h/where {:keyspace_name keyspace
+                        :table_name table}))))
 
 (defn table-metadata
   "returns a Deferred with metadata for the requested table (or nil)"
@@ -18,9 +27,13 @@
 
 (defn ^:private usertype-metadata-query
   [keyspace type]
-  (h/select :system.schema_usertypes
-            (h/where {:keyspace_name keyspace
-                      :type_name type})))
+  (if (< cassandra-version 3)
+    (h/select :system.schema_usertypes
+              (h/where {:keyspace_name keyspace
+                        :type_name type}))
+    (h/select :system_schema.types
+              (h/where {:keyspace_name keyspace
+                        :type_name type}))))
 
 (defn usertype-metadata
   [session keyspace type]
@@ -29,9 +42,13 @@
 
 (defn ^:private column-metadata-query
   [keyspace table]
-  (h/select :system.schema_columns
-            (h/where {:keyspace_name keyspace
-                      :columnfamily_name table})))
+  (if (< cassandra-version 3)
+    (h/select :system.schema_columns
+              (h/where {:keyspace_name keyspace
+                        :columnfamily_name table}))
+    (h/select :system_schema.columns
+              (h/where {:keyspace_name keyspace
+                        :table_name table}))))
 
 (defn column-metadata
   "returns a Deferred with metadata for the requested table (or nil)"

@@ -10,6 +10,7 @@
                  [prismatic/plumbing "0.4.4"]
                  [clj-time "0.10.0"]
                  [cc.qbits/alia "2.12.0"] ;; :exclusions [com.google.guava/guava]
+                 [environ "1.0.0"]
                  [drift "1.5.3" :exclusions [org.clojure/clojure]]
                  [manifold "0.1.1"]
                  [mccraigmccraig/cats "1.1.0-20150920.154602-1"]]
