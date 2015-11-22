@@ -4,7 +4,7 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/tools.cli "0.3.2"]
-                 [org.clojure/core.match "0.2.2"]
+                 [org.clojure/core.match "0.3.0-alpha4"]
                  [org.clojure/math.combinatorics "0.1.1"]
                  [potemkin "0.4.1"]
                  [prismatic/plumbing "0.4.4"]
