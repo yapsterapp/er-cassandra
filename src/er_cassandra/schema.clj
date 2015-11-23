@@ -7,7 +7,7 @@
 
 ;; HACK ALERT
 (def cassandra-version (or (some-> (env :cassandra-version) Integer/parseInt)
-                           3))
+                           2))
 
 (defn ^:private table-metadata-query
   [keyspace table]
