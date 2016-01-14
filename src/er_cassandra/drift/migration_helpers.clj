@@ -9,4 +9,5 @@
 
 (defmacro execute
   [& body]
-  `(er-cassandra.session/execute (session) ~@body))
+  `(deref
+    (er-cassandra.session/execute (session) ~@body)))
