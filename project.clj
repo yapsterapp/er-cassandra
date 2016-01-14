@@ -15,7 +15,7 @@
                  [prismatic/plumbing "0.5.2"]
                  [clj-time "0.11.0"
                   :exclusions [org.clojure/clojure]]
-                 [cc.qbits/alia "3.0.0-beta1"
+                 [cc.qbits/alia "3.0.0-rc1"
                   :exclusions [org.clojure/clojure]] ;; :exclusions [com.google.guava/guava]
                  [environ "1.0.1"
                   :exclusions [org.clojure/clojure]]
