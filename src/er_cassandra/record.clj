@@ -94,7 +94,7 @@
    (let [key-clause (extract-key-equality-clause key record opts)
          set-cols (if (not-empty set-columns)
                     (select-keys record set-columns)
-                    (apply dissoc record (make-sequential key)))]
+                    (apply dissoc record (make-sequential (flatten key))))]
      (h/update table
                (h/set-columns set-cols)
                (h/where key-clause)
