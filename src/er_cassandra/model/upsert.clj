@@ -144,6 +144,7 @@
                               session
                               model
                               updated-record-with-keys)]
+
        (return updated-record-with-keys)))))
 
 (defn upsert
@@ -183,10 +184,19 @@
                                                 model
                                                 old-record
                                                 updated-record-with-keys)
-                (return nil))]
+                (return nil))
+
+            ;; re-select the record for nice empty-collections etc
+            final-record (if updated-record-with-keys
+                           (r/select-one
+                            session
+                            (get-in model [:primary-table :name])
+                            (get-in model [:primary-table :key])
+                            (t/extract-uber-key-value model record))
+                           (return nil))]
 
        (return
-        (pair updated-record-with-keys
+        (pair final-record
               acquire-failures))))))
 
 (defn upsert-many
