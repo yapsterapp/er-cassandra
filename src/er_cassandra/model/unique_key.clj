@@ -259,8 +259,9 @@
             primary-table-key (get-in model [:primary-table :key])
 
             ;; always test for presence if given an only-if condition
-            :let [if-not-exists (or (not (nil? if-not-exists))
-                                    (not (nil? only-if)))]
+            :let [if-not-exists (boolean
+                                 (or if-not-exists
+                                     only-if))]
 
             nok-record (without-unique-keys model record)
 

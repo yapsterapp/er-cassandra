@@ -118,6 +118,34 @@
    (or (not-empty (:secondary-tables model))
        (not-empty (:lookup-key-tables model)))))
 
+(defn update-secondaries-and-lookups
+  "update non-LWT secondary and lookup entries"
+
+  ([session ^Model model old-record updated-record-with-keys]
+   (with-context deferred-context
+     (mlet [stale-secondary-responses (delete-stale-secondaries
+                                       session
+                                       model
+                                       old-record
+                                       updated-record-with-keys)
+
+            stale-lookup-responses (delete-stale-lookups
+                                    session
+                                    model
+                                    old-record
+                                    updated-record-with-keys)
+
+            secondary-reponses (upsert-secondaries
+                                session
+                                model
+                                updated-record-with-keys)
+
+            lookup-responses (upsert-lookups
+                              session
+                              model
+                              updated-record-with-keys)]
+       (return updated-record-with-keys)))))
+
 (defn upsert
   "upsert a single instance, upserting primary, secondary, unique-key and
    lookup records as required and deleting stale secondary, unique-key and
@@ -127,60 +155,39 @@
    updated-record is the record as currently in the db and key-failures
    is a map of {key values} for unique keys which were requested but
    could not be acquired "
-
   ([session ^Model model record]
    (upsert session model record {}))
   ([session ^Model model record opts]
+   (with-context deferred-context
+     (mlet [:let [[record] (t/run-callbacks model :before-save [record])]
 
-   (let [[record] (t/run-callbacks model :before-save [record])]
-     (with-context deferred-context
-       (mlet [;; don't need the old record if there are no lookups
-              old-record (if (has-lookups? model)
-                           (r/select-one
-                            session
-                            (get-in model [:primary-table :name])
-                            (get-in model [:primary-table :key])
-                            (t/extract-uber-key-value model record))
+            ;; don't need the old record if there are no lookups
+            old-record (if (has-lookups? model)
+                         (r/select-one
+                          session
+                          (get-in model [:primary-table :name])
+                          (get-in model [:primary-table :key])
+                          (t/extract-uber-key-value model record))
 
-                           (return nil))
+                         (return nil))
 
-              [updated-record-with-keys
-               acquire-failures] (unique-key/upsert-primary-record-and-update-unique-keys
-                                  session
-                                  model
-                                  record)
-
-              stale-secondary-responses (delete-stale-secondaries
-                                         session
-                                         model
-                                         old-record
-                                         updated-record-with-keys)
-
-              stale-lookup-responses (delete-stale-lookups
-                                      session
-                                      model
-                                      old-record
-                                      updated-record-with-keys)
-
-              secondary-reponses (upsert-secondaries
-                                  session
-                                  model
-                                  updated-record-with-keys)
-
-              lookup-responses (upsert-lookups
+            [updated-record-with-keys
+             acquire-failures] (unique-key/upsert-primary-record-and-update-unique-keys
                                 session
                                 model
-                                updated-record-with-keys)
+                                record
+                                opts)
 
-              current-record (r/select-one
-                              session
-                              (get-in model [:primary-table :name])
-                              (get-in model [:primary-table :key])
-                              (t/extract-uber-key-value model record))]
+            _ (if updated-record-with-keys
+                (update-secondaries-and-lookups session
+                                                model
+                                                old-record
+                                                updated-record-with-keys)
+                (return nil))]
 
-         (return
-          (pair current-record
-                acquire-failures)))))))
+       (return
+        (pair updated-record-with-keys
+              acquire-failures))))))
 
 (defn upsert-many
   "issue one upsert query for each record and combine the responses"
