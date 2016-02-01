@@ -112,6 +112,12 @@
             to
             unique-key-tables)))
 
+(defn has-lookups?
+  [^Model model]
+  (boolean
+   (or (not-empty (:secondary-tables model))
+       (not-empty (:lookup-key-tables model)))))
+
 (defn upsert
   "upsert a single instance, upserting primary, secondary, unique-key and
    lookup records as required and deleting stale secondary, unique-key and
@@ -120,17 +126,26 @@
    returns a Deferred[Pair[updated-record key-failures]] where
    updated-record is the record as currently in the db and key-failures
    is a map of {key values} for unique keys which were requested but
-   could not be acquired
-
-  this type is, not coincidentally, the type of writer-t(deferred)"
+   could not be acquired "
 
   ([session ^Model model record]
+   (upsert session model record {}))
+  ([session ^Model model record opts]
 
    (let [[record] (t/run-callbacks model :before-save [record])]
      (with-context deferred-context
-       (mlet [[old-record
-               updated-record-with-keys
-               acquire-failures] (unique-key/update-unique-keys
+       (mlet [;; don't need the old record if there are no lookups
+              old-record (if (has-lookups? model)
+                           (r/select-one
+                            session
+                            (get-in model [:primary-table :name])
+                            (get-in model [:primary-table :key])
+                            (t/extract-uber-key-value model record))
+
+                           (return nil))
+
+              [updated-record-with-keys
+               acquire-failures] (unique-key/upsert-primary-record-and-update-unique-keys
                                   session
                                   model
                                   record)

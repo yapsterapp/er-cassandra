@@ -248,25 +248,88 @@
             record
             unique-key-tabless)))
 
-(defn update-unique-keys
+(defn upsert-primary-record-without-unique-keys
+  "attempts to upsert a primary record minus it's unique keys,
+   possibly with an LWT and conditions if options if-not-exists or only-if
+   are provided.
+   returns a Deferred [upserted-record-or-nil failure-description]"
+  ([session ^Model model record {:keys [if-not-exists only-if]}]
+   (with-context deferred-context
+     (mlet [primary-table-name (get-in model [:primary-table :name])
+            primary-table-key (get-in model [:primary-table :key])
+
+            ;; always test for presence if given an only-if condition
+            :let [if-not-exists (or (not (nil? if-not-exists))
+                                    (not (nil? only-if)))]
+
+            nok-record (without-unique-keys model record)
+
+            insert-response (if if-not-exists
+                              (r/insert session
+                                        primary-table-name
+                                        nok-record
+                                        {:if-not-exists true})
+                              (r/insert session
+                                        primary-table-name
+                                        nok-record))
+
+            :let [inserted? (if if-not-exists
+                              (applied? insert-response)
+                              true)]
+
+            update-response (if (and (not inserted?)
+                                     only-if)
+                              (r/update
+                               session
+                               primary-table-name
+                               primary-table-key
+                               nok-record
+                               {:only-if only-if})
+                              (return nil))
+
+            :let [updated? (applied? update-response)]
+
+            upserted-record (cond
+                              ;; definitely a first insert
+                              (and inserted? if-not-exists)
+                              nok-record
+
+                              ;; insert or update - must retrieve
+                              (or inserted? updated?)
+                              (r/select-one session
+                                            primary-table-name
+                                            primary-table-key
+                                            (t/extract-uber-key-value
+                                             model nok-record))
+
+                              ;; failure
+                              :else
+                              (return nil))]
+
+       (return
+        (if upserted-record
+          [upserted-record nil]
+
+          [nil [(e/general-error-log-entry
+                 :upsert-primary-record
+                 "couldn't upsert primary record"
+                 {:record record
+                  :if-not-exists if-not-exists
+                  :only-if only-if})]]))))))
+
+(defn update-unique-keys-after-primary-upsert
   "attempts to acquire unique keys for an owner... returns
    a Deferred[Right[[updated-owner-record failed-keys]]] with an updated
    owner record containing only the keys that could be acquired"
-  [session ^Model model new-record]
+  [session
+   ^Model model
+   old-key-record ;; record with old unique keys
+   new-record] ;; record with updated unique keys
   (with-context deferred-context
-    (mlet [old-record (r/select-one session
-                                    (get-in model [:primary-table :name])
-                                    (get-in model [:primary-table :key])
-                                    (t/extract-uber-key-value model new-record))
-
-           create-primary (r/insert session
-                                    (get-in model [:primary-table :name])
-                                    (without-unique-keys model new-record))
-
-           release-key-responses (release-stale-unique-keys
+    (mlet [release-key-responses (release-stale-unique-keys
                                   session
                                   model
-                                  old-record
+                                  old-key-record
                                   new-record)
            acquire-key-responses (acquire-unique-keys
                                   session
@@ -280,13 +343,34 @@
            updated-record (return
                            (update-record-by-key-responses
                             model
-                            old-record
+                            old-key-record
                             new-record
                             acquire-key-responses))
            upsert-response (r/insert
                             session
                             (get-in model [:primary-table :name])
                             updated-record)]
-      (return [old-record
-               updated-record
+      (return [updated-record
                acquire-failures]))))
+
+(defn upsert-primary-record-and-update-unique-keys
+  "first upserts the primary record, with any constraints,
+   then updates unique keys. returns a
+   Deferred[updated-record-or-nil failure-descriptions]"
+  ([session ^Model model new-record]
+   (upsert-primary-record-and-update-unique-keys session model new-record {}))
+  ([session ^Model model new-record opts]
+   (with-context deferred-context
+     (mlet [[rec-old-keys
+             upsert-errors] (upsert-primary-record-without-unique-keys
+                             session
+                             model
+                             new-record
+                             opts)]
+       (if rec-old-keys
+         (update-unique-keys-after-primary-upsert session
+                                                  model
+                                                  rec-old-keys
+                                                  new-record)
+         (return
+          [nil upsert-errors]))))))
