@@ -32,7 +32,7 @@
                (h/where where-clause)
                (when columns (apply h/columns columns))
                (when only-if (h/only-if only-if))
-               (when order-by (h/order-by order-by))
+               (when order-by (apply h/order-by order-by))
                (when limit (h/limit limit))))))
 
 (defn select

@@ -63,9 +63,9 @@
    this means that the lookup query may specify a partition-key and
    some clustering column condition (given as a :where option)"
 
-  [session ^Model model table record-or-key-value opts]
-  (let [lkv (k/extract-key-value (:key table) record-or-key-value opts)
-        key (if lkv (:key table) (k/partition-key (:key table)))
+  [session ^Model model table key record-or-key-value opts]
+  (let [lkv (k/extract-key-value (or key (:key table)) record-or-key-value opts)
+        key (if lkv (or key (:key table)) (k/partition-key (:key table)))
         key-value (if lkv
                     lkv
                     (k/extract-key-value
@@ -121,6 +121,7 @@
            (select-from-lookup-table session
                                      model
                                      lookup-table
+                                     key
                                      record-or-key-value
                                      opts)
 
@@ -148,6 +149,7 @@
            (select-from-lookup-table session
                                      model
                                      lookup-table
+                                     key
                                      record-or-key-value
                                      opts)
 
