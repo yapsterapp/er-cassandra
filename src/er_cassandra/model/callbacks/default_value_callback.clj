@@ -6,4 +6,6 @@
   [col default-val]
   (fn [r]
     (let [v (get r col)]
-      (assoc r col (or v default-val)))))
+      (if-not (contains? r col)
+        (assoc r col (or v default-val))
+        r))))
