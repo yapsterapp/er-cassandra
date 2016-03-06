@@ -25,7 +25,7 @@
          record (when (map? record-or-key-value)
                   record-or-key-value)
          dkv (map (fn [k ev]
-                    (or ev (get record k)))
+                    (if (some? ev) ev (get record k)))
                   key
                   key-value)]
      (when (and
