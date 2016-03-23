@@ -22,7 +22,7 @@
                  [drift "1.5.3"
                   :exclusions [org.clojure/clojure
                                org.clojure/tools.logging]]
-                 [manifold "0.1.2-alpha2"]
+                 [manifold "0.1.3"]
                  [funcool/cats "1.2.1"]]
 
   :profiles {:dev {:dependencies [[org.clojure/clojure "1.7.0"]]
