@@ -1,29 +1,39 @@
-(defproject employeerepublic/er-cassandra "0.9.4"
+(defproject employeerepublic/er-cassandra "0.10.0-SNAPSHOT"
   :description "a simple cassandra conector"
   :url "https://github.com/employeerepublic/er-cassandra"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
 
+  :repositories [["releases" {:url "s3p://yapster-s3-wagon/releases/"
+                              :username [:gpg :env/aws_access_key]
+                              :passphrase [:gpg :env/aws_secret_key]}]
+                 ["snapshots" {:url "s3p://yapster-s3-wagon/snapshots/"
+                               :username [:gpg :env/aws_access_key]
+                               :passphrase [:gpg :env/aws_secret_key]}]]
+
   :pedantic? :abort
 
-  :dependencies [[org.clojure/tools.cli "0.3.3"
-                  :exclusions [org.clojure/clojure]]
+  :exclusions [org.clojure/clojure
+               org.clojure/tools.logging]
+
+  :dependencies [[org.clojure/tools.cli "0.3.3"]
                  [org.clojure/core.match "0.3.0-alpha4"
                   :exclusions [org.clojure/tools.analyzer.jvm]]
                  [org.clojure/math.combinatorics "0.1.1"]
                  [potemkin "0.4.3"]
-                 [prismatic/plumbing "0.5.2"]
-                 [clj-time "0.11.0"
-                  :exclusions [org.clojure/clojure]]
-                 [cc.qbits/alia "3.0.0-rc1"
-                  :exclusions [org.clojure/clojure]] ;; :exclusions [com.google.guava/guava]
-                 [environ "1.0.1"
-                  :exclusions [org.clojure/clojure]]
-                 [drift "1.5.3"
-                  :exclusions [org.clojure/clojure
-                               org.clojure/tools.logging]]
-                 [manifold "0.1.3"]
+                 [prismatic/plumbing "0.5.3"]
+                 [clj-time "0.11.0"]
+                 [cc.qbits/alia "3.1.4"]
+                 [cc.qbits/alia-manifold "3.1.3"]
+                 [cc.qbits/hayt "3.0.1"]
+                 [environ "1.0.2"]
+                 [drift "1.5.3"]
+                 [manifold "0.1.4"]
                  [funcool/cats "1.2.1"]]
+
+  :plugins [[s3-wagon-private "1.2.0"
+             :exclusions [commons-codec]]
+            [commons-codec "1.4"]]
 
   :profiles {:dev {:dependencies [[org.clojure/clojure "1.7.0"]]
                    :plugins []}})
