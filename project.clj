@@ -14,11 +14,11 @@
   :pedantic? :abort
 
   :exclusions [org.clojure/clojure
+               org.clojure/tools.reader
                org.clojure/tools.logging]
 
   :dependencies [[org.clojure/tools.cli "0.3.3"]
-                 [org.clojure/core.match "0.3.0-alpha4"
-                  :exclusions [org.clojure/tools.analyzer.jvm]]
+                 [org.clojure/core.match "0.3.0-alpha4"]
                  [org.clojure/math.combinatorics "0.1.1"]
                  [potemkin "0.4.3"]
                  [prismatic/plumbing "0.5.3"]
