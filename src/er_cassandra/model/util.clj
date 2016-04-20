@@ -7,7 +7,8 @@
   "combine a seq of Deferred responses into
    a single Deferred response"
   [responses]
-  (apply d/zip responses))
+  (d/chain (apply d/zip responses)
+           (fn [r] (filter identity r))))
 
 (defn create-lookup-record
   "construct a lookup record"
