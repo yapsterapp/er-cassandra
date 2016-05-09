@@ -11,3 +11,8 @@
   [& body]
   `(deref
     (er-cassandra.session/execute (session) ~@body)))
+
+(defn pause
+  []
+  (println "pausing to let cassandra catch up")
+  (Thread/sleep 5000))
