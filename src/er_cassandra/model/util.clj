@@ -10,6 +10,13 @@
   (d/chain (apply d/zip responses)
            (fn [r] (filter identity r))))
 
+(defn combine-seq-responses
+  "combine a seq of Deferred seq responses into
+   a single Deferred response of a concatenated seq"
+  [responses]
+  (d/chain (apply d/zip responses)
+           (fn [rs] (apply concat rs))))
+
 (defn create-lookup-record
   "construct a lookup record"
   [uber-key uber-key-value key key-value]

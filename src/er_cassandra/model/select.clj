@@ -197,3 +197,14 @@
         (map (fn [record-or-key-value]
                (select-one session model key record-or-key-value)))
         util/combine-responses)))
+
+(defn select-many-cat
+  "issue one select query for each record-or-key-value and concatenates
+   the responses"
+  ([session ^Model model key record-or-key-values]
+   (select-many-cat session model key record-or-key-values {}))
+  ([session ^Model model key record-or-key-values opts]
+   (->> record-or-key-values
+        (map (fn [record-or-key-value]
+               (select session model key record-or-key-value)))
+        util/combine-seq-responses)))
