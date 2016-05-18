@@ -30,9 +30,8 @@
     (.close alia-session)))
 
 (defnk create-session
-  [contact-points keyspace {port nil}]
-  (let [cluster (alia/cluster {:contact-points contact-points
-                               :port port})
+  [contact-points keyspace]
+  (let [cluster (alia/cluster {:contact-points contact-points})
         alia-session (alia/connect cluster)]
     (alia/execute alia-session (str "USE " keyspace ";"))
     (->AliaSession keyspace alia-session)))
