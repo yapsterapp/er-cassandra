@@ -27,6 +27,10 @@
   [statement-responses]
   (->MapMockSession statement-responses (atom [])))
 
+;; need a statement-matcher, not just a literal statement...
+;; maybe there should be a bunch of "query matchers" and
+;; one or more expectation statements which have to be given
+;; for the test to pass
 (defrecord ListMockSession [statement-responses statement-log-atom]
   Session
   (execute [_ statement]
