@@ -15,14 +15,16 @@
 (defn if-primary-key-table
   [^Model model key]
   (when (or (t/satisfies-primary-key? (t/uber-key model) key)
-            (t/satisfies-partition-key? (t/uber-key model) key))
+            (t/satisfies-partition-key? (t/uber-key model) key)
+            (t/satisfies-cluster-key? (t/uber-key model) key))
     (:primary-table model)))
 
 (defn if-secondary-key-table
   [^Model model key]
   (some (fn [t]
           (when (or (t/satisfies-primary-key? (:key t) key)
-                    (t/satisfies-partition-key? (:key t) key))
+                    (t/satisfies-partition-key? (:key t) key)
+                    (t/satisfies-cluster-key? (:key t) key))
             t))
         (:secondary-tables model)))
 
@@ -30,7 +32,8 @@
   [^Model model key]
   (some (fn [t]
           (when (or (t/satisfies-primary-key? (:key t) key)
-                    (t/satisfies-partition-key? (:key t) key))
+                    (t/satisfies-partition-key? (:key t) key)
+                    (t/satisfies-cluster-key? (:key t) key))
             t))
         (:unique-key-tables model)))
 
@@ -38,7 +41,8 @@
   [^Model model key]
   (some (fn [t]
           (when (or (t/satisfies-primary-key? (:key t) key)
-                    (t/satisfies-partition-key? (:key t) key))
+                    (t/satisfies-partition-key? (:key t) key)
+                    (t/satisfies-cluster-key? (:key t) key))
             t))
         (:lookup-key-tables model)))
 
@@ -180,11 +184,33 @@
   ([session ^Model model key record-or-key-value opts]
    (with-context deferred-context
      (mlet [records (select session
-                              model
-                              key
-                              record-or-key-value
-                              (merge opts {:limit 1}))]
-             (return (first records))))))
+                            model
+                            key
+                            record-or-key-value
+                            (merge opts {:limit 1}))]
+       (return (first records))))))
+
+(defn ensure-one
+  "select a single record erroring the response if there is no record"
+  ([session ^Model model key record-or-key-value]
+   (ensure-one session model key record-or-key-value {}))
+
+  ([session ^Model model key record-or-key-value opts]
+   (with-context deferred-context
+     (mlet [records (select session
+                            model
+                            key
+                            record-or-key-value
+                            (merge opts {:limit 1}))]
+       (if (empty? records)
+         (d/error-deferred (ex-info
+                            "no record"
+                            {:reason [:fail
+                                      {:model model
+                                       :key key
+                                       :record-or-key-value record-or-key-value}
+                                      :no-matching-record]}))
+         (return (first records)))))))
 
 (defn select-many
   "issue one select-one query for each record-or-key-value and combine
