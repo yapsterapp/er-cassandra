@@ -15,6 +15,14 @@
   (let [key (make-sequential key)]
     (make-sequential (first key))))
 
+(defn cluster-key
+  "given a primary key spec, return the cluster key"
+  [key]
+  (let [key (make-sequential key)
+        ck (next key)]
+    (when ck
+      (vec ck))))
+
 (defn extract-key-value*
   ([key record-or-key-value {:keys [key-value]}]
    (let [key (flatten (make-sequential key)) ;; flatten partition key

@@ -93,12 +93,47 @@
   `(def ~name (create-model ~model-spec)))
 
 (defn satisfies-primary-key?
+  "return true if key is the same as the full primary-key"
   [primary-key key]
+  (assert (sequential? primary-key))
+  (assert (sequential? key))
   (= (flatten primary-key) (flatten key)))
 
 (defn satisfies-partition-key?
+  "return true if key is the same as the partition-key"
   [primary-key key]
+  (assert (sequential? primary-key))
+  (assert (sequential? key))
   (= (k/partition-key primary-key) key))
+
+(defn satisfies-cluster-key?
+  "return true if key matches the full partition-key plus
+   some prefix of the cluster-key"
+  [primary-key key]
+  (assert (sequential? primary-key))
+  (assert (sequential? key))
+  (let [pkpk (k/partition-key primary-key)
+        pkck (k/cluster-key primary-key)
+        pkck-c (count pkck)
+
+        kpk (take (count pkpk) (flatten key))
+        kck (not-empty (drop (count pkpk) (flatten key)))
+        kck-c (count kck)
+
+        spk? (satisfies-partition-key? primary-key kpk)]
+    (cond
+      (> kck-c pkck-c)
+      false
+
+      (= kck-c pkck-c)
+      (and spk?
+           (= kck pkck))
+
+      :else
+      (do
+        (and spk?
+             (= kck
+                (not-empty (take kck-c pkck))))))))
 
 (defn- is-table-name
   [tables table]
