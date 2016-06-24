@@ -230,10 +230,7 @@
    if it's not already set"
   ([] (create-updated-at-callback :updated_at))
   ([updated-at-col]
-   (fn [r]
-     (if-not (get r updated-at-col)
-       (assoc r updated-at-col (.toDate (t/now)))
-       r))))
+   (fn [r] (assoc r updated-at-col (.toDate (t/now))))))
 
 (defn create-select-view-callback
   "selects the given columns from a record"
