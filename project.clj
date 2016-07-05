@@ -17,7 +17,17 @@
                org.clojure/tools.reader
                org.clojure/tools.logging]
 
-  :dependencies [[org.clojure/tools.cli "0.3.3"]
+  :dependencies [;; this lot just for logging
+                 [org.clojure/tools.reader "1.0.0-beta1"]
+                 [org.clojure/tools.logging "0.3.1"]
+                 [ch.qos.logback/logback-classic "1.1.5"]
+                 [org.slf4j/slf4j-api "1.7.18"]
+                 [org.slf4j/jcl-over-slf4j "1.7.18"]
+                 [org.slf4j/log4j-over-slf4j "1.7.18"]
+                 [org.slf4j/jul-to-slf4j "1.7.18"]
+                 [com.taoensso/timbre "4.3.1"]
+
+                 [org.clojure/tools.cli "0.3.3"]
                  [org.clojure/core.match "0.3.0-alpha4"]
                  [org.clojure/math.combinatorics "0.1.1"]
                  [potemkin "0.4.3"]

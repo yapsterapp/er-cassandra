@@ -1,15 +1,18 @@
-(ns er-cassandra.model.unique-key
+(ns er-cassandra.model.alia.unique-key
   (:require
    [clojure.set :as set]
    [cats.core :refer [mlet return]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
+   [er-cassandra.session]
    [er-cassandra.key :as k]
    [er-cassandra.record :as r]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.error :as e]
    [er-cassandra.model.util :refer [combine-responses create-lookup-record]])
-  (:import [er_cassandra.model.types Model]))
+  (:import
+   [er_cassandra.model.types Model]
+   [er_cassandra.session Session]))
 
 (defn applied?
   [lwt-response]
@@ -29,7 +32,7 @@
    returns a Deferred[[:ok <keydesc> info]] if the key was acquired
    successfully, a ErrorDeferred[[:fail <keydesc> reason]]"
 
-  [session ^Model model unique-key-table uber-key-value key-value]
+  [^Session session ^Model model unique-key-table uber-key-value key-value]
   (let [uber-key (t/uber-key model)
         key (:key unique-key-table)
         unique-key-record (create-lookup-record
@@ -90,7 +93,7 @@
 
 (defn release-unique-key
   "remove a single unique key"
-  [session ^Model model unique-key-table uber-key-value key-value]
+  [^Session session ^Model model unique-key-table uber-key-value key-value]
   (let [uber-key (t/uber-key model)
         key (:key unique-key-table)
         ;; only-if can't reference primary-key components
@@ -118,7 +121,7 @@
            :else    [:ok key-desc :stale]))))))
 
 (defn release-stale-unique-keys
-  [session ^Model model old-record new-record]
+  [^Session session ^Model model old-record new-record]
   (combine-responses
    (mapcat
     identity
@@ -139,7 +142,7 @@
             (release-unique-key session model t uber-key-value kv))))))))
 
 (defn acquire-unique-keys
-  [session ^Model model record]
+  [^Session session ^Model model record]
   (combine-responses
    (mapcat
     identity
@@ -248,7 +251,7 @@
    possibly with an LWT and conditions if options if-not-exists or only-if
    are provided.
    returns a Deferred [upserted-record-or-nil failure-description]"
-  ([session ^Model model record {:keys [if-not-exists only-if]}]
+  ([^Session session ^Model model record {:keys [if-not-exists only-if]}]
    (with-context deferred-context
      (mlet [primary-table-name (get-in model [:primary-table :name])
             primary-table-key (get-in model [:primary-table :key])
@@ -317,7 +320,7 @@
   "attempts to acquire unique keys for an owner... returns
    a Deferred[Right[[updated-owner-record failed-keys]]] with an updated
    owner record containing only the keys that could be acquired"
-  [session
+  [^Session session
    ^Model model
    old-key-record ;; record with old unique keys
    new-record] ;; record with updated unique keys
@@ -353,9 +356,9 @@
   "first upserts the primary record, with any constraints,
    then updates unique keys. returns a
    Deferred[updated-record-or-nil failure-descriptions]"
-  ([session ^Model model new-record]
+  ([^Session session ^Model model new-record]
    (upsert-primary-record-and-update-unique-keys session model new-record {}))
-  ([session ^Model model new-record opts]
+  ([^Session session ^Model model new-record opts]
    (with-context deferred-context
      (mlet [[rec-old-keys
              upsert-errors] (upsert-primary-record-without-unique-keys

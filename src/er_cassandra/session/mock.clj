@@ -3,7 +3,8 @@
    [plumbing.core :refer :all]
    [taoensso.timbre :refer [trace debug info warn error]]
    [clojure.pprint :refer [pprint]]
-   [manifold.deferred :as d])
+   [manifold.deferred :as d]
+   [er-cassandra.session])
   (:import
    [er_cassandra.session Session]))
 
