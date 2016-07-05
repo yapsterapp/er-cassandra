@@ -1,14 +1,9 @@
 (ns er-cassandra.model.unique-key
   (:require
    [clojure.set :as set]
-   [clojure.core.match :refer [match]]
-   [manifold.deferred :as d]
    [cats.core :refer [mlet return]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
-   [qbits.alia :as alia]
-   [qbits.alia.manifold :as aliam]
-   [qbits.hayt :as h]
    [er-cassandra.key :as k]
    [er-cassandra.record :as r]
    [er-cassandra.model.types :as t]

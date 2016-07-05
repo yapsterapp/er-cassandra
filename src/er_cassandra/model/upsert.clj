@@ -1,15 +1,10 @@
 (ns er-cassandra.model.upsert
   (:require
    [clojure.set :as set]
-   [clojure.core.match :refer [match]]
-   [manifold.deferred :as d]
    [cats.core :refer [mlet return]]
    [cats.data :refer [pair]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
-   [qbits.alia :as alia]
-   [qbits.alia.manifold :as aliam]
-   [qbits.hayt :as h]
    [er-cassandra.key :as k]
    [er-cassandra.record :as r]
    [er-cassandra.model.types :as t]
