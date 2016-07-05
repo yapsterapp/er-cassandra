@@ -6,7 +6,9 @@
    [qbits.hayt :as h]
    [drift.config]
    [er-cassandra.session :as session]
-   [er-cassandra.schema :as schema]))
+   [er-cassandra.schema :as schema])
+  (:import
+   [er_cassandra.session Session]))
 
 (def ^:private migrations-table-name "schema_migrations")
 
@@ -20,7 +22,7 @@
 
 (defn- create-migration-table
   "create a schema_migrations table if it doesn't already exist"
-  [session keyspace]
+  [^Session session keyspace]
   (when-not @(schema/table-metadata
               session
               keyspace
@@ -37,7 +39,7 @@
             (h/where {:namespace namespace})))
 
 (defn- namespace-max-version
-  [session namespace]
+  [^Session session namespace]
   (->> (namespace-versions-query namespace)
        (session/execute session)
        deref
@@ -52,7 +54,7 @@
                       :version version})))
 
 (defn- delete-namespace-version
-  [session namespace version]
+  [^Session session namespace version]
   (deref
    (session/execute session (delete-namespace-version-query namespace version))))
 
@@ -64,27 +66,27 @@
                       [> :version version]])))
 
 (defn- namespace-versions-above
-  [session namespace version]
+  [^Session session namespace version]
   (->> (namespace-versions-above-query namespace version)
        (session/execute session)
        deref
        (map :version)))
 
 (defn- delete-namespace-versions-above
-  [session namespace version]
+  [^Session session namespace version]
   (->> (namespace-versions-above session namespace version)
        (map (fn [v] (delete-namespace-version session namespace v)))
        dorun))
 
 
 (defn- insert-namespace-version-query
-  [namespace version]
+  [^Session namespace version]
   (h/insert migrations-table-name
             (h/values {:namespace namespace
                        :version version})))
 
 (defn- insert-namespace-version
-  [session namespace version]
+  [^Session session namespace version]
   (delete-namespace-versions-above session namespace version)
   (if (> version 0)
     (deref
@@ -94,7 +96,7 @@
 
 (defn create-init-fn
   "create a drift init function"
-  [session keyspace config-namespace]
+  [^Session session keyspace config-namespace]
   (fn init
     [args]
     (let [[opts oargs usage] (cli

@@ -4,7 +4,9 @@
    [potemkin :refer [import-vars]]
    [manifold.deferred :as d]
    [cats.monad.either :as either]
-   [er-cassandra.record :as r]))
+   [er-cassandra.record :as r])
+  (:import
+   [er_cassandra.session Session]))
 
 ;; low-level record-based cassandra interface which
 ;; puts responses into an Either monad Right value,
@@ -39,20 +41,20 @@
 
 (defn select
   "select records : returns a Deferred[Either]"
-  ([session table key record-or-key-value]
+  ([^Session session table key record-or-key-value]
    (select session table key record-or-key-value {}))
 
-  ([session table key record-or-key-value opts]
+  ([^Session session table key record-or-key-value opts]
    (either-deferred
     (r/select session table key record-or-key-value opts)
     alia-error-transformer)))
 
 (defn select-one
   "select a single record : returns a Deferred[Either]"
-  ([session table key record-or-key-value]
+  ([^Session session table key record-or-key-value]
    (select-one session table key record-or-key-value {}))
 
-  ([session table key record-or-key-value opts]
+  ([^Session session table key record-or-key-value opts]
    (either-deferred
     (r/select-one session table key record-or-key-value opts)
     alia-error-transformer)))
@@ -62,10 +64,10 @@
 (defn insert
   "insert a single record - returns a Deferred[Either]"
 
-  ([session table record]
+  ([^Session session table record]
    (insert session table record {}))
 
-  ([session table record opts]
+  ([^Session session table record opts]
    (either-deferred
     (r/insert session table record opts)
     alia-error-transformer)))
@@ -75,10 +77,10 @@
 (defn update
   "update a single record - returns a Deferred[Either]"
 
-  ([session table key record]
+  ([^Session session table key record]
    (update session table key record {}))
 
-  ([session table key record opts]
+  ([^Session session table key record opts]
    (either-deferred
     (r/update session table key record opts)
     alia-error-transformer)))
@@ -88,10 +90,10 @@
 (defn delete
   "delete a record - returns a Deferred[Either]"
 
-  ([session table key record-or-key-value]
+  ([^Session session table key record-or-key-value]
    (delete session table key record-or-key-value {}))
 
-  ([session table key record-or-key-value opts]
+  ([^Session session table key record-or-key-value opts]
    (either-deferred
     (r/delete session table key record-or-key-value opts)
     alia-error-transformer)))

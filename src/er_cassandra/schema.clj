@@ -3,7 +3,9 @@
    [environ.core :refer [env]]
    [manifold.deferred :as d]
    [qbits.hayt :as h]
-   [er-cassandra.session :as session]))
+   [er-cassandra.session :as session])
+  (:import
+   [er_cassandra.session Session]))
 
 ;; HACK ALERT
 (def cassandra-version (or (some-> (env :cassandra-version) Integer/parseInt)
@@ -21,7 +23,7 @@
 
 (defn table-metadata
   "returns a Deferred with metadata for the requested table (or nil)"
-  [session keyspace table]
+  [^Session session keyspace table]
   (d/chain (session/execute session (table-metadata-query keyspace table))
            first))
 
@@ -36,7 +38,7 @@
                         :type_name type}))))
 
 (defn usertype-metadata
-  [session keyspace type]
+  [^Session session keyspace type]
   (d/chain (session/execute session (usertype-metadata-query keyspace type))
            first))
 
@@ -52,10 +54,10 @@
 
 (defn column-metadata
   "returns a Deferred with metadata for the requested table (or nil)"
-  [session keyspace table]
+  [^Session session keyspace table]
   (session/execute session (column-metadata-query keyspace table)))
 
 (defn column-names
-  [session keyspace table]
+  [^Session session keyspace table]
   (d/chain (column-metadata session keyspace table)
            #(map :column_name %)))
