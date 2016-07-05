@@ -5,7 +5,9 @@
    [manifold.deferred :as d]
    [qbits.hayt :as h]
    [er-cassandra.key :refer [make-sequential extract-key-equality-clause]]
-   [er-cassandra.session :as session]))
+   [er-cassandra.session :as session])
+  (:import
+   [er_cassandra.session Session]))
 
 ;; low-level record-based cassandra statement generation and execution
 ;;
@@ -38,10 +40,10 @@
 (defn select
   "select records"
 
-  ([session table key record-or-key-value]
+  ([^Session session table key record-or-key-value]
    (select session table key record-or-key-value {}))
 
-  ([session table key record-or-key-value opts]
+  ([^Session session table key record-or-key-value opts]
    (session/execute
     session
     (select-statement table key record-or-key-value opts))))
@@ -49,10 +51,10 @@
 (defn select-one
   "select a single record"
 
-  ([session table key record-or-key-value]
+  ([^Session session table key record-or-key-value]
    (select-one session table key record-or-key-value {}))
 
-  ([session table key record-or-key-value opts]
+  ([^Session session table key record-or-key-value opts]
    (d/chain (select session table key record-or-key-value (merge opts {:limit 1}))
             first)))
 
@@ -72,10 +74,10 @@
 (defn insert
   "insert a single record"
 
-  ([session table record]
+  ([^Session session table record]
    (insert session table record {}))
 
-  ([session table record opts]
+  ([^Session session table record opts]
    (d/chain
     (session/execute
      session
@@ -105,10 +107,10 @@
 (defn update
   "update a single record"
 
-  ([session table key record]
+  ([^Session session table key record]
    (update session table key record {}))
 
-  ([session table key record opts]
+  ([^Session session table key record opts]
    (d/chain
     (session/execute
      session
@@ -142,10 +144,10 @@
 (defn delete
   "delete a record"
 
-  ([session table key record-or-key-value]
+  ([^Session session table key record-or-key-value]
    (delete session table key record-or-key-value {}))
 
-  ([session table key record-or-key-value opts]
+  ([^Session session table key record-or-key-value opts]
    (d/chain
     (session/execute
      session
