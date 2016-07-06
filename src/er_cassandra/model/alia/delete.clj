@@ -22,7 +22,8 @@
      (mlet [[record & _] (alia-select/select* session
                                               model
                                               key
-                                              record-or-key-value)
+                                              record-or-key-value
+                                              nil)
 
             primary-response (m/when record
                                (alia-upsert/delete-record
