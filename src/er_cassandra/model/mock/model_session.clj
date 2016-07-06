@@ -3,8 +3,9 @@
    [plumbing.core :refer :all]
    [er-cassandra.model.model-session
     :refer [ModelSession ModelSpySession]]
-   [er-cassandra.model.mock.mock-model-session
-    :refer [MockModelSession MockModelSpySession Matcher]]))
+   [er-cassandra.model.mock.mock-model-session :as mms
+    :refer [MockModelSession MockModelSpySession Matcher
+            -match -failure]]))
 
 (defn- match
   [matchers request]
