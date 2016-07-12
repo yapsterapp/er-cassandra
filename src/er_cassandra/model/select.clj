@@ -221,7 +221,7 @@
   ([session ^Model model key record-or-key-values opts]
    (->> record-or-key-values
         (map (fn [record-or-key-value]
-               (select-one session model key record-or-key-value)))
+               (select-one session model key record-or-key-value opts)))
         util/combine-responses)))
 
 (defn select-many-cat
