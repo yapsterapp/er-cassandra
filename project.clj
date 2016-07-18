@@ -32,7 +32,7 @@
                  [org.clojure/math.combinatorics "0.1.1"]
                  [potemkin "0.4.3"]
                  [prismatic/plumbing "0.5.3"]
-                 [clj-time "0.11.0"]
+                 [clj-time "0.12.0"]
                  [cc.qbits/alia "3.1.4"]
                  [cc.qbits/alia-manifold "3.1.3"]
                  [cc.qbits/hayt "3.0.1"]
