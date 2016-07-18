@@ -5,7 +5,7 @@
     :refer [ModelSession ModelSpySession]]
    [er-cassandra.model.mock.mock-model-session :as mms
     :refer [MockModelSession MockModelSpySession Matcher
-            -match -failure]]))
+            -match -finish]]))
 
 (defn- match
   [matchers request]
@@ -39,6 +39,7 @@
   (-delete [_ model key record-or-key-value opts]
     (let [request {:action :delete
                    :model model
+                   :key key
                    :record-or-key-value record-or-key-value
                    :opts opts}
           response (match matchers request)]
@@ -50,7 +51,7 @@
   MockModelSession
   (-check [_]
     (let [failures (->> matchers
-                        (map -failure)
+                        (map -finish)
                         (filter identity))]
       (when-not (empty? failures)
         (throw (ex-info "failed matchers" {:failures failures })))))

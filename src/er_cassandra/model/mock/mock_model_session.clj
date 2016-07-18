@@ -8,4 +8,4 @@
 
 (defprotocol Matcher
   (-match [this request])
-  (-failure [this]))
+  (-finish [this]))
