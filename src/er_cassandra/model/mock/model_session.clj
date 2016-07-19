@@ -50,11 +50,10 @@
 
   MockModelSession
   (-check [_]
-    (let [failures (->> matchers
-                        (map -finish)
-                        (filter identity))]
-      (when-not (empty? failures)
-        (throw (ex-info "failed matchers" {:failures failures })))))
+    (->> matchers
+         (map -finish)
+         (filter identity)
+         doall))
 
 
   ModelSpySession

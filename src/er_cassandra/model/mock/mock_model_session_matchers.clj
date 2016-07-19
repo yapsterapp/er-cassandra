@@ -67,6 +67,12 @@
          :else nil))
      (-finish [_] nil))))
 
+(defn select-one
+  ([model key record-or-key-value response]
+   (select-one model key record-or-key-value {} response))
+  ([model key record-or-key-value opts response]
+   (select model key record-or-key-value (merge {:limit 1} opts) response)))
+
 (defn upsert
   ([model record response]
    (upsert model record {} response))
