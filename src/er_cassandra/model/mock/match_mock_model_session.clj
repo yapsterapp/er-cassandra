@@ -1,4 +1,4 @@
-(ns er-cassandra.model.mock.match-mock.model-session
+(ns er-cassandra.model.mock.match-mock-model-session
   (:require
    [plumbing.core :refer :all]
    [er-cassandra.model.model-session
