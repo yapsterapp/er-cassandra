@@ -1,4 +1,4 @@
-(ns er-cassandra.model.mock.model-session
+(ns er-cassandra.model.mock.match-mock.model-session
   (:require
    [plumbing.core :refer :all]
    [er-cassandra.model.model-session
@@ -53,7 +53,8 @@
     (->> matchers
          (map -finish)
          (filter identity)
-         doall))
+         doall)
+    true)
 
 
   ModelSpySession
@@ -62,8 +63,30 @@
   MockModelSpySession
   (-mock-model-spy-log [_] @request-response-log-atom))
 
-(defn create-match-mock-model-session
+(defn create
   [matchers]
   (map->MatchMockModelSession
    {:matchers matchers
     :request-response-log-atom (atom [])}))
+
+(defn with-match-mock-model-session*
+  [match-mock-model-session body-fn]
+  (assert (instance? MatchMockModelSession match-mock-model-session))
+  (try
+    (body-fn match-mock-model-session)
+    match-mock-model-session
+    (finally
+      (mms/-check match-mock-model-session))))
+
+(defmacro with-match-mock-model-session
+  [binding & body]
+  (assert (vector? binding))
+  (assert (= 2 (count binding)))
+  (let [[sym sess] binding]
+    (assert (symbol? sym))
+    (assert (not (nil? sess)))
+
+    `(with-match-mock-model-session*
+       ~sess
+       (fn [~sym]
+         ~@body))))
