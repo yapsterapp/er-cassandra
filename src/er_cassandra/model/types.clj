@@ -232,11 +232,6 @@
   ([updated-at-col]
    (fn [r] (assoc r updated-at-col (.toDate (t/now))))))
 
-(defn create-version-callback
-  "create a callback which will add an :version (v1 UUID) column "
-  ([] (create-version-callback :version))
-  ([version-col] (fn [r] (assoc r version-col (clj-uuid/v1)))))
-
 (defn create-select-view-callback
   "selects the given columns from a record"
   [cols]
