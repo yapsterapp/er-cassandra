@@ -17,9 +17,10 @@
                org.clojure/tools.reader
                org.clojure/tools.logging]
 
-  :dependencies [;; this lot just for logging
-                 [org.clojure/tools.reader "1.0.0-beta3"]
+  :dependencies [[org.clojure/tools.reader "1.0.0-beta3"]
                  [org.clojure/tools.logging "0.3.1"]
+
+                 ;; wow, such logging
                  [ch.qos.logback/logback-classic "1.1.7"]
                  [org.slf4j/slf4j-api "1.7.21"]
                  [org.slf4j/jcl-over-slf4j "1.7.21"]
