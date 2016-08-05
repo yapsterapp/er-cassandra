@@ -48,14 +48,16 @@
    (s/optional-key :unique-key-tables) [LookupTableSchema]
    (s/optional-key :secondary-tables) [TableSchema]
    (s/optional-key :lookup-key-tables) [LookupTableSchema]
-   (s/optional-key :callbacks) CallbacksSchema})
+   (s/optional-key :callbacks) CallbacksSchema
+   (s/optional-key :versioned?) s/Bool})
 
 (s/defrecord Model
     [primary-table :- TableSchema
      unique-key-tables :- [LookupTableSchema]
      secondary-tables :- [TableSchema]
      lookup-key-tables :- [LookupTableSchema]
-     callbacks :- CallbacksSchema])
+     callbacks :- CallbacksSchema
+     versioned? :- s/Bool])
 
 (defn ^:private force-key-seq
   [table]
