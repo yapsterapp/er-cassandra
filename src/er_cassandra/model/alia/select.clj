@@ -47,6 +47,9 @@
             t))
         (:lookup-key-tables model)))
 
+(def ^:private select-err-msg
+  "Versioned tables can only perform selects when :limit option is set to 1.")
+
 (defn select-from-full-table
   "one fetch - straight from a table. they key must be either
    a full primary key, or a partition key combined with some
@@ -55,6 +58,8 @@
   [^Session session ^Model model table key record-or-key-value opts]
   (let [kv (k/extract-key-value key record-or-key-value opts)
         opts (dissoc opts :key-value)]
+    (when (and (:versioned? model) (not= 1 (:limit opts)))
+      (throw (ex-info select-err-msg {:model model :opts opts})))
     (r/select session (:name table) key kv opts)))
 
 (defn select-from-lookup-table

@@ -87,7 +87,8 @@
   (map->Model (merge {:unique-key-tables []
                       :secondary-tables []
                       :lookup-key-tables []
-                      :callbacks {}}
+                      :callbacks {}
+                      :versioned? false}
                      (force-all-key-seqs model-spec))))
 
 (defmacro defmodel
