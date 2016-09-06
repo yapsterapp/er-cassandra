@@ -5,4 +5,8 @@
   (close [this]))
 
 (defprotocol SpySession
-  (spy-log [this]))
+  (spy-log [this])
+  (reset-spy-log [this]))
+
+(defprotocol KeyspaceProvider
+  (keyspace [this]))

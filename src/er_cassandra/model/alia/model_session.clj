@@ -3,7 +3,8 @@
    [plumbing.core :refer :all]
    [er-cassandra.session :as s]
    [er-cassandra.session.alia :as a]
-   [er-cassandra.model.model-session :refer [ModelSession ModelSpySession]]
+   [er-cassandra.model.model-session :as model-session
+    :refer [ModelSession ModelSpySession]]
    [er-cassandra.model.alia.select :refer [select*]]
    [er-cassandra.model.alia.upsert :refer [upsert*]]
    [er-cassandra.model.alia.delete :refer [delete*]])
@@ -25,6 +26,12 @@
     (delete* alia-session model key record-or-key-value opts))
 
   (-close [_]
+    (s/close alia-session))
+
+  s/Session
+  (execute [_ statement]
+    (s/execute alia-session statement))
+  (close [_]
     (s/close alia-session)))
 
 (defnk create-session
@@ -64,9 +71,29 @@
     (s/close alia-session))
 
   ModelSpySession
-  (-model-spy-log [_] @model-spy-log-atom))
+  (-model-spy-log [_] @model-spy-log-atom)
+  (-reset-model-spy-log [_]
+    (reset! model-spy-log-atom [])
+    (s/reset-spy-log alia-session))
+
+  s/Session
+  (execute [_ statement]
+    (s/execute alia-session statement))
+  (close [_]
+    (s/close alia-session))
+
+  s/KeyspaceProvider
+  (keyspace [_]
+    (s/keyspace alia-session))
+
+  s/SpySession
+  (spy-log [_]
+    (s/spy-log alia-session))
+  (reset-spy-log [_]
+    (reset! model-spy-log-atom [])
+    (s/reset-spy-log alia-session)))
 
 (defnk create-spy-session
   [contact-points keyspace {port nil} :as args]
   (let [alia-session (a/create-spy-session args)]
-    (->AliaModelSession alia-session (atom []))))
+    (->AliaModelSpySession alia-session (atom []))))

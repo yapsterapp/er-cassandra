@@ -12,4 +12,5 @@
   (-close [this]))
 
 (defprotocol ModelSpySession
-  (-model-spy-log [this]))
+  (-model-spy-log [this])
+  (-reset-model-spy-log [this]))
