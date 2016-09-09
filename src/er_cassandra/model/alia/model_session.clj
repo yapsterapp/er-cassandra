@@ -94,6 +94,6 @@
     (s/reset-spy-log alia-session)))
 
 (defnk create-spy-session
-  [contact-points keyspace {port nil} :as args]
+  [contact-points keyspace {port nil} {truncate-on-close nil} :as args]
   (let [alia-session (a/create-spy-session args)]
     (->AliaModelSpySession alia-session (atom []))))

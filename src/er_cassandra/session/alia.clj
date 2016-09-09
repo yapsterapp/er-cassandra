@@ -50,26 +50,6 @@
   [contact-points keyspace {port nil}]
   (->AliaSession keyspace (create-alia-session* contact-points keyspace port)))
 
-(defrecord AliaSpySession [keyspace alia-session spy-log-atom]
-  Session
-  (execute [_ statement]
-    (swap! spy-log-atom conj statement)
-    (execute* alia-session statement))
-  (close [_]
-    (.close alia-session))
-
-  KeyspaceProvider
-  (keyspace [_] keyspace)
-
-  SpySession
-  (spy-log [_] @spy-log-atom))
-
-(defnk create-spy-session
-  [contact-points keyspace {port nil}]
-  (->AliaSpySession keyspace
-                    (create-alia-session* contact-points keyspace port)
-                    (atom [])))
-
 (defn mutated-tables
   [spy-session]
   (let [stmts (s/spy-log spy-session)]
@@ -95,3 +75,42 @@
     (doseq [mt mts]
       (s/execute spy-session (h/truncate mt)))
     (s/reset-spy-log spy-session)))
+
+(defrecord AliaSpySession [keyspace alia-session spy-log-atom truncate-on-close]
+  Session
+  (execute [_ statement]
+    (swap! spy-log-atom conj statement)
+    (execute* alia-session statement))
+  (close [self]
+    (when truncate-on-close
+      (truncate-spy-tables self))
+    (.close alia-session))
+
+  KeyspaceProvider
+  (keyspace [_] keyspace)
+
+  SpySession
+  (spy-log [_] @spy-log-atom)
+  (reset-spy-log [_] (reset! spy-log-atom [])))
+
+(defnk create-spy-session
+  [contact-points keyspace {port nil} {truncate-on-close nil}]
+  (->AliaSpySession keyspace
+                    (create-alia-session* contact-points keyspace port)
+                    (atom [])
+                    truncate-on-close))
+
+(defn with-spy-session-reset*
+  "start an alia spy-session, call a function and truncate
+  all tables which were touched during the function"
+  [spy-session f]
+  (try
+    (f)
+    (finally
+      (truncate-spy-tables spy-session))))
+
+(defmacro with-spy-session-reset
+  [spy-session & body]
+  `(with-spy-session-reset*
+     ~spy-session
+     (fn [] ~@body)))
