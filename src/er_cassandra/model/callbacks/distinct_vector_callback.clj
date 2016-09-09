@@ -3,4 +3,4 @@
 (defn create-distinct-vector-callback
   [col]
   (fn [r]
-    (assoc r (vec (distinct (get r col))))))
+    (assoc r col (vec (distinct (get r col))))))
