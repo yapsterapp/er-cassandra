@@ -225,8 +225,8 @@
   [confirm-col & cols]
   (fn [r]
     (if (get r confirm-col)
-      (apply dissoc r confirm-col cols)
-      (dissoc r confirm-col))))
+      (dissoc r confirm-col)
+      (apply dissoc r confirm-col cols))))
 
 (defn create-updated-at-callback
   "create a callback which will add an :updated_at column
