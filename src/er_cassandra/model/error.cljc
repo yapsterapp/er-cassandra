@@ -87,6 +87,17 @@
      :key key
      :key-value key-value})])
 
+(defnk filter-key-error-log-entries
+  [error-tag primary-table key log]
+  (->> log
+       (filter
+        (fn [[_ {t :tag
+                 pt :primary-table
+                 k :key}]]
+          (and (= t error-tag)
+               (= pt primary-table)
+               (= k key))))))
+
 (defnk field-error-log-entry
   "helper fn to create a :field-error log entry"
   [error-tag
