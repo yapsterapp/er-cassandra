@@ -84,11 +84,11 @@
 
         (return
          (cond
-           inserted? [:ok key-desc :inserted]    ;; new key
-           owned?    [:ok key-desc :owned]       ;; ours already
-           updated?  [:ok key-desc :updated]     ;; ours now
-           live-ref? [:fail key-desc :notunique] ;; not ours
-           :else     [:fail key-desc :notunique] ;; someone else won
+           inserted? [:ok key-desc :key/inserted]    ;; new key
+           owned?    [:ok key-desc :key/owned]       ;; ours already
+           updated?  [:ok key-desc :key/updated]     ;; ours now
+           live-ref? [:fail key-desc :key/notunique] ;; not ours
+           :else     [:fail key-desc :key/notunique] ;; someone else won
            ))))))
 
 (defn release-unique-key
@@ -215,11 +215,13 @@
             reason] failures]
        (let [field (last key)
              field-value (last key-value)]
-         (e/field-error-log-entry
-          field
-          reason
-          (str field " is not unique")
-          field-value))))))
+         (e/key-error-log-entry
+          {:error-tag reason
+           :message (str field " is not unique: " field-value)
+           :primary-table (-> model :primary-table :name)
+           :uber-key-value (t/extract-uber-key-value model requested-record)
+           :key key
+           :key-value key-value}))))))
 
 (defn responses-for-key
   [match-key responses]
@@ -310,11 +312,13 @@
           [upserted-record nil]
 
           [nil [(e/general-error-log-entry
-                 :upsert-primary-record
-                 "couldn't upsert primary record"
-                 {:record record
-                  :if-not-exists if-not-exists
-                  :only-if only-if})]]))))))
+                 {:error-tag :upsert/primary-record-exists
+                  :message "couldn't upsert primary record"
+                  :primary-table primary-table-name
+                  :uber-key-value (t/extract-uber-key-value model record)
+                  :other {:record record
+                          :if-not-exists if-not-exists
+                          :only-if only-if}})]]))))))
 
 (defn update-unique-keys-after-primary-upsert
   "attempts to acquire unique keys for an owner... returns
