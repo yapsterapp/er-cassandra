@@ -131,15 +131,16 @@
                                                                old-record))
             key (:key t)
             col-colls (:collections t)]
-        (let [old-kvs (set (k/extract-key-value-collection key
-                                                           old-record
-                                                           col-colls))
-              new-kvs (set (k/extract-key-value-collection key
-                                                           new-record
-                                                           col-colls))
-              stale-kvs (filter identity (set/difference old-kvs new-kvs))]
-          (for [kv stale-kvs]
-            (release-unique-key session model t uber-key-value kv))))))))
+        (when (k/has-key? key new-record)
+          (let [old-kvs (set (k/extract-key-value-collection key
+                                                             old-record
+                                                             col-colls))
+                new-kvs (set (k/extract-key-value-collection key
+                                                             new-record
+                                                             col-colls))
+                stale-kvs (filter identity (set/difference old-kvs new-kvs))]
+            (for [kv stale-kvs]
+              (release-unique-key session model t uber-key-value kv)))))))))
 
 (defn acquire-unique-keys
   [^Session session ^Model model record]
@@ -151,19 +152,20 @@
             uber-key-value (t/extract-uber-key-value model record)
             key (:key t)
             col-colls (:collections t)]
-        (let [kvs (filter identity
-                          (set (k/extract-key-value-collection key
-                                                               record
-                                                               col-colls)))]
-          (for [kv kvs]
-            (let [lookup-record (create-lookup-record
-                                 uber-key uber-key-value
-                                 key kv)]
-              (acquire-unique-key session
-                                  model
-                                  t
-                                  uber-key-value
-                                  kv)))))))))
+        (when (k/has-key? key record)
+          (let [kvs (filter identity
+                            (set (k/extract-key-value-collection key
+                                                                 record
+                                                                 col-colls)))]
+            (for [kv kvs]
+              (let [lookup-record (create-lookup-record
+                                   uber-key uber-key-value
+                                   key kv)]
+                (acquire-unique-key session
+                                    model
+                                    t
+                                    uber-key-value
+                                    kv))))))))))
 
 (defn update-with-acquire-responses
   "assume the the very last column in the key is the

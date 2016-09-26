@@ -137,3 +137,10 @@
                             key
                             kv)]
        (apply cartesian-product col-values)))))
+
+(defn has-key?
+  "true if the record contains? keys for all the key components"
+  [key record]
+  (->> key
+       (map #(contains? record %))
+       (every? identity)))
