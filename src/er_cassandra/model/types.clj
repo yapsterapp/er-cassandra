@@ -169,7 +169,8 @@
             (get-in model [:primary-table :key])
             record)]
     (when (nil? kv)
-      (throw (ex-info "nil uberkey" {:model model :record record})))
+      (throw (ex-info "nil uberkey" {:model model :record record
+                                     :cause ::nil-uberkey})))
     kv))
 
 (defn extract-uber-key-equality-clause
