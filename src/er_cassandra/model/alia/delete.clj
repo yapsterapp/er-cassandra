@@ -12,38 +12,43 @@
    [er_cassandra.model.types Model]
    [er_cassandra.session Session]))
 
+(defn nil-values
+  "return a record with the same keys as m but nil values... used to
+   force all secondary/lookup keys to be considered for stale deletion"
+  [m]
+  (->> m
+       keys
+       (map (fn [k] [k nil]))
+       (into {})))
+
 (defn ^:private delete-with-primary
   [^Session session ^Model model key record opts]
   (with-context deferred-context
-    (mlet [primary-response (m/when record
-                               (alia-upsert/delete-record
-                                session
-                                model
-                                (:primary-table model)
-                                (t/extract-uber-key-value
-                                 model
-                                 record)))
+    (mlet [primary-response (alia-upsert/delete-record
+                             session
+                             model
+                             (:primary-table model)
+                             (t/extract-uber-key-value
+                              model
+                              record))
 
-            unique-responses (m/when record
-                               (alia-unique-key/release-stale-unique-keys
-                                session
-                                model
-                                record
-                                nil))
+           unique-responses (alia-unique-key/release-stale-unique-keys
+                             session
+                             model
+                             record
+                             (nil-values record))
 
-            secondary-responses (m/when record
-                                  (alia-upsert/delete-stale-secondaries
-                                   session
-                                   model
-                                   record
-                                   nil))
-
-            lookup-responses (m/when record
-                               (alia-upsert/delete-stale-lookups
+           secondary-responses (alia-upsert/delete-stale-secondaries
                                 session
                                 model
                                 record
-                                nil))]
+                                (nil-values record))
+
+           lookup-responses (alia-upsert/delete-stale-lookups
+                             session
+                             model
+                             record
+                             (nil-values record))]
       (return
        [:ok record :deleted]))))
 
