@@ -4,7 +4,7 @@
    [er-cassandra.model.types :as t]
    [er-cassandra.model.alia.upsert :as u]))
 
-(deftest singular-stale-lookup-key-values-test
+(deftest stale-lookup-key-values-test
   (let [m (t/create-model
            {:primary-table {:name :foos :key [:id]}
             :lookup-key-tables [{:name :foos_by_bar :key [:bar]}
