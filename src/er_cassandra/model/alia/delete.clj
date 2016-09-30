@@ -12,20 +12,10 @@
    [er_cassandra.model.types Model]
    [er_cassandra.session Session]))
 
-(defn delete*
-  "delete a single instance, removing primary, secondary unique-key and
-   lookup records "
-
-  ([^Session session ^Model model key record-or-key-value opts]
-
-   (with-context deferred-context
-     (mlet [[record & _] (alia-select/select* session
-                                              model
-                                              key
-                                              record-or-key-value
-                                              nil)
-
-            primary-response (m/when record
+(defn ^:private delete-with-primary
+  [^Session session ^Model model key record opts]
+  (with-context deferred-context
+    (mlet [primary-response (m/when record
                                (alia-upsert/delete-record
                                 session
                                 model
@@ -54,5 +44,22 @@
                                 model
                                 record
                                 nil))]
-       (return
-        [:ok record :deleted])))))
+      (return
+       [:ok record :deleted]))))
+
+(defn delete*
+  "delete a single instance, removing primary, secondary unique-key and
+   lookup records "
+
+  ([^Session session ^Model model key record-or-key-value opts]
+
+   (with-context deferred-context
+     (mlet [[record & _] (alia-select/select* session
+                                              model
+                                              key
+                                              record-or-key-value
+                                              nil)]
+       (if record
+         (delete-with-primary session model key record opts)
+         (return
+          [:ok nil :no-primary-record]))))))
