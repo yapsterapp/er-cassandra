@@ -39,22 +39,33 @@
       (return
        [:ok record :upserted]))))
 
+(defn stale-secondary-key-value
+  [^Model model old-record new-record secondary-table]
+  (let [key (:key secondary-table)
+        old-key-value (k/extract-key-value key old-record)
+        new-key-value (k/extract-key-value key new-record)]
+    (when (and (k/has-key? key new-record)
+               old-key-value
+               (not= old-key-value new-key-value))
+      old-key-value)))
+
 (defn delete-stale-secondaries
   [^Session session ^Model model old-record new-record]
   (combine-responses
    (filter
     identity
     (for [t (:secondary-tables model)]
-      (let [key (:key t)
-            old-key-value (k/extract-key-value key old-record)
-            new-key-value (k/extract-key-value key new-record)]
-        (when (and (k/has-key? key new-record)
-                   old-key-value
-                   (not= old-key-value new-key-value))
+      (let [stale-key-value (stale-secondary-key-value
+                             model
+                             old-record
+                             new-record
+                             t)]
+        (if stale-key-value
           (delete-record session
                          model
                          t
-                         old-key-value)))))))
+                         stale-key-value)
+          (return [:ok nil :no-stale-secondary])))))))
 
 (defn upsert-secondaries
   "returns Deferred[Right[]]"
@@ -67,24 +78,29 @@
               (k/extract-key-value k record))
          (upsert-record session model t record))))))
 
+(defn stale-lookup-key-values
+  [^Model model old-record new-record lookup-key-table]
+  (let [uber-key (t/uber-key model)
+        uber-key-value (t/extract-uber-key-value model (or new-record
+                                                           old-record))
+        key (:key lookup-key-table)
+        col-colls (:collections lookup-key-table)]
+
+    (when (k/has-key? key new-record)
+      (let [old-kvs (set (k/extract-key-value-collection key old-record col-colls))
+            new-kvs (set (k/extract-key-value-collection key new-record col-colls))]
+        (filter identity (set/difference old-kvs new-kvs))))))
+
 (defn delete-stale-lookups
   [^Session session ^Model model old-record new-record]
   (combine-responses
    (mapcat
     identity
     (for [t (:lookup-key-tables model)]
-      (let [uber-key (t/uber-key model)
-            uber-key-value (t/extract-uber-key-value model (or new-record
-                                                               old-record))
-            key (:key t)
-            col-colls (:collections t)]
+      (let [stale-kvs (stale-lookup-key-values model old-record new-record t)]
 
-        (when (k/has-key? key new-record)
-          (let [old-kvs (set (k/extract-key-value-collection key old-record col-colls))
-                new-kvs (set (k/extract-key-value-collection key new-record col-colls))
-                stale-kvs (filter identity (set/difference old-kvs new-kvs))]
-            (for [kv stale-kvs]
-              (delete-record session model t kv)))))))))
+        (for [kv stale-kvs]
+          (delete-record session model t kv)))))))
 
 (defn upsert-lookups
   [^Session session ^Model model record]
