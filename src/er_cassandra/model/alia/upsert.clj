@@ -80,10 +80,7 @@
 
 (defn stale-lookup-key-values
   [^Model model old-record new-record lookup-key-table]
-  (let [uber-key (t/uber-key model)
-        uber-key-value (t/extract-uber-key-value model (or new-record
-                                                           old-record))
-        key (:key lookup-key-table)
+  (let [key (:key lookup-key-table)
         col-colls (:collections lookup-key-table)]
 
     (when (k/has-key? key new-record)
