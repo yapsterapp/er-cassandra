@@ -6,12 +6,7 @@
       :cljs [plumbing.core :refer [assoc-when]])
    #?(:clj [clojure.core.match :refer [match]]
       :cljs [cljs.core.match :refer-macros [match]])
-   [schema.core :as s #?@(:cljs [:include-macros true])]
-   [schema.coerce :refer [coercer]]
-   [er-model.schema
-    :refer [x-json-coercion-matcher
-            check-variant
-            check-map-variant]]))
+   [schema.core :as s #?@(:cljs [:include-macros true])]))
 
 ;; some functions for creating and collecting a log
 ;; of errors relating to an entity
