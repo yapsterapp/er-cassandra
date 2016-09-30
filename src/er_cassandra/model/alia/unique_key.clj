@@ -120,6 +120,19 @@
            deleted? [:ok key-desc :deleted]
            :else    [:ok key-desc :stale]))))))
 
+(defn stale-unique-key-values
+  [^Model model old-record new-record unique-key-table]
+  (let [key (:key unique-key-table)
+        col-colls (:collections unique-key-table)]
+    (when (k/has-key? key new-record)
+      (let [old-kvs (set (k/extract-key-value-collection key
+                                                         old-record
+                                                         col-colls))
+            new-kvs (set (k/extract-key-value-collection key
+                                                         new-record
+                                                         col-colls))]
+        (filter identity (set/difference old-kvs new-kvs))))))
+
 (defn release-stale-unique-keys
   [^Session session ^Model model old-record new-record]
   (combine-responses
@@ -127,20 +140,10 @@
     identity
     (for [t (:unique-key-tables model)]
       (let [uber-key (t/uber-key model)
-            uber-key-value (t/extract-uber-key-value model (or new-record
-                                                               old-record))
-            key (:key t)
-            col-colls (:collections t)]
-        (when (k/has-key? key new-record)
-          (let [old-kvs (set (k/extract-key-value-collection key
-                                                             old-record
-                                                             col-colls))
-                new-kvs (set (k/extract-key-value-collection key
-                                                             new-record
-                                                             col-colls))
-                stale-kvs (filter identity (set/difference old-kvs new-kvs))]
-            (for [kv stale-kvs]
-              (release-unique-key session model t uber-key-value kv)))))))))
+            uber-key-value (t/extract-uber-key-value model old-record)
+            stale-kvs (stale-unique-key-values model old-record new-record t)]
+        (for [kv stale-kvs]
+          (release-unique-key session model t uber-key-value kv)))))))
 
 (defn acquire-unique-keys
   [^Session session ^Model model record]
