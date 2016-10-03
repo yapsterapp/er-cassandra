@@ -64,7 +64,7 @@
 ;; secondary and lookup tables may be materialized views,
 ;; which will be used for query but won't be upserted to
 (s/defschema SecondaryTableSchema
-  (merge TableSchema
+  (merge PrimaryTableSchema
          {(s/optional-key :view?) s/Bool}))
 
 ;; lookup tables contain columns from the uberkey and
@@ -82,9 +82,9 @@
    (s/optional-key :versioned?) s/Bool})
 
 (s/defrecord Model
-    [primary-table :- TableSchema
-     unique-key-tables :- [LookupTableSchema]
-     secondary-tables :- [TableSchema]
+    [primary-table :- PrimaryTableSchema
+     unique-key-tables :- [UniqueKeyTableSchema]
+     secondary-tables :- [SecondaryTableSchema]
      lookup-key-tables :- [LookupTableSchema]
      callbacks :- CallbacksSchema
      versioned? :- s/Bool])
@@ -192,6 +192,18 @@
 (defn uber-key
   [^Model model]
   (get-in model [:primary-table :key]))
+
+(defn mutable-secondary-tables
+  [^Model model]
+  (->> model
+       :secondary-tables
+       (filterv (comp not :view?))))
+
+(defn mutable-lookup-tables
+  [^Model model]
+  (->> model
+       :lookup-key-tables
+       (filterv (comp not :view?))))
 
 (defn extract-uber-key-value
   [^Model model record]

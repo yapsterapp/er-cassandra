@@ -54,7 +54,7 @@
   (combine-responses
    (filter
     identity
-    (for [t (:secondary-tables model)]
+    (for [t (t/mutable-secondary-tables model)]
       (let [stale-key-value (stale-secondary-key-value
                              model
                              old-record
@@ -71,7 +71,7 @@
   "returns Deferred[Right[]]"
   [^Session session ^Model model record]
   (combine-responses
-   (for [t (:secondary-tables model)]
+   (for [t (t/mutable-secondary-tables model)]
      (let [k (:key t)]
        (when (and
               (k/has-key? k record)
@@ -93,7 +93,7 @@
   (combine-responses
    (mapcat
     identity
-    (for [t (:lookup-key-tables model)]
+    (for [t (t/mutable-lookup-tables model)]
       (let [stale-kvs (stale-lookup-key-values model old-record new-record t)]
 
         (for [kv stale-kvs]
@@ -104,7 +104,7 @@
   (combine-responses
    (mapcat
     identity
-    (for [t (:lookup-key-tables model)]
+    (for [t (t/mutable-lookup-tables model)]
       (let [uber-key (t/uber-key model)
             uber-key-value (t/extract-uber-key-value model record)
             key (:key t)
@@ -133,8 +133,8 @@
 (defn has-lookups?
   [^Model model]
   (boolean
-   (or (not-empty (:secondary-tables model))
-       (not-empty (:lookup-key-tables model)))))
+   (or (not-empty (t/mutable-secondary-tables model))
+       (not-empty (t/mutable-lookup-tables model)))))
 
 (defn update-secondaries-and-lookups
   "update non-LWT secondary and lookup entries"
