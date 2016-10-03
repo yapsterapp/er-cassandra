@@ -15,8 +15,14 @@
    (s/optional-key :before-save) [CallbackFnSchema]})
 
 (s/defschema KeySchema
-  (s/either [(s/optional [s/Keyword] []) s/Keyword]
-            [s/Keyword]))
+  (s/conditional
+
+   (fn [k] (-> k first sequential?))
+   [(s/optional [s/Keyword] :compound-parition-key)
+    s/Keyword]
+
+   :else
+   [s/Keyword]))
 
 (s/defschema SecondaryKeySchema
   s/Keyword)
