@@ -14,6 +14,9 @@
   {(s/optional-key :after-load) [CallbackFnSchema]
    (s/optional-key :before-save) [CallbackFnSchema]})
 
+;; a private key for a cassandra table
+;; the first entry may itself be a vector, representing
+;; a compound partition key
 (s/defschema KeySchema
   (s/conditional
 
@@ -24,6 +27,8 @@
    :else
    [s/Keyword]))
 
+;; a secondary key on a cassandra table has only
+;; a single column
 (s/defschema SecondaryKeySchema
   s/Keyword)
 
@@ -33,7 +38,7 @@
 ;; a value taken from the primary record will be used to
 ;; delete with a secondary index from seocondary and lookup tables
 ;; TODO use the :entity-key to delete stale secondary and lookup records
-(s/defschema TableSchema
+(s/defschema PrimaryTableSchema
   {:name s/Keyword
    :key KeySchema
    (s/optional-key :entity-key) SecondaryKeySchema})
@@ -44,15 +49,34 @@
 ;; the collection columns in the key. the
 ;; :collections metadata describes the type of each
 ;; collection column
-(s/defschema LookupTableSchema
+(s/defschema CollectionKeysSchema
+  {(s/optional-key :collections) {s/Keyword
+                                  (s/pred #{:list :set :map})}})
+
+;; unique-key tables are lookup tables with a unique
+;; constraint on the key, enforced with an LWT
+(s/defschema UniqueKeyTableSchema
+  (merge PrimaryTableSchema
+         CollectionKeysSchema))
+
+;; secondary tables contain all columns from the primary
+;; table, with a different primary key.
+;; secondary and lookup tables may be materialized views,
+;; which will be used for query but won't be upserted to
+(s/defschema SecondaryTableSchema
   (merge TableSchema
-         {(s/optional-key :collections) {s/Keyword
-                                         (s/pred #{:list :set :map})}}))
+         {(s/optional-key :view?) s/Bool}))
+
+;; lookup tables contain columns from the uberkey and
+;; a lookup key
+(s/defschema LookupTableSchema
+  (merge SecondaryTableSchema
+         CollectionKeysSchema))
 
 (s/defschema ModelSchema
-  {:primary-table TableSchema
-   (s/optional-key :unique-key-tables) [LookupTableSchema]
-   (s/optional-key :secondary-tables) [TableSchema]
+  {:primary-table PrimaryTableSchema
+   (s/optional-key :unique-key-tables) [UniqueKeyTableSchema]
+   (s/optional-key :secondary-tables) [SecondaryTableSchema]
    (s/optional-key :lookup-key-tables) [LookupTableSchema]
    (s/optional-key :callbacks) CallbacksSchema
    (s/optional-key :versioned?) s/Bool})
