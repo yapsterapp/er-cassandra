@@ -142,5 +142,6 @@
   "true if the record contains? keys for all the key components"
   [key record]
   (->> key
+       flatten
        (map #(contains? record %))
        (every? identity)))
