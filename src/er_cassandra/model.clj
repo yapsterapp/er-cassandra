@@ -48,6 +48,7 @@
   select-one
   select-one-instance
   ensure-one
+  ensure-one-instance
   select-many
   select-many-instances
   select-many-cat]

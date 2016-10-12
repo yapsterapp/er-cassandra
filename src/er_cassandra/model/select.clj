@@ -72,6 +72,17 @@
                                       :no-matching-record]}))
          (return (first records)))))))
 
+(defn ensure-one-instance
+  "select-one-instance but errors if there is no record"
+  ([^ModelSession session ^Model model key record-or-key-value]
+   (ensure-one-instance session model key record-or-key-value {}))
+
+  ([^ModelSession session ^Model model key record-or-key-value opts]
+   (with-context deferred-context
+     (if (ms/model-instance? record-or-key-value)
+         (return record-or-key-value)
+         (select-one-instance model key record-or-key-value opts)))))
+
 (defn select-many
   "issue one select-one query for each record-or-key-value and combine
    the responses"
