@@ -40,7 +40,18 @@
 ;; records for a given model instance
 
 (import-vars
+
  [er-cassandra.model.types create-model defmodel]
- [er-cassandra.model.select select select-one ensure-one select-many select-many-cat]
+
+ [er-cassandra.model.select
+  select
+  select-one
+  select-one-instance
+  ensure-one
+  select-many
+  select-many-instances
+  select-many-cat]
+
  [er-cassandra.model.upsert upsert upsert-many]
+
  [er-cassandra.model.delete delete delete-many])

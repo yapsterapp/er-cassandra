@@ -38,6 +38,18 @@
                             (merge opts {:limit 1}))]
        (return (first records))))))
 
+(defn select-one-instance
+  "select a single record, unless the record is already a record retrieved
+   from the db, in which case return it"
+  ([^ModelSession session ^Model model key record-or-key-value]
+   (select-one-if session model key record-or-key-value {}))
+
+  ([^ModelSession session ^Model model key record-or-key-value opts]
+   (with-context deferred-context
+     (if (ms/model-instance? record-or-key-value)
+       (return record-or-key-value)
+       (select-one session model key record-or-key-value opts)))))
+
 (defn ensure-one
   "select a single record erroring the response if there is no record"
   ([^ModelSession session ^Model model key record-or-key-value]
@@ -70,6 +82,18 @@
    (->> record-or-key-values
         (map (fn [record-or-key-value]
                (select-one session model key record-or-key-value opts)))
+        combine-responses)))
+
+(defn select-many-instances
+  "select-many records, unless the record-or-key-values were already
+  retrives from the db, in which case return them directly (but still
+  select any which were not already retrieved from the db)"
+  ([^ModelSession session ^Model model key record-or-key-values]
+   (select-many-instances session model key record-or-key-values {}))
+  ([^ModelSession session ^Model model key record-or-key-values opts]
+   (->> record-or-key-values
+        (map (fn [record-or-key-value]
+               (select-one-instance session model key record-or-key-value opts)))
         combine-responses)))
 
 (defn select-many-cat
