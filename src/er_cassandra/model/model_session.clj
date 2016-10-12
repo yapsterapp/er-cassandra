@@ -23,3 +23,18 @@
 (defprotocol ModelSpySession
   (-model-spy-log [this])
   (-reset-model-spy-log [this]))
+
+
+(defn model-instance?
+  "tests if the record was retrieved from the db"
+  [r]
+  (-> r
+      meta
+      ::model-instance
+      boolean))
+
+(defn add-model-instance-metadata
+  [r]
+  (-> r
+      (with-meta (assoc (meta r)
+                        ::model-instance true))))

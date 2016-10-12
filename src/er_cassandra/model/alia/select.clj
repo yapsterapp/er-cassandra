@@ -107,7 +107,7 @@
           (util/combine-responses prs)
           (fn [rs] (filter identity rs))))))))
 
-(defn select*
+(defn select**
   "select records from primary or lookup tables as required"
   [^Session session model key record-or-key-value {:keys [from] :as opts}]
    (let [key (k/make-sequential key)
@@ -165,3 +165,10 @@
                                         {:model model
                                          :key key}
                                         :no-matching-key]})))))))
+
+(defn select*
+  [^Session session model key record-or-key-value {:keys [from] :as opts}]
+  (with-context deferred-context
+    (mlet [records (select** session model key record-or-key-value opts)]
+      (return
+       (map ms/add-model-instance-metadata records)))))
