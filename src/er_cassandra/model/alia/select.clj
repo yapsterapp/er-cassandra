@@ -57,7 +57,9 @@
 
   [^Session session ^Model model table key record-or-key-value opts]
   (let [kv (k/extract-key-value key record-or-key-value opts)
-        opts (dissoc opts :key-value)]
+        opts (-> opts
+                 (dissoc :key-value)
+                 (assoc :row-generator (ms/->ModelInstanceRowGenerator)))]
     (when (and (:versioned? model) (not= 1 (:limit opts)))
       (throw (ex-info select-err-msg {:model model :opts opts})))
     (r/select session (:name table) key kv opts)))
@@ -82,7 +84,9 @@
                      (k/partition-key (:key table)) record-or-key-value opts))
         opts (dissoc opts :key-value)
         lookup-opts (dissoc opts :columns)
-        primary-opts (dissoc opts :where :only-if :order-by :limit)]
+        primary-opts (-> opts
+                         (dissoc :where :only-if :order-by :limit)
+                         (assoc :row-generator (ms/->ModelInstanceRowGenerator)))]
     (with-context deferred-context
       (mlet [lrs (r/select session
                              (:name table)
@@ -107,7 +111,7 @@
           (util/combine-responses prs)
           (fn [rs] (filter identity rs))))))))
 
-(defn select**
+(defn select*
   "select records from primary or lookup tables as required"
   [^Session session model key record-or-key-value {:keys [from] :as opts}]
    (let [key (k/make-sequential key)
@@ -165,10 +169,3 @@
                                         {:model model
                                          :key key}
                                         :no-matching-key]})))))))
-
-(defn select*
-  [^Session session model key record-or-key-value {:keys [from] :as opts}]
-  (with-context deferred-context
-    (mlet [records (select** session model key record-or-key-value opts)]
-      (return
-       (map ms/add-model-instance-metadata records)))))

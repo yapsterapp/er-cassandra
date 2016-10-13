@@ -20,7 +20,7 @@
      ~@forms))
 
 (defn- execute*
-  [alia-session statement]
+  [alia-session statement opts]
   (aliam/execute
    alia-session
    (if (string? statement)
@@ -28,7 +28,8 @@
      (do
        (when debug
          (prn statement))
-       (h/->raw statement)))))
+       (h/->raw statement)))
+   opts))
 
 (defn- create-alia-session*
   [contact-points keyspace port]
@@ -42,7 +43,9 @@
 (defrecord AliaSession [keyspace alia-session]
   Session
   (execute [_ statement]
-    (execute* alia-session statement))
+    (execute* alia-session statement {}))
+  (execute [_ statement opts]
+    (execute* alia-session statement opts))
   (close [_]
     (.close alia-session)))
 
@@ -78,7 +81,9 @@
 
 (defrecord AliaSpySession [keyspace alia-session spy-log-atom truncate-on-close]
   Session
-  (execute [_ statement]
+  (execute [this statement]
+    (s/execute this statement {}))
+  (execute [_ statement opts]
     (swap! spy-log-atom conj statement)
     (execute* alia-session statement))
   (close [self]

@@ -4,7 +4,7 @@
    [taoensso.timbre :refer [trace debug info warn error]]
    [clojure.pprint :refer [pprint]]
    [manifold.deferred :as d]
-   [er-cassandra.session])
+   [er-cassandra.session :as s])
   (:import
    [er_cassandra.session Session]))
 
@@ -18,7 +18,9 @@
 
 (defrecord MapMockSession [statement-responses statement-log-atom]
   Session
-  (execute [_ statement]
+  (execute [this statement]
+    (s/execute this statement {}))
+  (execute [_ statement opts]
     (swap! statement-log-atom conj statement)
     (if (contains? statement-responses statement)
       (deferred-value
@@ -77,7 +79,9 @@
                              response-log-atom
                              print?]
   Session
-  (execute [_ statement]
+  (execute [this statement]
+    (s/execute this statement {}))
+  (execute [_ statement opts]
     (swap! statement-log-atom conj statement)
 
     (if-let [[urms resp] (find-requirement-match

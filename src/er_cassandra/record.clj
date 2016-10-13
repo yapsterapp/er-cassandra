@@ -43,10 +43,17 @@
   ([^Session session table key record-or-key-value]
    (select session table key record-or-key-value {}))
 
-  ([^Session session table key record-or-key-value opts]
+  ([^Session session
+    table
+    key
+    record-or-key-value
+    {:keys [row-generator] :as opts}]
    (session/execute
     session
-    (select-statement table key record-or-key-value opts))))
+    (select-statement table key record-or-key-value opts)
+    (assoc-when
+     {}
+     :row-generator row-generator))))
 
 (defn select-one
   "select a single record"

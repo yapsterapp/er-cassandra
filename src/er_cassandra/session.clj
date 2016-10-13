@@ -1,7 +1,9 @@
 (ns er-cassandra.session)
 
 (defprotocol Session
-  (execute [this statement])
+  (execute
+    [this statement]
+    [this statement opts])
   (close [this]))
 
 (defprotocol SpySession

@@ -31,6 +31,8 @@
   s/Session
   (execute [_ statement]
     (s/execute alia-session statement))
+  (execute [_ statement opts]
+    (s/execute alia-session statement opts))
   (close [_]
     (s/close alia-session)))
 
@@ -79,6 +81,8 @@
   s/Session
   (execute [_ statement]
     (s/execute alia-session statement))
+  (execute [_ statement opts]
+    (s/execute alia-session statement opts))
   (close [_]
     (s/close alia-session))
 
