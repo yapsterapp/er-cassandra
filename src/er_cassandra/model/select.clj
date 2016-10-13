@@ -42,7 +42,7 @@
   "select a single record, unless the record is already a record retrieved
    from the db, in which case return it"
   ([^ModelSession session ^Model model key record-or-key-value]
-   (select-one-if session model key record-or-key-value {}))
+   (select-one-instance session model key record-or-key-value {}))
 
   ([^ModelSession session ^Model model key record-or-key-value opts]
    (with-context deferred-context
