@@ -3,6 +3,7 @@
    [plumbing.core :refer :all]
    [clojure.string :as str]
    [qbits.alia :as alia]
+   [qbits.alia.policy.load-balancing :as lb]
    [qbits.alia.manifold :as aliam]
    [qbits.hayt :as h]
    [er-cassandra.session :as s])
@@ -32,10 +33,17 @@
    opts))
 
 (defn- create-alia-session*
-  [contact-points keyspace port]
-  (let [cluster (alia/cluster (assoc-when
-                               {:contact-points contact-points}
-                               :port port))
+  [contact-points
+   datacenter
+   keyspace
+   port]
+  (let [cluster (alia/cluster
+                 (assoc-when
+                  {:contact-points contact-points}
+                  :load-balancing-policy (when datacenter
+                                           (lb/dc-aware-round-robin-policy
+                                            datacenter))
+                  :port port))
         alia-session (alia/connect cluster)]
     (alia/execute alia-session (str "USE " keyspace ";"))
     alia-session))
@@ -50,8 +58,10 @@
     (.close alia-session)))
 
 (defnk create-session
-  [contact-points keyspace {port nil}]
-  (->AliaSession keyspace (create-alia-session* contact-points keyspace port)))
+  [contact-points datacenter keyspace {port nil}]
+  (->AliaSession
+   keyspace
+   (create-alia-session* contact-points datacenter keyspace port)))
 
 (defn mutated-tables
   [spy-session]
