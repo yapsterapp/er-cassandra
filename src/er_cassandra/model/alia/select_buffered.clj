@@ -76,7 +76,7 @@
                           (get-in model [:primary-table :key])
                           pkv
                           primary-opts))))
-         (stream/map deref)
+         stream/realize-each
          (stream/filter identity))))
 
 (defn select-buffered*
