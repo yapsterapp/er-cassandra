@@ -95,7 +95,7 @@
     (s/execute this statement {}))
   (execute [_ statement opts]
     (swap! spy-log-atom conj statement)
-    (execute* alia-session statement))
+    (execute* alia-session statement opts))
   (close [self]
     (when truncate-on-close
       (truncate-spy-tables self))
