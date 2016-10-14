@@ -109,11 +109,12 @@
   (reset-spy-log [_] (reset! spy-log-atom [])))
 
 (defnk create-spy-session
-  [contact-points keyspace {port nil} {truncate-on-close nil}]
-  (->AliaSpySession keyspace
-                    (create-alia-session* contact-points keyspace port)
-                    (atom [])
-                    truncate-on-close))
+  [contact-points datacenter keyspace {port nil} {truncate-on-close nil}]
+  (->AliaSpySession
+   keyspace
+   (create-alia-session* contact-points datacenter keyspace port)
+   (atom [])
+   truncate-on-close))
 
 (defn with-spy-session-reset*
   "start an alia spy-session, call a function and truncate
