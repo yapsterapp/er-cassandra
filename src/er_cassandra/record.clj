@@ -50,10 +50,9 @@
     {:keys [row-generator] :as opts}]
    (session/execute
     session
-    (select-statement table key record-or-key-value opts)
-    (assoc-when
-     {}
-     :row-generator row-generator))))
+    (select-statement table key record-or-key-value
+                      (dissoc opts :columns :where :only-if :order-by :limit))
+    opts)))
 
 (defn select-buffered
   "select records"
@@ -68,10 +67,9 @@
     {:keys [row-generator] :as opts}]
    (session/execute-buffered
     session
-    (select-statement table key record-or-key-value opts)
-    (assoc-when
-     {}
-     :row-generator row-generator))))
+    (select-statement table key record-or-key-value
+                      (dissoc opts :columns :where :only-if :order-by :limit))
+    opts)))
 
 (defn select-one
   "select a single record"
@@ -80,8 +78,9 @@
    (select-one session table key record-or-key-value {}))
 
   ([^Session session table key record-or-key-value opts]
-   (d/chain (select session table key record-or-key-value (merge opts {:limit 1}))
-            first)))
+   (d/chain
+    (select session table key record-or-key-value (merge opts {:limit 1}))
+    first)))
 
 (defn insert-statement
   "returns a Hayt insert statement"
@@ -106,7 +105,8 @@
    (d/chain
     (session/execute
      session
-     (insert-statement table record opts))
+     (insert-statement table record opts)
+     (dissoc opts :if-not-exists :using))
     first)))
 
 (defn update-statement
@@ -139,7 +139,8 @@
    (d/chain
     (session/execute
      session
-     (update-statement table key record opts))
+     (update-statement table key record opts)
+     (dissoc opts :only-if :if-exists :using :set-columns))
     first)))
 
 (defn combine-where
@@ -176,5 +177,6 @@
    (d/chain
     (session/execute
      session
-     (delete-statement table key record-or-key-value opts))
+     (delete-statement table key record-or-key-value opts)
+     (dissoc opts :only-if :if-exists :using :where))
     first)))
