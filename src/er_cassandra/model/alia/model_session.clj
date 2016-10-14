@@ -33,6 +33,10 @@
     (s/execute alia-session statement))
   (execute [_ statement opts]
     (s/execute alia-session statement opts))
+  (execute-buffered [_ statement]
+    (s/execute-buffered alia-session statement))
+  (execute-buffered [_ statement opts]
+    (s/execute-buffered alia-session statement opts))
   (close [_]
     (s/close alia-session)))
 
@@ -83,6 +87,10 @@
     (s/execute alia-session statement))
   (execute [_ statement opts]
     (s/execute alia-session statement opts))
+  (execute-buffered [_ statement]
+    (s/execute-buffered alia-session statement))
+  (execute-buffered [_ statement opts]
+    (s/execute-buffered alia-session statement opts))
   (close [_]
     (s/close alia-session))
 
