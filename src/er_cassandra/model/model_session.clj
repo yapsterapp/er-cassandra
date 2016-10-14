@@ -12,6 +12,9 @@
   (-select [this ^Model model key record-or-key-value opts]
     "select model instances")
 
+  (-select-buffered [this ^Model model key record-or-key-value opts]
+    "select model instances, returning a stream of results")
+
   (-upsert [this ^Model model record opts]
     "upsert a single model instance")
 

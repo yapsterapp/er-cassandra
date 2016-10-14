@@ -47,7 +47,7 @@
             t))
         (:lookup-key-tables model)))
 
-(def ^:private select-err-msg
+(def select-err-msg
   "Versioned tables can only perform selects when :limit option is set to 1.")
 
 (defn select-from-full-table

@@ -6,6 +6,7 @@
    [er-cassandra.model.model-session :as model-session
     :refer [ModelSession ModelSpySession]]
    [er-cassandra.model.alia.select :refer [select*]]
+   [er-cassandra.model.alia.select-buffered :refer [select-buffered*]]
    [er-cassandra.model.alia.upsert :refer [upsert*]]
    [er-cassandra.model.alia.delete :refer [delete*]])
   (:import
@@ -18,6 +19,9 @@
 
   (-select [_ model key record-or-key-value opts]
     (select* alia-session model key record-or-key-value opts))
+
+  (-select-buffered [_ model key record-or-key-value opts]
+    (select-buffered* alia-session model key record-or-key-value opts))
 
   (-upsert [_ model record opts]
     (upsert* alia-session model record opts))
@@ -57,6 +61,14 @@
                                     :record-or-key-value record-or-key-value
                                     :opts opts})
     (select* alia-session model key record-or-key-value opts))
+
+  (-select-buffered [_ model key record-or-key-value opts]
+    (swap! model-spy-log-atom conj {:action :select
+                                    :model model
+                                    :key key
+                                    :record-or-key-value record-or-key-value
+                                    :opts opts})
+    (select-buffered* alia-session model key record-or-key-value opts))
 
   (-upsert [_ model record opts]
     (swap! model-spy-log-atom conj {:action :upsert

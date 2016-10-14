@@ -1,5 +1,6 @@
 (ns er-cassandra.model.select
   (:require [manifold.deferred :as d]
+            [manifold.stream :as s]
             [cats.core :refer [mlet return]]
             [cats.context :refer [with-context]]
             [cats.labs.manifold :refer [deferred-context]]
@@ -22,6 +23,21 @@
     :after-load
     (ms/-select session model key record-or-key-value opts)
     opts)))
+
+(defn select-buffered
+  ([^ModelSession session ^Model model key record-or-key-value]
+   (select-buffered session model key record-or-key-value {}))
+
+  ([^ModelSession session ^Model model key record-or-key-value opts]
+   (let [strm (ms/-select-buffered session model key record-or-key-value opts)]
+     (->> strm
+          (s/map (fn [mi]
+                   (first
+                    (t/run-deferred-callbacks
+                     model
+                     :after-load
+                     [mi]
+                     opts))))))))
 
 (defn select-one
   "select a single record, using an index table if necessary"

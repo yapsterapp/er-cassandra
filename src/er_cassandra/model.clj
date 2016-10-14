@@ -45,6 +45,7 @@
 
  [er-cassandra.model.select
   select
+  select-buffered
   select-one
   select-one-instance
   ensure-one
