@@ -3,6 +3,7 @@
   (:require
    [plumbing.core :refer :all]
    [manifold.deferred :as d]
+   [manifold.stream :as s]
    [qbits.hayt :as h]
    [er-cassandra.key :refer [make-sequential extract-key-equality-clause]]
    [er-cassandra.session :as session])
@@ -47,7 +48,7 @@
     table
     key
     record-or-key-value
-    {:keys [row-generator] :as opts}]
+    opts]
    (session/execute
     session
     (select-statement table key record-or-key-value
@@ -55,7 +56,11 @@
     opts)))
 
 (defn select-buffered
-  "select records"
+  "select a stream of records
+
+   if :buffer-size opt is given, a *downstream* buffer will be applied to
+   the query stream. the query-buffer will be sized by the :fetch-size opt
+   if given"
 
   ([^Session session table key record-or-key-value]
    (select session table key record-or-key-value {}))
@@ -64,12 +69,17 @@
     table
     key
     record-or-key-value
-    {:keys [row-generator] :as opts}]
-   (session/execute-buffered
-    session
-    (select-statement table key record-or-key-value
-                      (dissoc opts :columns :where :only-if :order-by :limit))
-    opts)))
+    {:keys [buffer-size] :as opts}]
+   (let [strm (session/execute-buffered
+               session
+               (select-statement
+                table key record-or-key-value
+                (dissoc opts :columns :where :only-if :order-by :limit))
+               (-> opts
+                   (dissoc :buffer-size)))]
+     (if buffer-size
+       (s/buffer buffer-size strm)
+       strm))))
 
 (defn select-one
   "select a single record"
