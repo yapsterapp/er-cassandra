@@ -51,9 +51,11 @@
     opts]
    (session/execute
     session
-    (select-statement table key record-or-key-value
-                      (dissoc opts :columns :where :only-if :order-by :limit))
-    opts)))
+    (select-statement table
+                      key
+                      record-or-key-value
+                      (select-keys opts [:columns :where :only-if :order-by :limit]))
+    (dissoc opts :columns :where :only-if :order-by :limit))))
 
 (defn select-buffered
   "select a stream of records
@@ -73,10 +75,12 @@
    (let [strm (session/execute-buffered
                session
                (select-statement
-                table key record-or-key-value
-                (dissoc opts :columns :where :only-if :order-by :limit))
+                table
+                key
+                record-or-key-value
+                (select-keys opts [:columns :where :only-if :order-by :limit]))
                (-> opts
-                   (dissoc :buffer-size)))]
+                   (dissoc :columns :where :only-if :order-by :limit :buffer-size)))]
      (if buffer-size
        (s/buffer buffer-size strm)
        strm))))
@@ -115,7 +119,10 @@
    (d/chain
     (session/execute
      session
-     (insert-statement table record opts)
+     (insert-statement
+      table
+      record
+      (select-keys opts [:if-not-exists :using]))
      (dissoc opts :if-not-exists :using))
     first)))
 
@@ -149,7 +156,11 @@
    (d/chain
     (session/execute
      session
-     (update-statement table key record opts)
+     (update-statement
+      table
+      key
+      record
+      (select-keys opts [:only-if :if-exists :using :set-columns]))
      (dissoc opts :only-if :if-exists :using :set-columns))
     first)))
 
@@ -187,6 +198,10 @@
    (d/chain
     (session/execute
      session
-     (delete-statement table key record-or-key-value opts)
+     (delete-statement
+      table
+      key
+      record-or-key-value
+      (select-keys opts [:only-if :if-exists :using :where]))
      (dissoc opts :only-if :if-exists :using :where))
     first)))
