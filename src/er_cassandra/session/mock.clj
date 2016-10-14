@@ -105,6 +105,11 @@
                           {:statement statement
                            :statement-log @statement-log-atom}))))))
 
+  (execute-buffered [this statement]
+    (s/execute-buffered this statement {}))
+  (execute-buffered [this statement opts]
+    (throw (ex-info "not implemented" {})))
+
   (close [_]
     (when (not-empty @requirement-matchers-atom)
       (throw (ex-info "some required statements not executed"

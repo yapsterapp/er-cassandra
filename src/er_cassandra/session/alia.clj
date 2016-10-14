@@ -32,6 +32,18 @@
        (h/->raw statement)))
    opts))
 
+(defn- execute-buffered*
+  [alia-session statement opts]
+  (aliam/execute-buffered
+   alia-session
+   (if (string? statement)
+     statement
+     (do
+       (when debug
+         (prn statement))
+       (h/->raw statement)))
+   opts))
+
 (defn- create-alia-session*
   [contact-points
    datacenter
@@ -54,6 +66,10 @@
     (execute* alia-session statement {}))
   (execute [_ statement opts]
     (execute* alia-session statement opts))
+  (execute-buffered [_ statement]
+    (execute-buffered* alia-session statement {}))
+  (execute-buffered [_ statement opts]
+    (execute-buffered* alia-session statement opts))
   (close [_]
     (.close alia-session)))
 
@@ -96,6 +112,11 @@
   (execute [_ statement opts]
     (swap! spy-log-atom conj statement)
     (execute* alia-session statement opts))
+  (execute-buffered [this statement]
+    (s/execute-buffered this statement {}))
+  (execute-buffered [_ statement opts]
+    (swap! spy-log-atom conj statement)
+    (execute-buffered* alia-session statement opts))
   (close [self]
     (when truncate-on-close
       (truncate-spy-tables self))
