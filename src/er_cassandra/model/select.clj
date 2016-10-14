@@ -32,12 +32,11 @@
    (let [strm (ms/-select-buffered session model key record-or-key-value opts)]
      (->> strm
           (s/map (fn [mi]
-                   (first
-                    (t/run-deferred-callbacks
-                     model
-                     :after-load
-                     [mi]
-                     opts))))))))
+                   (t/run-callbacks-single
+                    model
+                    :after-load
+                    mi
+                    opts)))))))
 
 (defn select-one
   "select a single record, using an index table if necessary"
