@@ -1,6 +1,6 @@
 # er-cassandra
 
-a  cassandra connector
+a cassandra connector
 
 * migrations (from [drift](https://github.com/macourtney/drift))
 * low-level async API (built on [alia](https://github.com/mpenet/alia))
@@ -24,27 +24,27 @@ project
 ```
 
 and create a _drift_ config namespace like this one, which puts the migrations in
-`src/api/migrations_cassandra`
+`migrations/api/migrations_cassandra`
 
 ```
-(ns api.migrate-config
+(ns config.migrate-config
   (:require [er-cassandra.drift.migrate-config :as mc]
             [api.main :as a]))
 
-(defn cassandra []
+(defn migrate-config []
 
   (mc/cassandra {:alia-session (s/get-an-er-cassandra-session)
                  :keyspace "a_keyspace"
                  :namespace "api.migrate-config/cassandra"
-                 :directory "src/api/migrations_cassandra"}))
+                 :directory "migrations/api/migrations_cassandra"}))
 ```
 
 then migrations can be created and run like this :
 
 ```
-lein create-migration -c api.migrate-config/cassandra create-migration create-users
-lein migrate -c api.migrate-config/cassandra
-lein migrate -c api.migrate-config/cassandra --version 20150804151456
+lein create-migration create-users
+lein migrate
+lein migrate --version 20150804151456
 
 ```
 
@@ -88,13 +88,21 @@ these in to implement the migration like this -
   (execute "drop table users_by_username")
   (execute "drop table users_by_email"))
 ```
-### simple API
+### record API
 
-The simple API is simple
+The record API operations directly correspond to record-oriented cassandra statements.
+
+You can use the session to directly execute CQL strings or [Hayt](https://github.com/mpenet/hayt) queries
+
+All the operations apart from the `-buffered` operations return a `Deferred` promise of the response.
+
+The `-buffered` operations return a `Stream` of the response records.
 
 ```
+(require '[er-cassandra.session :as s])
 (require '[er-cassandra.session.alia :as alia-session])
 (require '[er-cassandra.record :as r])
+(require '[qbits.hayt :as h])
 
 (def session (alia-session/create-session {:contact-points ["localhost"]
                                            :keyspace "a_keyspace"}))
@@ -109,6 +117,9 @@ The simple API is simple
 ;;      :created_at nil, :device_id #{}, :email #{"foo.mcfoo@foo.com" "foo@foo.com"},
 ;;      :name "Foo McFoo", :username "foo"})
 
+(r/select-buffered session :users :id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f")
+;; like select, but returns a Stream of the result records
+
 @(r/select-one session :users :id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f")
 ;; => {:id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f", :created_at nil,
 ;;     :device_id #{}, :email #{"foo.mcfoo@foo.com" "foo@foo.com"},
@@ -118,11 +129,18 @@ The simple API is simple
 
 (r/delete session :users :id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f")
 
-```
-### higher-level API
+(s/execute session "select * from users where id=f11c0190-40de-11e5-bb66-c37b19130f2f")
+;; returns a Deferred<record-map-seq>
 
-The higher-level API requires a model to be defined, and manages unique-keys,
-secondary tables and lookup tables
+(s/execute-buffered session (h/select :users (h/where [[:= :id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f"]])))
+;; returns a Stream of record maps
+
+```
+### Model API
+
+The model API requires a model to be defined and will assist you
+both with denormalizing data across multiple CQL tables associated with
+a single entity, and with querying entities from denormalized tables.
 
 A model must be defined, and then the high-level API will look after secondary
 tables, lookup tables and unique-key acquisition with lightweight-transactions
@@ -133,48 +151,65 @@ tables, lookup tables and unique-key acquisition with lightweight-transactions
 (m/defmodel Users
   {:primary-table {:name :users
                    :key :id}
+   ;; materialized views are supported
    :secondary-tables [{:name :users_by_username
-                       :key :username}]
+                       :key [:username :id]
+                       :view? true}]
    :unique-key-tables [{:name :users_by_email
                         :key :email
+                        :collection :list}]
+   :lookup-key-tables [{:name :users_by_search_key
+                        :key :search_key
                         :collection :set}]})
 
 @(m/upsert session Users  {:id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f"
                            :username "foo"
                            :name "Foo McFoo"
-                           :email #{"foo@foo.com" "foo.mcfoo@foo.com"}})
+                           :search_key #{"foo" "mcfoo"}
+                           :email ["foo@foo.com" "foo.mcfoo@foo.com"]})
 
-;; => #object[cats.monad.either.Right 0xd4e215c {:status :ready,
-;;      :val [{:id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f",
-;;             :created_at nil, :device_id #{},
-;;             :email #{"foo.mcfoo@foo.com" "foo@foo.com"},
-;;             :name "Foo McFoo", :username "foo"}
-;;            nil]}]
+;; => << #er_cassandra.model.model_session.ModelInstance{
+;;      [{:id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f",
+;;        :created_at nil, :device_id #{},
+;;        :search_key #{"foo" "mcfoo"}
+;;        :email #{"foo.mcfoo@foo.com" "foo@foo.com"},
+;;        :name "Foo McFoo", :username "foo"}
+;;       nil]} >>
 
 @(m/upsert session Users {:id #uuid "47d3a3a0-40ec-11e5-84fa-b7ba3fcfbef9"
                            :username "foo-too"
                            :name "Foo Too McFoo"
+                           :search_key #{"foo" "too" "mcfoo"}
                            :email #{"foo@foo.com" "foo.too.mcfoo@foo.com"}})
 
-;; -> #object[cats.monad.either.Right 0x1b5c287f {:status :ready,
-;;      :val [{:id #uuid "47d3a3a0-40ec-11e5-84fa-b7ba3fcfbef9",
-;;             :created_at nil, :device_id #{},
-;;             :email #{"foo.too.mcfoo@foo.com"},
-;;             :name "Foo Too McFoo", :username "foo-too"}
-;;            {[:email] [#{"foo@foo.com"}]}]}]
+;; => << #er_cassandra.model.model_session.ModelInstance{
+;;       [{:id #uuid "47d3a3a0-40ec-11e5-84fa-b7ba3fcfbef9",
+;;         :created_at nil, :device_id #{},
+;;         :email #{"foo.too.mcfoo@foo.com"},
+;;         :search_key #{"foo" "too" "mcfoo"}
+;;         :name "Foo Too McFoo", :username "foo-too"}
+;;         {[:email] [#{"foo@foo.com"}]}]}>>
 
 ;; shows that the second upsert failed to acquire the
 ;; "foo@foo.com" [:email] unique key
 
-;; select automatically uses lookup or secondary tables
+;; select automatically uses lookup or secondary tables to find
+;; the primary entity records (if all you want is the secondary table
+;; record you can use a Hayt query)
 @(m/select-one session Users :email "foo@foo.com")
 @(m/select-one session Users :email "foo.too.mcfoo@foo.com")
 @(m/select-one session Users :username "foo")
+
+;; select-buffered also uses lookup or secondary tables and
+;; joins to return a stream of primary entity records
 ```
 
-The high-level API calls are processed within the manifold monad from
+The high-level API calls (apart from the `-buffered` fns) are processed within
+the manifold promise monad from
 [cats](https://github.com/funcool/cats/blob/master/src/cats/labs/manifold.clj)
 and all return a `Deferred` result.
+
+The `-buffered` fns return a Manifold `Stream` of records
 
 ## License
 
