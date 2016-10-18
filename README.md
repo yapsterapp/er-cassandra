@@ -1,10 +1,12 @@
 # er-cassandra
 
-a cassandra connector
+an asynchronous cassandra connector
 
 * migrations (from [drift](https://github.com/macourtney/drift))
 * low-level async API (built on [alia](https://github.com/mpenet/alia))
 * higher-level async API dealing with unique keys, secondary and lookup tables
+* support for streaming / paging queries
+* materialized view support
 
 ## Usage
 
