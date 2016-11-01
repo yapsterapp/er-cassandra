@@ -42,3 +42,7 @@
   (init-row [_] (transient {}))
   (conj-row [_ row k v] (assoc! row (keyword k) v))
   (finalize-row [_ row] (map->ModelInstance (persistent! row))))
+
+;; print the ModelInstance records as vanilla maps for now
+(defmethod print-method er_cassandra.model.model_session.ModelInstance [x writer]
+  (print-method (into {} x) writer))
