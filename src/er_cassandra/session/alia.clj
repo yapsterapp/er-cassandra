@@ -1,6 +1,7 @@
 (ns er-cassandra.session.alia
   (:require
    [plumbing.core :refer :all]
+   [taoensso.timbre :refer [trace debug info warn error]]
    [clojure.string :as str]
    [qbits.alia :as alia]
    [qbits.alia.policy.load-balancing :as lb]
@@ -13,22 +14,22 @@
     SpySession
     KeyspaceProvider]))
 
-(def ^:dynamic debug nil)
+(def ^:dynamic *trace* nil)
 
 (defmacro with-debug
   [& forms]
-  `(binding [debug true]
+  `(binding [*trace* true]
      ~@forms))
 
 (defn- execute*
   [alia-session statement opts]
   (aliam/execute
    alia-session
-   (if (string? statement)
-     statement
-     (do
-       (when debug
-         (prn statement))
+   (do
+     (when *trace*
+       (debug statement))
+     (if (string? statement)
+       statement
        (h/->raw statement)))
    opts))
 
@@ -36,26 +37,28 @@
   [alia-session statement opts]
   (aliam/execute-buffered
    alia-session
-   (if (string? statement)
-     statement
-     (do
-       (when debug
-         (prn statement))
+   (do
+     (when *trace*
+       (debug statement))
+     (if (string? statement)
+       statement
        (h/->raw statement)))
    opts))
 
-(defn- create-alia-session*
+(defnk ^:private create-alia-session*
   [contact-points
    datacenter
    keyspace
-   port]
-  (let [cluster (alia/cluster
-                 (assoc-when
-                  {:contact-points contact-points}
-                  :load-balancing-policy (when datacenter
-                                           (lb/dc-aware-round-robin-policy
-                                            datacenter))
-                  :port port))
+   :as args]
+  (let [cluster-args (dissoc args :keyspace :datacenter)
+        cluster-args (assoc-when
+                      cluster-args
+                      :load-balancing-policy (when datacenter
+                                               (lb/dc-aware-round-robin-policy
+                                                datacenter)))
+
+        _ (info "create-alia-session*" cluster-args)
+        cluster (alia/cluster cluster-args)
         alia-session (alia/connect cluster)]
     (alia/execute alia-session (str "USE " keyspace ";"))
     alia-session))
@@ -74,10 +77,10 @@
     (.close alia-session)))
 
 (defnk create-session
-  [contact-points datacenter keyspace {port nil}]
+  [contact-points datacenter keyspace :as args]
   (->AliaSession
    keyspace
-   (create-alia-session* contact-points datacenter keyspace port)))
+   (create-alia-session* args)))
 
 (defn mutated-tables
   [spy-session]
@@ -130,10 +133,10 @@
   (reset-spy-log [_] (reset! spy-log-atom [])))
 
 (defnk create-spy-session
-  [contact-points datacenter keyspace {port nil} {truncate-on-close nil}]
+  [contact-points datacenter keyspace {truncate-on-close nil} :as args]
   (->AliaSpySession
    keyspace
-   (create-alia-session* contact-points datacenter keyspace port)
+   (create-alia-session* (dissoc args :truncate-on-close))
    (atom [])
    truncate-on-close))
 
