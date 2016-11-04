@@ -233,7 +233,9 @@
                records
                callbacks)
        (catch Exception ex
-         (throw (ex-info "Failed to run callbacks on record"
+         (throw (ex-info (format "Failed to run callbacks '%s' on record of model for '%s'"
+                                 callback-key
+                                 (get-in model [:primary-table :name]))
                          {:callback-key callback-key
                           :model model}
                          ex)))))))
