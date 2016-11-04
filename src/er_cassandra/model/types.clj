@@ -227,10 +227,16 @@
   ([^Model model callback-key records opts]
    (let [callbacks (concat (get-in model [:callbacks callback-key])
                            (get-in opts [callback-key]))]
-     (reduce (fn [r callback]
-               (mapv callback r))
-             records
-             callbacks))))
+     (try
+       (reduce (fn [r callback]
+                 (mapv callback r))
+               records
+               callbacks)
+       (catch Exception ex
+         (throw (ex-info "Failed to run callbacks on record"
+                         {:callback-key callback-key
+                          :model model}
+                         ex)))))))
 
 (defn run-callbacks-single
   ([^Model model callback-key record]
