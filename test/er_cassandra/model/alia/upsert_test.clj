@@ -58,3 +58,20 @@
               {:id :a :bar :b}
               {:id :a :bar nil}
               (-> m :secondary-tables first)))))))
+
+(deftest with-columns-option-for-lookups
+  (let [m (t/create-model
+           {:primary-table {:name :foos :key [:id]}
+            :secondary-tables [{:name :foos_by_bar :key [:bar]}
+                               {:name :foos_by_baz
+                                :key [:baz]}]
+            :lookup-key-tables [{:name :foos_by_x
+                                 :key [:x]
+                                 :with-columns [:c1 :c2]}]})
+        record {:id 1 :bar "bar1" :baz "baz1" :c1 :C1 :c2 :C2 :c3 :C3 :x "x-key"}
+        [t lrecord] (first (u/lookup-record-seq m record))]
+    (are [x y] (= x y)
+      1      (count (u/lookup-record-seq m record))
+      :C1    (:c1 lrecord)
+      :C2    (:c2 lrecord)
+      false  (contains? lrecord :c3))))
