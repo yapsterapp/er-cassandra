@@ -71,7 +71,8 @@
 ;; a lookup key
 (s/defschema LookupTableSchema
   (merge SecondaryTableSchema
-         CollectionKeysSchema))
+         CollectionKeysSchema
+         {(s/optional-key :with-columns) [s/Keyword]}))
 
 (s/defschema ModelSchema
   {:primary-table PrimaryTableSchema
