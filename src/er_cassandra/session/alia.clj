@@ -57,7 +57,7 @@
                                                (lb/dc-aware-round-robin-policy
                                                 datacenter)))
 
-        _ (info "create-alia-session*" cluster-args)
+        _ (info "create-alia-session*" args)
         cluster (alia/cluster cluster-args)
         alia-session (alia/connect cluster)]
     (alia/execute alia-session (str "USE " keyspace ";"))
