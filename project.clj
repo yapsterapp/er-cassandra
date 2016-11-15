@@ -1,15 +1,10 @@
-(defproject employeerepublic/er-cassandra "0.10.0-SNAPSHOT"
+(defproject employeerepublic/er-cassandra "_"
   :description "a simple cassandra conector"
   :url "https://github.com/employeerepublic/er-cassandra"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
 
-  :repositories [["releases" {:url "s3p://yapster-s3-wagon/releases/"
-                              :username [:gpg :env/aws_access_key]
-                              :passphrase [:gpg :env/aws_secret_key]}]
-                 ["snapshots" {:url "s3p://yapster-s3-wagon/snapshots/"
-                               :username [:gpg :env/aws_access_key]
-                               :passphrase [:gpg :env/aws_secret_key]}]]
+  :plugins [[lein-modules-bpk/lein-modules "0.3.13.bpk-SNAPSHOT"]]
 
   :pedantic? :abort
 
@@ -40,11 +35,4 @@
                  [environ "1.1.0"]
                  [drift "1.5.3"]
                  [manifold "0.1.5"]
-                 [funcool/cats "2.0.0"]]
-
-  :plugins [[s3-wagon-private "1.2.0"
-             :exclusions [commons-codec]]
-            [commons-codec "1.4"]]
-
-  :profiles {:dev {:dependencies [[org.clojure/clojure "1.8.0"]]
-                   :plugins []}})
+                 [funcool/cats "2.0.0"]])
