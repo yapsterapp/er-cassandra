@@ -35,4 +35,6 @@
                  [environ "1.1.0"]
                  [drift "1.5.3"]
                  [manifold "0.1.5"]
-                 [funcool/cats "2.0.0"]])
+                 [funcool/cats "2.0.0"]]
+
+  :profiles {:repl {:pedantic? :ranges}})
