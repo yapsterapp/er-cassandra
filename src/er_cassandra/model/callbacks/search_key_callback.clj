@@ -14,9 +14,12 @@
 
 (defn ^:private prepare-string
   [s]
-  (-> s
-      normalize-string
-      (str/split #"\s+")))
+  (let [s (normalize-string s)]
+    (as-> s %
+      (str/split % #"\s+")
+      (conj % s)
+      (filter not-empty %)
+      (distinct %))))
 
 (defn ^:private extract-search-keys
   [value]
