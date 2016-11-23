@@ -101,7 +101,7 @@
 
 (defn lookup-record-seq
   "returns a seq of tuples [table lookup-record]"
-  [model record]
+  [model old-record record]
   (mapcat
    identity
    (for [t (t/mutable-lookup-tables model)]
@@ -113,18 +113,27 @@
        (when (k/has-key? key record)
          (let [kvs (filter identity
                            (set (k/extract-key-value-collection key record col-colls)))]
-           
+
            (for [kv kvs]
              (let [lookup-record (create-lookup-record uber-key uber-key-value key kv)
                    lookup-record (if-not with-cols
+
                                    lookup-record
-                                   (merge lookup-record (select-keys record with-cols)))]
+
+                                   (merge
+                                    ;; we default with-cols values from old record
+                                    ;; otherwise MVs depending on the lookup may
+                                    ;; have rows removed because with-cols cols
+                                    ;; weren't supplied
+                                    (select-keys old-record with-cols)
+                                    (select-keys record with-cols)
+                                    lookup-record))]
                [t lookup-record]))))))))
 
 (defn upsert-lookups
-  [^Session session ^Model model record]
+  [^Session session ^Model model old-record record]
   (combine-responses
-   (for [[t r] (lookup-record-seq model record)]
+   (for [[t r] (lookup-record-seq model old-record record)]
      (upsert-record session model t r))))
 
 (defn copy-unique-keys
@@ -167,6 +176,7 @@
             lookup-responses (upsert-lookups
                               session
                               model
+                              old-record
                               updated-record-with-keys)]
 
        (return updated-record-with-keys)))))
