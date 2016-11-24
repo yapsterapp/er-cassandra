@@ -219,13 +219,19 @@
                 (return nil))
 
             ;; re-select the record for nice empty-collections etc
-            final-record (if updated-record-with-keys
-                           (r/select-one
-                            session
-                            (get-in model [:primary-table :name])
-                            (get-in model [:primary-table :key])
-                            (t/extract-uber-key-value model record))
-                           (return nil))]
+            reselected-record (if updated-record-with-keys
+                              (r/select-one
+                               session
+                               (get-in model [:primary-table :name])
+                               (get-in model [:primary-table :key])
+                               (t/extract-uber-key-value model record))
+                              (return nil))
+
+            ;; gotta make the re-selected record presentable!
+            final-record (t/run-callbacks-single
+                          model
+                          :after-load
+                          reselected-record)]
 
        (return
         (pair final-record
