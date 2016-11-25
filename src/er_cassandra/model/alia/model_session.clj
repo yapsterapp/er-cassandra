@@ -44,10 +44,14 @@
   (close [_]
     (s/close alia-session)))
 
+(defn create-session*
+  [alia-session]
+  (->AliaModelSession alia-session))
+
 (defnk create-session
   [contact-points keyspace {port nil} :as args]
   (let [alia-session (a/create-session args)]
-    (->AliaModelSession alia-session)))
+    (create-session* alia-session)))
 
 (defrecord AliaModelSpySession [alia-session model-spy-log-atom]
   ModelSession
@@ -117,7 +121,11 @@
     (reset! model-spy-log-atom [])
     (s/reset-spy-log alia-session)))
 
+(defn create-spy-session*
+  [alia-session]
+  (->AliaModelSpySession alia-session (atom [])))
+
 (defnk create-spy-session
   [contact-points keyspace {port nil} {truncate-on-close nil} :as args]
   (let [alia-session (a/create-spy-session args)]
-    (->AliaModelSpySession alia-session (atom []))))
+    (create-spy-session* alia-session)))
