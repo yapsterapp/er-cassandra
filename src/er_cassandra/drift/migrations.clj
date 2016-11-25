@@ -96,26 +96,30 @@
 
 (defn create-init-fn
   "create a drift init function"
-  [^Session session keyspace config-namespace]
-  (fn init
-    [args]
-    (let [[opts oargs usage] (cli
-                              args
-                              ["-p" "--prefix" "model prefix"])
-          prefix (:prefix opts)
-          namespace (->> [prefix config-namespace]
-                         (filter identity)
-                         (str/join "__"))]
+  ([^Session session keyspace config-namespace]
+   (create-init-fn session keyspace config-namespace {}))
+  ([^Session session keyspace config-namespace other-config]
+   (fn init
+     [args]
+     (let [[opts oargs usage] (cli
+                               args
+                               ["-p" "--prefix" "model prefix"])
+           prefix (:prefix opts)
+           namespace (->> [prefix config-namespace]
+                          (filter identity)
+                          (str/join "__"))]
 
-      ;; (log/info (pr-str ["INIT-FN" session keyspace config-namespace]))
+       ;; (log/info (pr-str ["INIT-FN" session keyspace config-namespace]))
 
-      (create-migration-table session keyspace)
+       (create-migration-table session keyspace)
 
-      (log/infof "migrating schema for prefix: %s)" (or prefix "<no prefix>"))
-      {:er-cassandra-session session
-       :cassandra-keyspace keyspace
-       :namespace namespace
-       :prefix prefix})))
+       (log/infof "migrating schema for prefix: %s)" (or prefix "<no prefix>"))
+       (merge
+        other-config
+        {:er-cassandra-session session
+         :cassandra-keyspace keyspace
+         :namespace namespace
+         :prefix prefix})))))
 
 (defn current-version
   "drift fn - get the current version"
@@ -139,7 +143,9 @@
 (defn finished
   "kill the VM when finished"
   []
-  (System/exit 0))
+  (let [config drift.config/*config-map*]
+    (when-not (:remain-when-finished config)
+      (System/exit 0))))
 
 (def ns-content
   (str "\n  (:require [qbits.alia :as alia]"

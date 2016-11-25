@@ -1,6 +1,7 @@
 (ns er-cassandra.drift.migration-helpers
-  (:require [drift.config :as config]
+  (:require [drift.config :refer [*config-map*]]
             [er-cassandra.session]
+            [clojure.java.io :as io]
             [clojure.java.shell :refer [sh]]
             [environ.core :refer [env]]
             [cats.core :refer [mlet return]]
@@ -8,10 +9,14 @@
             [manifold.deferred :as d]
             [cats.labs.manifold :refer [deferred-context]]))
 
+(defn config
+  [k]
+  (get *config-map* k))
+
 (defn session
   "get the alia session"
   []
-  (:er-cassandra-session config/*config-map*))
+  (config :er-cassandra-session))
 
 (defmacro execute
   [& body]
@@ -24,6 +29,7 @@
   (Thread/sleep 5000))
 
 (defn cqlsh
+  "execute a command with cqlsh"
   [cqlsh-cmd]
   (with-context deferred-context
     (mlet [{sh-exit :exit
@@ -41,3 +47,27 @@
                                     :exit sh-exit
                                     :out sh-out
                                     :err sh-err}))))))
+
+(defn empty-file
+  "write or re-write f as a 0-length file and return Deferred<\"\">"
+  [f]
+  (let [fh (io/file f)]
+    (with-open [out (io/writer fh)]
+      (with-context deferred-context
+        (return "")))))
+
+(defn maybe-cqlsh
+  "if :skip-cqlsh is defined return the result of calling alt-fn
+   otherwise try running cqlsh with the given command"
+  ([cqlsh-cmd]
+   (maybe-cqlsh cqlsh-cmd nil))
+  ([cqlsh-cmd alt-fn]
+   (cond
+     (config :skip-cqlsh)
+     (if alt-fn
+       (alt-fn)
+       (with-context deferred-context
+         (return "")))
+
+     :else
+     (cqlsh cqlsh-cmd))))

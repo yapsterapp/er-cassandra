@@ -49,8 +49,9 @@
   [contact-points
    datacenter
    keyspace
+   {init-statements nil}
    :as args]
-  (let [cluster-args (dissoc args :keyspace :datacenter)
+  (let [cluster-args (dissoc args :keyspace :datacenter :init-statements)
         cluster-args (assoc-when
                       cluster-args
                       :load-balancing-policy (when datacenter
@@ -60,7 +61,15 @@
         _ (info "create-alia-session*" args)
         cluster (alia/cluster cluster-args)
         alia-session (alia/connect cluster)]
+
+    (when (not-empty init-statements)
+      (doseq [stmt init-statements]
+        (as-> stmt %
+          (str/replace % "${keyspace}" keyspace)
+          (alia/execute alia-session %))))
+
     (alia/execute alia-session (str "USE " keyspace ";"))
+
     alia-session))
 
 (defrecord AliaSession [keyspace alia-session]
