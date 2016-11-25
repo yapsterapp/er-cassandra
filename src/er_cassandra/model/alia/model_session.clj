@@ -3,7 +3,7 @@
    [plumbing.core :refer :all]
    [er-cassandra.session :as s]
    [er-cassandra.session.alia :as a]
-   [er-cassandra.model.model-session :as model-session
+   [er-cassandra.model.model-session :as ms
     :refer [ModelSession ModelSpySession]]
    [er-cassandra.model.alia.select :refer [select*]]
    [er-cassandra.model.alia.select-buffered :refer [select-buffered*]]
@@ -129,3 +129,25 @@
   [contact-points keyspace {port nil} {truncate-on-close nil} :as args]
   (let [alia-session (a/create-spy-session args)]
     (create-spy-session* alia-session)))
+
+;; a test-session is just a spy-session which will initialise it's keyspace
+;; if necesary and will truncate any used tables when closed
+(defnk create-test-session
+  [{contact-points nil} {port nil} {datacenter nil} keyspace :as args]
+  (let [s (create-spy-session
+           (merge
+            args
+            {:contact-points (or contact-points ["localhost"])
+             :port (or port 9042)
+             :datacenter datacenter
+             :init-statements
+             [(str "CREATE KEYSPACE IF NOT EXISTS "
+                   "  \"${keyspace}\" "
+                   "WITH replication = "
+                   "  {'class': 'SimpleStrategy', "
+                   "   'replication_factor': '1'} "
+                   " AND durable_writes = true;")]
+
+             :truncate-on-close true}))]
+
+    [s (fn [] (ms/-close s))]))
