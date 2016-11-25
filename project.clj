@@ -37,4 +37,12 @@
                  [manifold "0.1.5"]
                  [funcool/cats "2.0.0"]]
 
-  :profiles {:repl {:pedantic? :ranges}})
+  :aliases {"test-repl" ["with-profile" "cassandra-unit,repl" "repl"]}
+
+  :profiles {:repl {:pedantic? :ranges
+                    :dependencies [[org.clojure/clojure "_"]]}
+
+             :cassandra-unit
+             {:dependencies
+              [[org.cassandraunit/cassandra-unit "3.0.0.1"]]}
+             })
