@@ -1,10 +1,11 @@
-(ns er-cassandra.key-tests
+(ns er-cassandra.key-test
   (:require [clojure.test :as test :refer [deftest is are testing]]
             [er-cassandra.key :refer [has-key?]]))
 
 
 (deftest nested-keys
-  (are [k expected-val] (= (has-key? k {:x 1 :y 2 :z 3}))
+  (are [k expected-val] (= (has-key? k {:x 1 :y 2 :z 3})
+                           expected-val)
     [:x]      true
     [[:x] :z] true
     [[:x] :A] false

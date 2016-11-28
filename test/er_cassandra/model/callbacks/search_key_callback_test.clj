@@ -15,13 +15,14 @@
 
 (deftest test-extract-search-keys
   (is (= [] (@#'cb/extract-search-keys nil)))
-  (is (= ["foo" "bar" "foo bar"]) (@#'cb/extract-search-keys "foo bar"))
-  (is (= ["foo" "bar" "foo bar" "baz"])
-      (@#'cb/extract-search-keys ["foo bar" "baz"]))
-  (is (= ["foo" "bar" "foo bar" "baz"])
-      (@#'cb/extract-search-keys #{"foo bar" "baz"}))
-  (is (= ["foo" "bar" "foo bar" "baz"])
-      (@#'cb/extract-search-keys {:a "foo bar" :b "baz"})))
+  (is (= (set ["foo" "bar" "foo bar"])
+         (set (@#'cb/extract-search-keys "foo bar"))))
+  (is (= (set ["foo" "bar" "foo bar" "baz"])
+         (set (@#'cb/extract-search-keys ["foo bar" "baz"]))))
+  (is (= (set ["foo" "bar" "foo bar" "baz"])
+         (set (@#'cb/extract-search-keys #{"foo bar" "baz"}))))
+  (is (= (set ["foo" "bar" "foo bar" "baz"])
+         (set (@#'cb/extract-search-keys {:a "foo bar" :b "baz"})))))
 
 (deftest test-create-search-keys-callback
   (is (= {:sk #{"foo" "bar" "foo bar"} :foobar "foo bar"}
