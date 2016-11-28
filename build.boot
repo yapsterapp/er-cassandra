@@ -6,12 +6,29 @@
                (update-in (get-env) [:dependencies]
                           conj '[leiningen "2.7.1"])))
 
-(def lein-proj (pod/with-eval-in lein-pod
-                 (require '[leiningen.core.project :as p])
-                 (p/read)))
+(defn cassandra-unit-proj
+  []
+  (pod/with-eval-in lein-pod
+    (require '[leiningen.core.project :as p])
+    (p/read "project.clj" [:cassandra-unit])))
 
-(def deps (:dependencies lein-proj))
+(def cass-deps (:dependencies (cassandra-unit-proj)))
 
+(def cass-pod (pod/make-pod
+               (update-in (get-env) [:dependencies]
+                          concat cass-deps)))
+
+(pod/with-eval-in cass-pod
+  (import '[org.cassandraunit.utils EmbeddedCassandraServerHelper])
+  (EmbeddedCassandraServerHelper/startEmbeddedCassandra))
+
+(defn test-proj
+  []
+  (pod/with-eval-in lein-pod
+    (require '[leiningen.core.project :as p])
+    (p/read "project.clj" [:test])))
+
+(def test-deps (:dependencies (test-proj)))
 (set-env!
  :wagons       '[[s3-wagon-private "1.2.0"]]
 
@@ -22,9 +39,16 @@
                                          :username [:env/aws_access_key :gpg]
                                          :passphrase [:env/aws_secret_key :gpg]}]])
 
- :dependencies deps
+ :dependencies test-deps
 
  :source-paths #{"src" "test"})
 
 (require
- '[adzerk.boot-test :refer :all])
+ '[adzerk.boot-test :refer [test]]
+ )
+
+;; (def test adzerk.boot-test/test)
+
+
+;; set system-property for embedded test
+(System/setProperty "cassandra_port" "9142")
