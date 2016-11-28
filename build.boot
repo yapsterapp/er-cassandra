@@ -44,11 +44,7 @@
  :source-paths #{"src" "test"})
 
 (require
- '[adzerk.boot-test :refer [test]]
- )
-
-;; (def test adzerk.boot-test/test)
-
+ '[adzerk.boot-test :refer [test]])
 
 ;; set system-property for embedded test
 (System/setProperty "cassandra_port" "9142")
