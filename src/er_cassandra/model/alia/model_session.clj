@@ -1,6 +1,7 @@
 (ns er-cassandra.model.alia.model-session
   (:require
    [plumbing.core :refer :all]
+   [environ.core :refer [env]]
    [er-cassandra.session :as s]
    [er-cassandra.session.alia :as a]
    [er-cassandra.model.model-session :as ms
@@ -138,7 +139,9 @@
            (merge
             args
             {:contact-points (or contact-points ["localhost"])
-             :port (or port 9042)
+             :port (or port
+                       (some-> (env :cassandra-port) Integer/parseInt)
+                       9042)
              :datacenter datacenter
              :init-statements
              [(str "CREATE KEYSPACE IF NOT EXISTS "
