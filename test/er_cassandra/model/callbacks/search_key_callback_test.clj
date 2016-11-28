@@ -1,4 +1,4 @@
-(ns er-cassandra.model.search-key-callback-test
+(ns er-cassandra.model.callbacks.search-key-callback-test
   (:require
    [clojure.test :as test :refer [deftest is are]]
    [er-cassandra.model.callbacks.search-key-callback :as cb]))
