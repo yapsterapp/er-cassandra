@@ -12,7 +12,8 @@
                org.clojure/tools.reader
                org.clojure/tools.logging]
 
-  :dependencies [[adzerk/boot-test "1.1.2" :scope "test"]
+  :dependencies [[org.clojure/clojure "_"]
+                 [adzerk/boot-test "1.1.2" :scope "test"]
 
                  [org.clojure/tools.reader "1.0.0-beta3"]
                  [org.clojure/tools.logging "0.3.1"]
@@ -42,8 +43,7 @@
 
   :aliases {"test-repl" ["with-profile" "cassandra-unit,repl" "repl"]}
 
-  :profiles {:repl {:pedantic? :ranges
-                    :dependencies [[org.clojure/clojure "_"]]}
+  :profiles {:repl {:pedantic? :ranges}
 
              :cassandra-unit
              {:dependencies
