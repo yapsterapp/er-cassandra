@@ -13,7 +13,6 @@
                org.clojure/tools.logging]
 
   :dependencies [[org.clojure/clojure "_"]
-                 [adzerk/boot-test "1.1.2" :scope "test"]
 
                  [org.clojure/tools.reader "1.0.0-beta3"]
                  [org.clojure/tools.logging "0.3.1"]
