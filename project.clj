@@ -12,7 +12,9 @@
                org.clojure/tools.reader
                org.clojure/tools.logging]
 
-  :dependencies [[org.clojure/tools.reader "1.0.0-beta3"]
+  :dependencies [[adzerk/boot-test "1.1.2" :scope "test"]
+
+                 [org.clojure/tools.reader "1.0.0-beta3"]
                  [org.clojure/tools.logging "0.3.1"]
 
                  ;; wow, such logging
@@ -29,6 +31,7 @@
                  [potemkin "0.4.3"]
                  [prismatic/plumbing "0.5.3"]
                  [clj-time "0.12.0"]
+                 [danlentz/clj-uuid "0.1.6"]
                  [cc.qbits/alia "3.2.0"]
                  [cc.qbits/alia-manifold "3.2.0"]
                  [cc.qbits/hayt "3.2.0"]
