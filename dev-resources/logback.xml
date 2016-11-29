@@ -1,0 +1,19 @@
+<configuration>
+
+  <!-- an error-only appender for embedded cassandra -->
+
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <root level="ERROR">
+    <appender-ref ref="STDOUT" />
+  </root>
+
+  <!-- get nasty errors from here apparently caused by a bug
+       in the shaded netty (which seems to run server-side too)
+       logging -->
+  <logger name="org.apache.cassandra.service" level="OFF"/>
+</configuration>
