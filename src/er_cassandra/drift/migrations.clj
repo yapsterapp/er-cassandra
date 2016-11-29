@@ -144,6 +144,8 @@
   "kill the VM when finished"
   []
   (let [config drift.config/*config-map*]
+    (when-let [f (:finished-fn config)]
+      (f))
     (when-not (:remain-when-finished config)
       (System/exit 0))))
 
