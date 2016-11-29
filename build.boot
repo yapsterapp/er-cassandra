@@ -1,50 +1,16 @@
-;; use lein to parse the project.clj for the deps
-;; since lein-modules merges from the hierarchy
-(require '[boot.pod :as pod])
+(load-file "../build/boot_lib.clj")
 
-(def lein-pod (pod/make-pod
-               (update-in (get-env) [:dependencies]
-                          conj '[leiningen "2.7.1"])))
+(configure-minimal-env
+ {:source-paths #{"src" "test"}
+  :resource-paths  #{"dev-resources"}})
 
-(defn cassandra-unit-proj
-  []
-  (pod/with-eval-in lein-pod
-    (require '[leiningen.core.project :as p])
-    (p/read "project.clj" [:cassandra-unit])))
+(run-embedded-cassandra)
 
-(def cass-deps (:dependencies (cassandra-unit-proj)))
+(configure-yapster-repos)
 
-(def cass-pod (pod/make-pod
-               (update-in (get-env) [:dependencies]
-                          concat cass-deps)))
-
-(pod/with-eval-in cass-pod
-  (import '[org.cassandraunit.utils EmbeddedCassandraServerHelper])
-  (EmbeddedCassandraServerHelper/startEmbeddedCassandra))
-
-(defn test-proj
-  []
-  (pod/with-eval-in lein-pod
-    (require '[leiningen.core.project :as p])
-    (p/read "project.clj" [:test])))
-
-(def test-deps (:dependencies (test-proj)))
 (set-env!
- :wagons       '[[s3-wagon-private "1.2.0"]]
-
- :repositories #(concat % [["releases" {:url "s3p://yapster-s3-wagon/releases/"
-                                        :username [:env/aws_access_key :gpg]
-                                        :passphrase [:env/aws_secret_key :gpg]}]
-                           ["snapshots" {:url "s3p://yapster-s3-wagon/snapshots/"
-                                         :username [:env/aws_access_key :gpg]
-                                         :passphrase [:env/aws_secret_key :gpg]}]])
-
- :dependencies test-deps
-
- :source-paths #{"src" "test"})
+ :dependencies
+ (:dependencies (read-project "project.clj" [:test])))
 
 (require
  '[adzerk.boot-test :refer [test]])
-
-;; set system-property for embedded test
-(System/setProperty "cassandra_port" "9142")
