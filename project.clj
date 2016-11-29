@@ -18,12 +18,16 @@
                  [org.clojure/tools.logging "0.3.1"]
 
                  ;; wow, such logging
-                 [ch.qos.logback/logback-classic "1.1.7"]
+                 [com.taoensso/timbre "4.7.3"]
+
                  [org.slf4j/slf4j-api "1.7.21"]
+                 [com.fzakaria/slf4j-timbre "0.3.2"
+                  :exclusions [org.slf4j/slf4j-api
+                               com.taoensso/timbre]]
+
                  [org.slf4j/jcl-over-slf4j "1.7.21"]
                  [org.slf4j/log4j-over-slf4j "1.7.21"]
                  [org.slf4j/jul-to-slf4j "1.7.21"]
-                 [com.taoensso/timbre "4.7.3"]
 
                  [org.clojure/tools.cli "0.3.5"]
                  [org.clojure/core.match "0.3.0-alpha4"]
