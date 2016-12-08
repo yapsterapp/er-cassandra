@@ -45,6 +45,13 @@
        (h/->raw statement)))
    opts))
 
+(defn shutdown-session-and-cluster
+  [session]
+  (info "closing underlying alia session and cluster")
+  (let [cluster (.getCluster session)]
+    (alia/shutdown session)
+    (alia/shutdown cluster)))
+
 (defnk ^:private create-alia-session*
   [contact-points
    datacenter
@@ -74,7 +81,7 @@
   (execute-buffered [_ statement opts]
     (execute-buffered* alia-session statement opts))
   (close [_]
-    (.close alia-session)))
+    (shutdown-session-and-cluster alia-session)))
 
 (defnk create-session
   [contact-points datacenter keyspace :as args]
@@ -123,7 +130,7 @@
   (close [self]
     (when truncate-on-close
       (truncate-spy-tables self))
-    (.close alia-session))
+    (shutdown-session-and-cluster alia-session))
 
   KeyspaceProvider
   (keyspace [_] keyspace)
