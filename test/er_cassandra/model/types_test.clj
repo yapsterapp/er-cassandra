@@ -41,7 +41,7 @@
   (is (satisfies-cluster-key? [[:foo :bar] :baz] [:foo :bar :baz])))
 
 (deftest test-mutable-secondary-tables
-  (let [m (t/create-model
+  (let [m (t/create-entity
            {:primary-table {:name :foos :key [:id]}
             :secondary-tables [{:name :foos_by_bar :key [:bar]}
                                {:name :foos_by_baz
@@ -51,7 +51,7 @@
            (t/mutable-secondary-tables m)))))
 
 (deftest test-mutable-lookup-tables
-  (let [m (t/create-model
+  (let [m (t/create-entity
            {:primary-table {:name :foos :key [:id]}
             :lookup-key-tables [{:name :foos_by_bar :key [:bar]}
                                 {:name :foos_by_baz

@@ -5,7 +5,7 @@
    [er-cassandra.model.alia.unique-key :as uk]))
 
 (deftest stale-unique-key-values-test
-  (let [m (t/create-model
+  (let [m (t/create-entity
            {:primary-table {:name :foos :key [:id]}
             :unique-key-tables [{:name :foos_by_bar :key [:bar]}
                                 {:name :foos_by_baz
