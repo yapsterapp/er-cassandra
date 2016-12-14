@@ -41,7 +41,7 @@
 
 (import-vars
 
- [er-cassandra.model.types create-model defmodel]
+ [er-cassandra.model.types create-entity defentity]
 
  [er-cassandra.model.select
   select
