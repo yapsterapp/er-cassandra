@@ -11,41 +11,41 @@
             [er-cassandra.model.util :as util])
   (:import
    [er_cassandra.session Session]
-   [er_cassandra.model.types Model]))
+   [er_cassandra.model.types Entity]))
 
 (defn if-primary-key-table
-  [^Model model key]
-  (when (or (t/satisfies-primary-key? (t/uber-key model) key)
-            (t/satisfies-partition-key? (t/uber-key model) key)
-            (t/satisfies-cluster-key? (t/uber-key model) key))
-    (:primary-table model)))
+  [^Entity entity key]
+  (when (or (t/satisfies-primary-key? (t/uber-key entity) key)
+            (t/satisfies-partition-key? (t/uber-key entity) key)
+            (t/satisfies-cluster-key? (t/uber-key entity) key))
+    (:primary-table entity)))
 
 (defn if-secondary-key-table
-  [^Model model key]
+  [^Entity entity key]
   (some (fn [t]
           (when (or (t/satisfies-primary-key? (:key t) key)
                     (t/satisfies-partition-key? (:key t) key)
                     (t/satisfies-cluster-key? (:key t) key))
             t))
-        (:secondary-tables model)))
+        (:secondary-tables entity)))
 
 (defn if-unique-key-table
-  [^Model model key]
+  [^Entity entity key]
   (some (fn [t]
           (when (or (t/satisfies-primary-key? (:key t) key)
                     (t/satisfies-partition-key? (:key t) key)
                     (t/satisfies-cluster-key? (:key t) key))
             t))
-        (:unique-key-tables model)))
+        (:unique-key-tables entity)))
 
 (defn if-lookup-key-table
-  [^Model model key]
+  [^Entity entity key]
   (some (fn [t]
           (when (or (t/satisfies-primary-key? (:key t) key)
                     (t/satisfies-partition-key? (:key t) key)
                     (t/satisfies-cluster-key? (:key t) key))
             t))
-        (:lookup-key-tables model)))
+        (:lookup-key-tables entity)))
 
 (def select-err-msg
   "Versioned tables can only perform selects when :limit option is set to 1.")
@@ -55,13 +55,13 @@
    a full primary key, or a partition key combined with some
    clustering key conditions (given as :where options)"
 
-  [^Session session ^Model model table key record-or-key-value opts]
+  [^Session session ^Entity entity table key record-or-key-value opts]
   (let [kv (k/extract-key-value key record-or-key-value opts)
         opts (-> opts
                  (dissoc :key-value)
                  (assoc :row-generator (ms/->ModelInstanceRowGenerator)))]
-    (when (and (:versioned? model) (not= 1 (:limit opts)))
-      (throw (ex-info select-err-msg {:model model :opts opts})))
+    (when (and (:versioned? entity) (not= 1 (:limit opts)))
+      (throw (ex-info select-err-msg {:model entity :opts opts})))
     (r/select session (:name table) key kv opts)))
 
 (defn select-from-lookup-table
@@ -75,7 +75,7 @@
    this means that the lookup query may specify a partition-key and
    some clustering column condition (given as a :where option)"
 
-  [^Session session ^Model model table key record-or-key-value opts]
+  [^Session session ^Entity entity table key record-or-key-value opts]
   (let [lkv (k/extract-key-value (or key (:key table)) record-or-key-value opts)
         key (if lkv (or key (:key table)) (k/partition-key (:key table)))
         key-value (if lkv
@@ -95,14 +95,14 @@
                              lookup-opts)
                pkvs (return
                      (map (fn [lr]
-                            (t/extract-uber-key-value model lr))
+                            (t/extract-uber-key-value entity lr))
                           lrs))
                prs (return
                     (map (fn [pkv]
                            (r/select-one
                             session
-                            (get-in model [:primary-table :name])
-                            (get-in model [:primary-table :key])
+                            (get-in entity [:primary-table :name])
+                            (get-in entity [:primary-table :key])
                             pkv
                             primary-opts))
                          pkvs))]
@@ -113,23 +113,23 @@
 
 (defn select*
   "select records from primary or lookup tables as required"
-  [^Session session model key record-or-key-value {:keys [from] :as opts}]
+  [^Session session ^Entity entity key record-or-key-value {:keys [from] :as opts}]
    (let [key (k/make-sequential key)
          opts (dissoc opts :from)]
      (if from
-       (if-let [full-table (or (t/is-primary-table model from)
-                               (t/is-secondary-table model from))]
+       (if-let [full-table (or (t/is-primary-table entity from)
+                               (t/is-secondary-table entity from))]
          (select-from-full-table session
-                                 model
+                                 entity
                                  full-table
                                  key
                                  record-or-key-value
                                  opts)
 
-         (if-let [lookup-table (or (t/is-unique-key-table model from)
-                                   (t/is-lookup-key-table model from))]
+         (if-let [lookup-table (or (t/is-unique-key-table entity from)
+                                   (t/is-lookup-key-table entity from))]
            (select-from-lookup-table session
-                                     model
+                                     entity
                                      lookup-table
                                      key
                                      record-or-key-value
@@ -138,26 +138,26 @@
            (d/error-deferred (ex-info
                               "no matching table"
                               {:reason [:fail
-                                        {:model model
+                                        {:entity entity
                                          :key key
                                          :from from}
                                         :no-matching-table]}))))
 
-       (if-let [table (or (if-primary-key-table model key)
-                          (if-secondary-key-table model key))]
+       (if-let [table (or (if-primary-key-table entity key)
+                          (if-secondary-key-table entity key))]
 
          (select-from-full-table session
-                                 model
+                                 entity
                                  table
                                  key
                                  record-or-key-value
                                  opts)
 
-         (if-let [lookup-table (or (if-unique-key-table model key)
-                                   (if-lookup-key-table model key))]
+         (if-let [lookup-table (or (if-unique-key-table entity key)
+                                   (if-lookup-key-table entity key))]
 
            (select-from-lookup-table session
-                                     model
+                                     entity
                                      lookup-table
                                      key
                                      record-or-key-value
@@ -166,6 +166,6 @@
            (d/error-deferred (ex-info
                               "no matching key"
                               {:reason [:fail
-                                        {:model model
+                                        {:entity entity
                                          :key key}
                                         :no-matching-key]})))))))

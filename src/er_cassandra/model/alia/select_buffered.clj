@@ -13,20 +13,20 @@
             [er-cassandra.model.alia.select :as select])
   (:import
    [er_cassandra.session Session]
-   [er_cassandra.model.types Model]))
+   [er_cassandra.model.types Entity]))
 
 (defn select-buffered-from-full-table
   "one buffered fetch - straight from a table. they key must be either
    a full primary key, or a partition key combined with some
    clustering key conditions (given as :where options)"
-  [^Session session ^Model model table key record-or-key-value opts]
+  [^Session session ^Entity entity table key record-or-key-value opts]
   (let [kv (k/extract-key-value key record-or-key-value opts)
         opts (-> opts
                  (dissoc :key-value)
                  (assoc :row-generator (ms/->ModelInstanceRowGenerator)))]
 
-    (when (and (:versioned? model) (not= 1 (:limit opts)))
-      (throw (ex-info select/select-err-msg {:model model :opts opts})))
+    (when (and (:versioned? entity) (not= 1 (:limit opts)))
+      (throw (ex-info select/select-err-msg {:entity entity :opts opts})))
 
     (r/select-buffered session (:name table) key kv opts)))
 
@@ -41,7 +41,7 @@
    this means that the lookup query may specify a partition-key and
    some clustering column condition (given as a :where option)"
 
-  [^Session session ^Model model table key record-or-key-value
+  [^Session session ^Entity entity table key record-or-key-value
    {:keys [buffer-size] :as opts}]
   (let [lkv (k/extract-key-value (or key (:key table)) record-or-key-value opts)
         key (if lkv (or key (:key table)) (k/partition-key (:key table)))
@@ -69,11 +69,11 @@
 
     (->> lrs
          (stream/map (fn [lr]
-                       (let [pkv (t/extract-uber-key-value model lr)]
+                       (let [pkv (t/extract-uber-key-value entity lr)]
                          (r/select-one
                           session
-                          (get-in model [:primary-table :name])
-                          (get-in model [:primary-table :key])
+                          (get-in entity [:primary-table :name])
+                          (get-in entity [:primary-table :key])
                           pkv
                           primary-opts))))
          stream/realize-each
@@ -83,23 +83,23 @@
   "select records from primary or lookup tables as required
 
    returns a stream of model instance records"
-  [^Session session model key record-or-key-value {:keys [from] :as opts}]
+  [^Session session ^Entity entity key record-or-key-value {:keys [from] :as opts}]
    (let [key (k/make-sequential key)
          opts (dissoc opts :from)]
      (if from
-       (if-let [full-table (or (t/is-primary-table model from)
-                               (t/is-secondary-table model from))]
+       (if-let [full-table (or (t/is-primary-table entity from)
+                               (t/is-secondary-table entity from))]
          (select-buffered-from-full-table session
-                                          model
+                                          entity
                                           full-table
                                           key
                                           record-or-key-value
                                           opts)
 
-         (if-let [lookup-table (or (t/is-unique-key-table model from)
-                                   (t/is-lookup-key-table model from))]
+         (if-let [lookup-table (or (t/is-unique-key-table entity from)
+                                   (t/is-lookup-key-table entity from))]
            (select-buffered-from-lookup-table session
-                                              model
+                                              entity
                                               lookup-table
                                               key
                                               record-or-key-value
@@ -108,26 +108,26 @@
            (throw (ex-info
                    "no matching table"
                    {:reason [:fail
-                             {:model model
+                             {:entity entity
                               :key key
                               :from from}
                              :no-matching-table]}))))
 
-       (if-let [table (or (select/if-primary-key-table model key)
-                          (select/if-secondary-key-table model key))]
+       (if-let [table (or (select/if-primary-key-table entity key)
+                          (select/if-secondary-key-table entity key))]
 
          (select-buffered-from-full-table session
-                                          model
+                                          entity
                                           table
                                           key
                                           record-or-key-value
                                           opts)
 
-         (if-let [lookup-table (or (select/if-unique-key-table model key)
-                                   (select/if-lookup-key-table model key))]
+         (if-let [lookup-table (or (select/if-unique-key-table entity key)
+                                   (select/if-lookup-key-table entity key))]
 
            (select-buffered-from-lookup-table session
-                                              model
+                                              entity
                                               lookup-table
                                               key
                                               record-or-key-value
@@ -136,6 +136,6 @@
            (throw (ex-info
                    "no matching key"
                    {:reason [:fail
-                             {:model model
+                             {:entity entity
                               :key key}
                              :no-matching-key]})))))))

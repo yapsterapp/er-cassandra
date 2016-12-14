@@ -11,7 +11,7 @@
    [er-cassandra.model.error :as e]
    [er-cassandra.model.util :refer [combine-responses create-lookup-record]])
   (:import
-   [er_cassandra.model.types Model]
+   [er_cassandra.model.types Entity]
    [er_cassandra.session Session]))
 
 (defn applied?
@@ -19,11 +19,11 @@
   (get lwt-response (keyword "[applied]")))
 
 (defn applied-or-owned?
-  [^Model model insert-uber-key lwt-insert-response ]
+  [^Entity entity insert-uber-key lwt-insert-response ]
   (if (applied? lwt-insert-response)
     true
     (let [owner-uber-key (k/extract-key-value
-                          (get-in model [:primary-table :key])
+                          (get-in entity [:primary-table :key])
                           lwt-insert-response)]
       (= insert-uber-key owner-uber-key))))
 
@@ -32,8 +32,8 @@
    returns a Deferred[[:ok <keydesc> info]] if the key was acquired
    successfully, a ErrorDeferred[[:fail <keydesc> reason]]"
 
-  [^Session session ^Model model unique-key-table uber-key-value key-value]
-  (let [uber-key (t/uber-key model)
+  [^Session session ^Entity entity unique-key-table uber-key-value key-value]
+  (let [uber-key (t/uber-key entity)
         key (:key unique-key-table)
         unique-key-record (create-lookup-record
                            uber-key uber-key-value
@@ -51,16 +51,16 @@
 
              owned? (return
                      (applied-or-owned?
-                      model
-                      (t/extract-uber-key-value model unique-key-record)
+                      entity
+                      (t/extract-uber-key-value entity unique-key-record)
                       insert-response))
 
              live-ref? (if-not owned?
                          (r/select-one session
-                                       (get-in model [:primary-table :name])
-                                       (get-in model [:primary-table :key])
+                                       (get-in entity [:primary-table :name])
+                                       (get-in entity [:primary-table :key])
                                        (t/extract-uber-key-value
-                                        model
+                                        entity
                                         insert-response))
                          (return nil))
 
@@ -76,7 +76,7 @@
                                       unique-key-record
                                       {:only-if
                                        (t/extract-uber-key-equality-clause
-                                        model
+                                        entity
                                         insert-response)})
                                      (return nil))
 
@@ -93,8 +93,8 @@
 
 (defn release-unique-key
   "remove a single unique key"
-  [^Session session ^Model model unique-key-table uber-key-value key-value]
-  (let [uber-key (t/uber-key model)
+  [^Session session ^Entity entity unique-key-table uber-key-value key-value]
+  (let [uber-key (t/uber-key entity)
         key (:key unique-key-table)
         ;; only-if can't reference primary-key components
         [npk-uber-key npk-uber-key-value] (k/remove-key-components
@@ -121,7 +121,7 @@
            :else    [:ok key-desc :stale]))))))
 
 (defn stale-unique-key-values
-  [^Model model old-record new-record unique-key-table]
+  [^Entity entity old-record new-record unique-key-table]
   (let [key (:key unique-key-table)
         col-colls (:collections unique-key-table)]
     (when (k/has-key? key new-record)
@@ -134,25 +134,25 @@
         (filter identity (set/difference old-kvs new-kvs))))))
 
 (defn release-stale-unique-keys
-  [^Session session ^Model model old-record new-record]
+  [^Session session ^Entity entity old-record new-record]
   (combine-responses
    (mapcat
     identity
-    (for [t (:unique-key-tables model)]
-      (let [uber-key (t/uber-key model)
-            uber-key-value (t/extract-uber-key-value model old-record)
-            stale-kvs (stale-unique-key-values model old-record new-record t)]
+    (for [t (:unique-key-tables entity)]
+      (let [uber-key (t/uber-key entity)
+            uber-key-value (t/extract-uber-key-value entity old-record)
+            stale-kvs (stale-unique-key-values entity old-record new-record t)]
         (for [kv stale-kvs]
-          (release-unique-key session model t uber-key-value kv)))))))
+          (release-unique-key session entity t uber-key-value kv)))))))
 
 (defn acquire-unique-keys
-  [^Session session ^Model model record]
+  [^Session session ^Entity entity record]
   (combine-responses
    (mapcat
     identity
-    (for [t (:unique-key-tables model)]
-      (let [uber-key (t/uber-key model)
-            uber-key-value (t/extract-uber-key-value model record)
+    (for [t (:unique-key-tables entity)]
+      (let [uber-key (t/uber-key entity)
+            uber-key-value (t/extract-uber-key-value entity record)
             key (:key t)
             col-colls (:collections t)]
         (when (k/has-key? key record)
@@ -165,7 +165,7 @@
                                    uber-key uber-key-value
                                    key kv)]
                 (acquire-unique-key session
-                                    model
+                                    entity
                                     t
                                     uber-key-value
                                     kv))))))))))
@@ -206,7 +206,7 @@
           acquire-key-responses))
 
 (defn describe-acquire-failures
-  [^Model model requested-record acquire-key-responses]
+  [^Entity entity requested-record acquire-key-responses]
   (let [failures (filter (fn [[status key-desc reason]]
                            (not= :ok status))
                          acquire-key-responses)
@@ -223,8 +223,8 @@
          (e/key-error-log-entry
           {:error-tag reason
            :message (str field " is not unique: " field-value)
-           :primary-table (-> model :primary-table :name)
-           :uber-key-value (t/extract-uber-key-value model requested-record)
+           :primary-table (-> entity :primary-table :name)
+           :uber-key-value (t/extract-uber-key-value entity requested-record)
            :key key
            :key-value key-value}))))))
 
@@ -245,8 +245,8 @@
 
 (defn without-unique-keys
   "remove (the final part of) unique key columns from a record"
-  [^Model model record]
-  (let [unique-key-tabless (:unique-key-tables model)]
+  [^Entity entity record]
+  (let [unique-key-tabless (:unique-key-tables entity)]
     (reduce (fn [r t]
               (let [key-col (last (:key t))]
                 (dissoc r key-col)))
@@ -258,17 +258,17 @@
    possibly with an LWT and conditions if options if-not-exists or only-if
    are provided.
    returns a Deferred [upserted-record-or-nil failure-description]"
-  ([^Session session ^Model model record {:keys [if-not-exists only-if]}]
+  ([^Session session ^Entity entity record {:keys [if-not-exists only-if]}]
    (with-context deferred-context
-     (mlet [primary-table-name (get-in model [:primary-table :name])
-            primary-table-key (get-in model [:primary-table :key])
+     (mlet [primary-table-name (get-in entity [:primary-table :name])
+            primary-table-key (get-in entity [:primary-table :key])
 
             ;; always test for presence if given an only-if condition
             :let [if-not-exists (boolean
                                  (or if-not-exists
                                      only-if))]
 
-            nok-record (without-unique-keys model record)
+            nok-record (without-unique-keys entity record)
 
             insert-response (if if-not-exists
                               (r/insert session
@@ -306,7 +306,7 @@
                                             primary-table-name
                                             primary-table-key
                                             (t/extract-uber-key-value
-                                             model nok-record))
+                                             entity nok-record))
 
                               ;; failure
                               :else
@@ -320,7 +320,7 @@
                  {:error-tag :upsert/primary-record-exists
                   :message "couldn't upsert primary record"
                   :primary-table primary-table-name
-                  :uber-key-value (t/extract-uber-key-value model record)
+                  :uber-key-value (t/extract-uber-key-value entity record)
                   :other {:record record
                           :if-not-exists if-not-exists
                           :only-if only-if}})]]))))))
@@ -330,33 +330,33 @@
    a Deferred[Right[[updated-owner-record failed-keys]]] with an updated
    owner record containing only the keys that could be acquired"
   [^Session session
-   ^Model model
+   ^Entity entity
    old-key-record ;; record with old unique keys
    new-record] ;; record with updated unique keys
   (with-context deferred-context
     (mlet [release-key-responses (release-stale-unique-keys
                                   session
-                                  model
+                                  entity
                                   old-key-record
                                   new-record)
            acquire-key-responses (acquire-unique-keys
                                   session
-                                  model
+                                  entity
                                   new-record)
            acquire-failures (return
                              (describe-acquire-failures
-                              model
+                              entity
                               new-record
                               acquire-key-responses))
            updated-record (return
                            (update-record-by-key-responses
-                            model
+                            entity
                             old-key-record
                             new-record
                             acquire-key-responses))
            upsert-response (r/insert
                             session
-                            (get-in model [:primary-table :name])
+                            (get-in entity [:primary-table :name])
                             updated-record)]
       (return [updated-record
                acquire-failures]))))
@@ -365,19 +365,19 @@
   "first upserts the primary record, with any constraints,
    then updates unique keys. returns a
    Deferred[updated-record-or-nil failure-descriptions]"
-  ([^Session session ^Model model new-record]
-   (upsert-primary-record-and-update-unique-keys session model new-record {}))
-  ([^Session session ^Model model new-record opts]
+  ([^Session session ^Entity entity new-record]
+   (upsert-primary-record-and-update-unique-keys session entity new-record {}))
+  ([^Session session ^Entity entity new-record opts]
    (with-context deferred-context
      (mlet [[rec-old-keys
              upsert-errors] (upsert-primary-record-without-unique-keys
                              session
-                             model
+                             entity
                              new-record
                              opts)]
        (if rec-old-keys
          (update-unique-keys-after-primary-upsert session
-                                                  model
+                                                  entity
                                                   rec-old-keys
                                                   new-record)
          (return

@@ -9,7 +9,7 @@
    [er-cassandra.model.alia.upsert :as alia-upsert]
    [er-cassandra.model.alia.select :as alia-select])
   (:import
-   [er_cassandra.model.types Model]
+   [er_cassandra.model.types Entity]
    [er_cassandra.session Session]))
 
 (defn nil-values
@@ -22,31 +22,31 @@
        (into {})))
 
 (defn ^:private delete-with-primary
-  [^Session session ^Model model key record opts]
+  [^Session session ^Entity entity key record opts]
   (with-context deferred-context
     (mlet [primary-response (alia-upsert/delete-record
                              session
-                             model
-                             (:primary-table model)
+                             entity
+                             (:primary-table entity)
                              (t/extract-uber-key-value
-                              model
+                              entity
                               record))
 
            unique-responses (alia-unique-key/release-stale-unique-keys
                              session
-                             model
+                             entity
                              record
                              (nil-values record))
 
            secondary-responses (alia-upsert/delete-stale-secondaries
                                 session
-                                model
+                                entity
                                 record
                                 (nil-values record))
 
            lookup-responses (alia-upsert/delete-stale-lookups
                              session
-                             model
+                             entity
                              record
                              (nil-values record))]
       (return
@@ -56,15 +56,15 @@
   "delete a single instance, removing primary, secondary unique-key and
    lookup records "
 
-  ([^Session session ^Model model key record-or-key-value opts]
+  ([^Session session ^Entity entity key record-or-key-value opts]
 
    (with-context deferred-context
      (mlet [[record & _] (alia-select/select* session
-                                              model
+                                              entity
                                               key
                                               record-or-key-value
                                               nil)]
        (if record
-         (delete-with-primary session model key record opts)
+         (delete-with-primary session entity key record opts)
          (return
           [:ok nil :no-primary-record]))))))
