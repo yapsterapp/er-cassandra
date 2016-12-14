@@ -23,7 +23,7 @@
   (let [kv (k/extract-key-value key record-or-key-value opts)
         opts (-> opts
                  (dissoc :key-value)
-                 (assoc :row-generator (ms/->ModelInstanceRowGenerator)))]
+                 (assoc :row-generator (ms/->EntityInstanceRowGenerator)))]
 
     (when (and (:versioned? entity) (not= 1 (:limit opts)))
       (throw (ex-info select/select-err-msg {:entity entity :opts opts})))
@@ -59,7 +59,7 @@
 
         primary-opts (-> opts
                          (dissoc :where :only-if :order-by :limit)
-                         (assoc :row-generator (ms/->ModelInstanceRowGenerator)))
+                         (assoc :row-generator (ms/->EntityInstanceRowGenerator)))
 
         lrs (r/select-buffered session
                                (:name table)
