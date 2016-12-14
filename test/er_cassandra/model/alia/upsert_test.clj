@@ -5,7 +5,7 @@
    [er-cassandra.model.alia.upsert :as u]))
 
 (deftest stale-lookup-key-values-test
-  (let [m (t/create-model
+  (let [m (t/create-entity
            {:primary-table {:name :foos :key [:id]}
             :lookup-key-tables [{:name :foos_by_bar :key [:bar]}
                                 {:name :foos_by_baz
@@ -38,7 +38,7 @@
                (-> m :lookup-key-tables second))))))))
 
 (deftest stale-secondary-key-value-test
-  (let [m (t/create-model
+  (let [m (t/create-entity
            {:primary-table {:name :foos :key [:id]}
             :secondary-tables [{:name :foos_by_bar :key [:bar]}]})
         st (-> m :secondary-tables first)]
@@ -60,7 +60,7 @@
               (-> m :secondary-tables first)))))))
 
 (deftest with-columns-option-for-lookups
-  (let [m (t/create-model
+  (let [m (t/create-entity
            {:primary-table {:name :foos :key [:id]}
             :secondary-tables [{:name :foos_by_bar :key [:bar]}
                                {:name :foos_by_baz :key [:baz]}]
