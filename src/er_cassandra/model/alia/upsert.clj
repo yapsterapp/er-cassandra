@@ -16,10 +16,10 @@
    [er-cassandra.model.alia.unique-key :as unique-key])
   (:import
    [er_cassandra.session Session]
-   [er_cassandra.model.types Model]))
+   [er_cassandra.model.types Entity]))
 
 (defn delete-record
-  [^Session session ^Model model table key-value]
+  [^Session session ^Entity entity table key-value]
   (with-context deferred-context
     (mlet [delete-result (r/delete session
                                    (:name table)
@@ -31,7 +31,7 @@
              :key-value key-value} :deleted]))))
 
 (defn upsert-record
-  [^Session session ^Model model table record]
+  [^Session session ^Entity entity table record]
   (with-context deferred-context
     (mlet [insert-result (r/insert session
                                    (:name table)
@@ -40,7 +40,7 @@
        [:ok record :upserted]))))
 
 (defn stale-secondary-key-value
-  [^Model model old-record new-record secondary-table]
+  [^Entity entity old-record new-record secondary-table]
   (let [key (:key secondary-table)
         old-key-value (k/extract-key-value key old-record)
         new-key-value (k/extract-key-value key new-record)]
@@ -50,36 +50,36 @@
       old-key-value)))
 
 (defn delete-stale-secondaries
-  [^Session session ^Model model old-record new-record]
+  [^Session session ^Entity entity old-record new-record]
   (combine-responses
    (filter
     identity
-    (for [t (t/mutable-secondary-tables model)]
+    (for [t (t/mutable-secondary-tables entity)]
       (let [stale-key-value (stale-secondary-key-value
-                             model
+                             entity
                              old-record
                              new-record
                              t)]
         (if stale-key-value
           (delete-record session
-                         model
+                         entity
                          t
                          stale-key-value)
           (return [:ok nil :no-stale-secondary])))))))
 
 (defn upsert-secondaries
   "returns Deferred[Right[]]"
-  [^Session session ^Model model record]
+  [^Session session ^Entity entity record]
   (combine-responses
-   (for [t (t/mutable-secondary-tables model)]
+   (for [t (t/mutable-secondary-tables entity)]
      (let [k (:key t)]
        (when (and
               (k/has-key? k record)
               (k/extract-key-value k record))
-         (upsert-record session model t record))))))
+         (upsert-record session entity t record))))))
 
 (defn stale-lookup-key-values
-  [^Model model old-record new-record lookup-key-table]
+  [^Entity entity old-record new-record lookup-key-table]
   (let [key (:key lookup-key-table)
         col-colls (:collections lookup-key-table)]
 
@@ -89,15 +89,15 @@
         (filter identity (set/difference old-kvs new-kvs))))))
 
 (defn delete-stale-lookups
-  [^Session session ^Model model old-record new-record]
+  [^Session session ^Entity entity old-record new-record]
   (combine-responses
    (mapcat
     identity
-    (for [t (t/mutable-lookup-tables model)]
-      (let [stale-kvs (stale-lookup-key-values model old-record new-record t)]
+    (for [t (t/mutable-lookup-tables entity)]
+      (let [stale-kvs (stale-lookup-key-values entity old-record new-record t)]
 
         (for [kv stale-kvs]
-          (delete-record session model t kv)))))))
+          (delete-record session entity t kv)))))))
 
 (defn lookup-record-seq
   "returns a seq of tuples [table lookup-record]"
@@ -131,14 +131,14 @@
                [t lookup-record]))))))))
 
 (defn upsert-lookups
-  [^Session session ^Model model old-record record]
+  [^Session session ^Entity entity old-record record]
   (combine-responses
-   (for [[t r] (lookup-record-seq model old-record record)]
-     (upsert-record session model t r))))
+   (for [[t r] (lookup-record-seq entity old-record record)]
+     (upsert-record session entity t r))))
 
 (defn copy-unique-keys
-  [^Model model from to]
-  (let [unique-key-tables (:unique-key-tables model)]
+  [^Entity entity from to]
+  (let [unique-key-tables (:unique-key-tables entity)]
     (reduce (fn [r t]
               (let [key-col (last (:key t))]
                 (assoc r key-col (get from key-col))))
@@ -146,36 +146,36 @@
             unique-key-tables)))
 
 (defn has-lookups?
-  [^Model model]
+  [^Entity entity]
   (boolean
-   (or (not-empty (t/mutable-secondary-tables model))
-       (not-empty (t/mutable-lookup-tables model)))))
+   (or (not-empty (t/mutable-secondary-tables entity))
+       (not-empty (t/mutable-lookup-tables entity)))))
 
 (defn update-secondaries-and-lookups
   "update non-LWT secondary and lookup entries"
 
-  ([^Session session ^Model model old-record updated-record-with-keys]
+  ([^Session session ^Entity entity old-record updated-record-with-keys]
    (with-context deferred-context
      (mlet [stale-secondary-responses (delete-stale-secondaries
                                        session
-                                       model
+                                       entity
                                        old-record
                                        updated-record-with-keys)
 
             stale-lookup-responses (delete-stale-lookups
                                     session
-                                    model
+                                    entity
                                     old-record
                                     updated-record-with-keys)
 
             secondary-reponses (upsert-secondaries
                                 session
-                                model
+                                entity
                                 updated-record-with-keys)
 
             lookup-responses (upsert-lookups
                               session
-                              model
+                              entity
                               old-record
                               updated-record-with-keys)]
 
@@ -190,30 +190,30 @@
    updated-record is the record as currently in the db and key-failures
    is a map of {key values} for unique keys which were requested but
    could not be acquired "
-  [^Session session ^Model model record opts]
+  [^Session session ^Entity entity record opts]
    (with-context deferred-context
-     (mlet [:let [[record] (t/run-callbacks model :before-save [record])]
+     (mlet [:let [[record] (t/run-callbacks entity :before-save [record])]
 
             ;; don't need the old record if there are no lookups
-            old-record (if (has-lookups? model)
+            old-record (if (has-lookups? entity)
                          (r/select-one
                           session
-                          (get-in model [:primary-table :name])
-                          (get-in model [:primary-table :key])
-                          (t/extract-uber-key-value model record))
+                          (get-in entity [:primary-table :name])
+                          (get-in entity [:primary-table :key])
+                          (t/extract-uber-key-value entity record))
 
                          (return nil))
 
             [updated-record-with-keys
              acquire-failures] (unique-key/upsert-primary-record-and-update-unique-keys
                                 session
-                                model
+                                entity
                                 record
                                 opts)
 
             _ (if updated-record-with-keys
                 (update-secondaries-and-lookups session
-                                                model
+                                                entity
                                                 old-record
                                                 updated-record-with-keys)
                 (return nil))
@@ -222,14 +222,14 @@
             reselected-record (if updated-record-with-keys
                               (r/select-one
                                session
-                               (get-in model [:primary-table :name])
-                               (get-in model [:primary-table :key])
-                               (t/extract-uber-key-value model record))
+                               (get-in entity [:primary-table :name])
+                               (get-in entity [:primary-table :key])
+                               (t/extract-uber-key-value entity record))
                               (return nil))
 
             ;; gotta make the re-selected record presentable!
             final-record (t/run-callbacks-single
-                          model
+                          entity
                           :after-load
                           reselected-record)]
 

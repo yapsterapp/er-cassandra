@@ -150,7 +150,7 @@ tables, lookup tables and unique-key acquisition with lightweight-transactions
 ```
 (require '[er-cassandra.model :as m])
 
-(m/defmodel Users
+(m/defentity Users
   {:primary-table {:name :users
                    :key :id}
    ;; materialized views are supported

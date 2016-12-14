@@ -11,24 +11,24 @@
    [er-cassandra.model.alia.upsert :refer [upsert*]]
    [er-cassandra.model.alia.delete :refer [delete*]])
   (:import
-   [er_cassandra.model.types Model]))
+   [er_cassandra.model.types Entity]))
 
 (defrecord AliaModelSession [alia-session]
   ModelSession
   (-record-session [_]
     alia-session)
 
-  (-select [_ model key record-or-key-value opts]
-    (select* alia-session model key record-or-key-value opts))
+  (-select [_ entity key record-or-key-value opts]
+    (select* alia-session entity key record-or-key-value opts))
 
-  (-select-buffered [_ model key record-or-key-value opts]
-    (select-buffered* alia-session model key record-or-key-value opts))
+  (-select-buffered [_ entity key record-or-key-value opts]
+    (select-buffered* alia-session entity key record-or-key-value opts))
 
-  (-upsert [_ model record opts]
-    (upsert* alia-session model record opts))
+  (-upsert [_ entity record opts]
+    (upsert* alia-session entity record opts))
 
-  (-delete [_ model key record-or-key-value opts]
-    (delete* alia-session model key record-or-key-value opts))
+  (-delete [_ entity key record-or-key-value opts]
+    (delete* alia-session entity key record-or-key-value opts))
 
   (-close [_]
     (s/close alia-session))
@@ -59,36 +59,36 @@
   (-record-session [_]
     alia-session)
 
-  (-select [_ model key record-or-key-value opts]
+  (-select [_ entity key record-or-key-value opts]
     (swap! model-spy-log-atom conj {:action :select
-                                    :model model
+                                    :entity entity
                                     :key key
                                     :record-or-key-value record-or-key-value
                                     :opts opts})
-    (select* alia-session model key record-or-key-value opts))
+    (select* alia-session entity key record-or-key-value opts))
 
-  (-select-buffered [_ model key record-or-key-value opts]
+  (-select-buffered [_ entity key record-or-key-value opts]
     (swap! model-spy-log-atom conj {:action :select
-                                    :model model
+                                    :entity entity
                                     :key key
                                     :record-or-key-value record-or-key-value
                                     :opts opts})
-    (select-buffered* alia-session model key record-or-key-value opts))
+    (select-buffered* alia-session entity key record-or-key-value opts))
 
-  (-upsert [_ model record opts]
+  (-upsert [_ entity record opts]
     (swap! model-spy-log-atom conj {:action :upsert
-                                    :model model
+                                    :entity entity
                                     :record record
                                     :opts opts})
-    (upsert* alia-session model record opts))
+    (upsert* alia-session entity record opts))
 
-  (-delete [_ model key record-or-key-value opts]
+  (-delete [_ entity key record-or-key-value opts]
     (swap! model-spy-log-atom conj {:action :delete
-                                    :model model
+                                    :entity entity
                                     :key key
                                     :record-or-key-value record-or-key-value
                                     :opts opts})
-    (delete* alia-session model key record-or-key-value opts))
+    (delete* alia-session entity key record-or-key-value opts))
 
   (-close [_]
     (s/close alia-session))

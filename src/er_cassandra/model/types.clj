@@ -74,7 +74,7 @@
          CollectionKeysSchema
          {(s/optional-key :with-columns) [s/Keyword]}))
 
-(s/defschema ModelSchema
+(s/defschema EntitySchema
   {:primary-table PrimaryTableSchema
    (s/optional-key :unique-key-tables) [UniqueKeyTableSchema]
    (s/optional-key :secondary-tables) [SecondaryTableSchema]
@@ -82,7 +82,7 @@
    (s/optional-key :callbacks) CallbacksSchema
    (s/optional-key :versioned?) s/Bool})
 
-(s/defrecord Model
+(s/defrecord Entity
     [primary-table :- PrimaryTableSchema
      unique-key-tables :- [UniqueKeyTableSchema]
      secondary-tables :- [SecondaryTableSchema]
@@ -95,36 +95,36 @@
   (assoc table :key (k/make-sequential (:key table))))
 
 (defn ^:private force-key-seqs
-  [model-schema table-seq-key]
-  (assoc model-schema
+  [entity-schema table-seq-key]
+  (assoc entity-schema
          table-seq-key
          (mapv force-key-seq
-               (get model-schema table-seq-key))))
+               (get entity-schema table-seq-key))))
 
 (defn ^:private force-all-key-seqs
   "ensure all keys are given as sequences of components"
-  [model-schema]
+  [entity-schema]
   (reduce force-key-seqs
-          (assoc model-schema
+          (assoc entity-schema
                  :primary-table
-                 (force-key-seq (:primary-table model-schema)))
+                 (force-key-seq (:primary-table entity-schema)))
           [:unique-key-tables
            :secondary-tables
            :lookup-key-tables]))
 
-(s/defn ^:always-validate create-model :- Model
-  "create a model record from a spec"
-  [model-spec :- ModelSchema]
-  (map->Model (merge {:unique-key-tables []
-                      :secondary-tables []
-                      :lookup-key-tables []
-                      :callbacks {}
-                      :versioned? false}
-                     (force-all-key-seqs model-spec))))
+(s/defn ^:always-validate create-entity :- Entity
+  "create an entity record from a spec"
+  [entity-spec :- EntitySchema]
+  (map->Entity (merge {:unique-key-tables []
+                       :secondary-tables []
+                       :lookup-key-tables []
+                       :callbacks {}
+                       :versioned? false}
+                      (force-all-key-seqs entity-spec))))
 
-(defmacro defmodel
-  [name model-spec]
-  `(def ~name (create-model ~model-spec)))
+(defmacro defentity
+  [name entity-spec]
+  `(def ~name (create-entity ~entity-spec)))
 
 (defn satisfies-primary-key?
   "return true if key is the same as the full primary-key"
@@ -175,58 +175,58 @@
         tables))
 
 (defn is-primary-table
-  [^Model model table]
-  (is-table-name [(:primary-table model)] table))
+  [^Entity entity table]
+  (is-table-name [(:primary-table entity)] table))
 
 (defn is-secondary-table
-  [^Model model table]
-  (is-table-name (:secondary-tables model) table))
+  [^Entity entity table]
+  (is-table-name (:secondary-tables entity) table))
 
 (defn is-unique-key-table
-  [^Model model table]
-  (is-table-name (:unique-key-tables model) table))
+  [^Entity entity table]
+  (is-table-name (:unique-key-tables entity) table))
 
 (defn is-lookup-key-table
-  [^Model model table]
-  (is-table-name (:lookup-key-tables model) table))
+  [^Entity entity table]
+  (is-table-name (:lookup-key-tables entity) table))
 
 (defn uber-key
-  [^Model model]
-  (get-in model [:primary-table :key]))
+  [^Entity entity]
+  (get-in entity [:primary-table :key]))
 
 (defn mutable-secondary-tables
-  [^Model model]
-  (->> model
+  [^Entity entity]
+  (->> entity
        :secondary-tables
        (filterv (comp not :view?))))
 
 (defn mutable-lookup-tables
-  [^Model model]
-  (->> model
+  [^Entity entity]
+  (->> entity
        :lookup-key-tables
        (filterv (comp not :view?))))
 
 (defn extract-uber-key-value
-  [^Model model record]
+  [^Entity entity record]
   (let [kv (k/extract-key-value
-            (get-in model [:primary-table :key])
+            (get-in entity [:primary-table :key])
             record)]
     (when (nil? kv)
-      (throw (ex-info "nil uberkey" {:model model :record record
+      (throw (ex-info "nil uberkey" {:entity entity :record record
                                      :cause ::nil-uberkey})))
     kv))
 
 (defn extract-uber-key-equality-clause
-  [^Model model record]
+  [^Entity entity record]
   (k/extract-key-equality-clause
-   (get-in model [:primary-table :key])
+   (get-in entity [:primary-table :key])
    record))
 
 (defn run-callbacks
-  ([^Model model callback-key records]
-   (run-callbacks model callback-key records {}))
-  ([^Model model callback-key records opts]
-   (let [callbacks (concat (get-in model [:callbacks callback-key])
+  ([^Entity entity callback-key records]
+   (run-callbacks entity callback-key records {}))
+  ([^Entity entity callback-key records opts]
+   (let [callbacks (concat (get-in entity [:callbacks callback-key])
                            (get-in opts [callback-key]))]
      (try
        (reduce (fn [r callback]
@@ -234,18 +234,18 @@
                records
                callbacks)
        (catch Exception ex
-         (throw (ex-info (format "Failed to run callbacks '%s' on record of model for '%s'"
+         (throw (ex-info (format "Failed to run callbacks '%s' on record of entity for '%s'"
                                  callback-key
-                                 (get-in model [:primary-table :name]))
+                                 (get-in entity [:primary-table :name]))
                          {:callback-key callback-key
-                          :model model}
+                          :entity entity}
                          ex)))))))
 
 (defn run-callbacks-single
-  ([^Model model callback-key record]
-   (run-callbacks-single model callback-key record {}))
-  ([^Model model callback-key record opts]
-   (let [callbacks (concat (get-in model [:callbacks callback-key])
+  ([^Entity entity callback-key record]
+   (run-callbacks-single entity callback-key record {}))
+  ([^Entity entity callback-key record opts]
+   (let [callbacks (concat (get-in entity [:callbacks callback-key])
                            (get-in opts [callback-key]))]
      (reduce (fn [r callback]
                (callback r))
@@ -253,22 +253,22 @@
              callbacks))))
 
 (defn run-deferred-callbacks
-  ([^Model model callback-key deferred-records]
-   (run-deferred-callbacks model callback-key deferred-records {}))
-  ([^Model model callback-key deferred-records opts]
+  ([^Entity entity callback-key deferred-records]
+   (run-deferred-callbacks entity callback-key deferred-records {}))
+  ([^Entity entity callback-key deferred-records opts]
    (with-context deferred-context
      (mlet [records deferred-records]
        (return
-        (run-callbacks model callback-key records opts))))))
+        (run-callbacks entity callback-key records opts))))))
 
 (defn run-deferred-callbacks-single
-  ([^Model model callback-key deferred-record]
-   (run-deferred-callbacks-single model callback-key deferred-record {}))
-  ([^Model model callback-key deferred-record opts]
+  ([^Entity entity callback-key deferred-record]
+   (run-deferred-callbacks-single entity callback-key deferred-record {}))
+  ([^Entity entity callback-key deferred-record opts]
    (with-context deferred-context
      (mlet [record deferred-record]
        (return
-        (run-callbacks-single model callback-key record opts))))))
+        (run-callbacks-single entity callback-key record opts))))))
 
 (defn create-protect-columns-callback
   "create a callback which will remove cols from a record
