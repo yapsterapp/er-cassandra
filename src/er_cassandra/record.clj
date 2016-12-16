@@ -26,6 +26,13 @@
                                       :opts opts
                                       :valid-opts valid-opts})))))
 
+(defn combine-where
+  [& clauses]
+  (into []
+        (->> clauses
+             (filter identity)
+             (apply concat))))
+
 (def select-opt-keys #{:where :columns :order-by :limit})
 
 (defn select-statement
@@ -43,7 +50,7 @@
          where-clause (if (sequential? (first where))
                         where ;; it's already a seq of conditions
                         (when (not-empty where) [where]))
-         where-clause (into key-clause where-clause)]
+         where-clause (combine-where key-clause where-clause)]
      (h/select table
                (h/where where-clause)
                (when columns (apply h/columns columns))
@@ -182,13 +189,6 @@
       (select-keys opts [:only-if :if-exists :using :set-columns]))
      (dissoc opts :only-if :if-exists :using :set-columns))
     first)))
-
-(defn combine-where
-  [& clauses]
-  (into []
-        (->> clauses
-             (filter identity)
-             (apply concat))))
 
 (def delete-opt-keys #{:only-if :if-exists :using :where})
 
