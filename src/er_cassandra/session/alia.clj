@@ -177,20 +177,23 @@
 ;; if necesary and will truncate any used tables when closed
 (defnk create-test-session
   [{contact-points nil} {port nil} {datacenter nil} keyspace :as args]
-  (create-spy-session
-   (merge
-    args
-    {:contact-points (or contact-points ["localhost"])
-     :port (or port
-               (some-> (env :cassandra-port) Integer/parseInt)
-               9042)
-     :datacenter datacenter
-     :init-statements
-     [(str "CREATE KEYSPACE IF NOT EXISTS "
-           "  \"${keyspace}\" "
-           "WITH replication = "
-           "  {'class': 'SimpleStrategy', "
-           "   'replication_factor': '1'} "
-           " AND durable_writes = true;")]
+  (let [session
+        (create-spy-session
+           (merge
+            args
+            {:contact-points (or contact-points ["localhost"])
+             :port (or port
+                       (some-> (env :cassandra-port) Integer/parseInt)
+                       9042)
+             :datacenter datacenter
+             :init-statements
+             [(str "CREATE KEYSPACE IF NOT EXISTS "
+                   "  \"${keyspace}\" "
+                   "WITH replication = "
+                   "  {'class': 'SimpleStrategy', "
+                   "   'replication_factor': '1'} "
+                   " AND durable_writes = true;")]
 
-     :truncate-on-close true})))
+             :truncate-on-close true}))]
+    [session
+     (fn [] (s/close session))]))
