@@ -1,9 +1,13 @@
 (ns er-cassandra.record-test
   (:require
+   [er-cassandra.util.test :as tu]
+   [er-cassandra.session.alia :as alia-session]
    [er-cassandra.record :as r]
-   [clojure.test :refer [deftest is testing]])
+   [clojure.test :refer [deftest is testing use-fixtures]])
   (:import
    [clojure.lang ExceptionInfo]))
+
+(use-fixtures :each (tu/with-session-fixture))
 
 (deftest select-statement-test
   (testing "simplest select"
@@ -296,3 +300,8 @@
             :id
             10
             {:blah true})))))
+
+(deftest select-test
+  (testing "simple select"
+    @(r/select tu/*session* :foos :id "foo")
+    ))
