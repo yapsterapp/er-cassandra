@@ -81,3 +81,40 @@
           :id
           "foo"
           {:blah true})))))
+
+(deftest insert-statement-test
+  (testing "simple insert"
+    (is (= {:insert :foos :values {:id "id" :foo "foo"}}
+           (r/insert-statement
+            :foos
+            {:id "id"
+             :foo "foo"}))))
+  (testing "with ttl"
+    (is (= {:insert :foos
+            :values {:id "id" :foo "foo"}
+            :using [[:ttl 5000]]}
+           (r/insert-statement
+            :foos
+            {:id "id"
+             :foo "foo"}
+            {:using {:ttl 5000}}))))
+  (testing "with timestamp"
+    (is (= {:insert :foos
+            :values {:id "id" :foo "foo"}
+            :using [[:timestamp 5000]]}
+           (r/insert-statement
+            :foos
+            {:id "id"
+             :foo "foo"}
+            {:using {:timestamp 5000}}))))
+  (testing "with if-not-exists"
+    (is (= {:insert :foos
+            :values {:id "id" :foo "foo"}
+            :if-exists false}
+           (r/insert-statement
+            :foos
+            {:id "id"
+             :foo "foo"}
+            {:if-not-exists true}))))
+
+)
