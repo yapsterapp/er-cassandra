@@ -42,7 +42,8 @@
                  [environ "1.1.0"]
                  [drift "1.5.3"]
                  [manifold "0.1.5"]
-                 [funcool/cats "2.0.0"]]
+                 [funcool/cats "2.0.0"]
+                 [employeerepublic/deferst "0.2.1"]]
 
   :aliases {"test-repl" ["with-profile" "cassandra-unit,repl" "repl"]}
 

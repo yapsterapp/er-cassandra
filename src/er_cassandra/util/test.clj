@@ -1,0 +1,30 @@
+(ns er-cassandra.util.test
+  (:require
+   [clojure.test :as t]
+   [deferst :refer [defsystem]]
+   [deferst.system :as sys]
+   [er-cassandra.session.alia :as alia-session]))
+
+(def ^:dynamic *session* nil)
+
+(def alia-test-session-config
+  {:config {:alia-session
+            {:keyspace "er_cassandra_test"}}})
+
+(def alia-test-session-system-def
+  [[:cassandra
+    alia-session/create-test-session
+    [:config :alia-session]]])
+
+(defn with-session-fixture
+  []
+  (fn [f]
+
+    (let [sb (sys/system-builder alia-test-session-system-def)
+          sys (sys/start-system! sb alia-test-session-config)]
+      (try
+        (let [system @(sys/system-map sys)]
+          (binding [*session* (:cassandra system)]
+            (f)))
+        (finally
+          (sys/stop-system! sys))))))
