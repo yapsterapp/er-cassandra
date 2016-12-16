@@ -1,4 +1,4 @@
-(ns er-cassandra.time
+(ns er-cassandra.util.time
   (:require
    [clj-time.format :as f]))
 
