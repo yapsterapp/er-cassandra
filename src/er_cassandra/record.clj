@@ -108,6 +108,8 @@
     (select session table key record-or-key-value (merge opts {:limit 1}))
     first)))
 
+(def insert-opt-keys #{:if-not-exists :using})
+
 (defn insert-statement
   "returns a Hayt insert statement"
 
@@ -116,6 +118,7 @@
   ([table
     record
     {:keys [if-not-exists using] :as opts}]
+   (check-opts insert-opt-keys opts)
    (h/insert table
              (h/values record)
              (when if-not-exists (h/if-not-exists true))
