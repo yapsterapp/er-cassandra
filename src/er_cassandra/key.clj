@@ -19,8 +19,9 @@
       (vec ck))))
 
 (defn flatten-key
+  "coerce to a vector and remove any partition-key nesting"
   [key]
-  (-> key v/coerce flatten))
+  (some-> key v/coerce flatten vec))
 
 (defn extract-key-value
   "extract a key value from some combination of explicit value
@@ -30,10 +31,10 @@
    (extract-key-value key record-or-key-value {}))
 
   ([key record-or-key-value {:keys [key-value]}]
-   (let [key (flatten (v/coerce key)) ;; flatten partition key
-         key-value (or (v/coerce key-value nil)
+   (let [key (flatten-key key)
+         key-value (or (flatten-key key-value)
                        (if-not (map? record-or-key-value)
-                         (v/coerce record-or-key-value)
+                         (flatten-key record-or-key-value)
                          (repeat (count key) nil)))
          record (when (map? record-or-key-value)
                   record-or-key-value)
@@ -50,16 +51,19 @@
   "remove components from a [key key-value] pair, returning
    a new [key key-value] pair with the components removed"
   [key key-value remove-components]
-  (let [kvs (map vector (flatten (v/coerce key)) (v/coerce key-value))
-        rcs (set (v/coerce remove-components))
+  (let [kvs (map vector (flatten-key key) (flatten-key key-value))
+        rcs (set (flatten-key remove-components))
         fkvs (filter (fn [[k v]] (not (contains? rcs k)))
                      kvs)]
     (when (> (count fkvs) 0)
       [(map first fkvs) (map second fkvs)])))
 
 (defn key-equality-clause
+  "return a Hayt when clause for key and key-value... if
+   elements of key-value are lists then an :in clause will
+   be used instead of :="
   [key key-value]
-  (let [key (flatten (v/coerce key))
+  (let [key (flatten-key key)
         key-value (v/coerce key-value)]
     (mapv (fn [k v]
             (if (sequential? v)
@@ -124,7 +128,7 @@
   ([key record col-colls]
    (when-let [kv (not-empty
                   (extract-key-value key record {}))]
-     (let [key (flatten (v/coerce key))
+     (let [key (flatten-key key)
            col-values (mapv (fn [k v]
                               (extract-collection-key-components
                                col-colls
@@ -139,6 +143,6 @@
   "true if the record contains? keys for all the key components"
   [key record]
   (->> key
-       flatten
+       flatten-key
        (map #(contains? record %))
        (every? identity)))
