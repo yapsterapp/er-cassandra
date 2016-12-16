@@ -141,6 +141,8 @@
      (dissoc opts :if-not-exists :using))
     first)))
 
+(def update-opt-keys #{:only-if :if-exists :if-not-exists :using :set-columns})
+
 (defn update-statement
   "returns a Hayt update statement"
 
@@ -149,7 +151,8 @@
   ([table
     key
     record
-    {:keys [only-if if-exists using set-columns] :as opts}]
+    {:keys [only-if if-exists if-not-exists using set-columns] :as opts}]
+   (check-opts update-opt-keys opts)
    (let [key-clause (extract-key-equality-clause key record opts)
          set-cols (if (not-empty set-columns)
                     (select-keys record set-columns)
@@ -159,6 +162,7 @@
                (h/where key-clause)
                (when only-if (h/only-if only-if))
                (when if-exists (h/if-exists true))
+               (when if-not-exists (h/if-exists false))
                (when (not-empty using) (apply h/using (flatten (seq using))))))))
 
 (defn update
