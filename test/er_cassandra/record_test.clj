@@ -115,6 +115,97 @@
             :foos
             {:id "id"
              :foo "foo"}
-            {:if-not-exists true}))))
+            {:if-not-exists true})))))
 
-)
+(deftest update-statement-test
+  (testing "simple update"
+    (is (= {:update :foos
+            :set-columns {:foo "foo"}
+            :where [[:= :id 100]]}
+           (r/update-statement
+            :foos
+            [:id]
+            {:id 100
+             :foo "foo"}))))
+  (testing "compound key, multiple cols"
+    (is (= {:update :foos
+            :set-columns {:foo "foo" :bar "bar"}
+            :where [[:= :id 100] [:= :id2 200]]}
+           (r/update-statement
+            :foos
+            [:id :id2]
+            {:id 100
+             :id2 200
+             :foo "foo"
+             :bar "bar"}))))
+  (testing "set-columns"
+    (is (= {:update :foos
+            :set-columns {:foo "foo"}
+            :where [[:= :id 100]]}
+           (r/update-statement
+            :foos
+            [:id]
+            {:id 100
+             :foo "foo"
+             :bar "bar"}
+            {:set-columns [:foo]}))))
+  (testing "only-if"
+    (is (= {:update :foos
+            :set-columns {:foo "foo" :bar "bar"}
+            :where [[:= :id 100]]
+            :if [[:= :foo "foo"]]}
+           (r/update-statement
+            :foos
+            [:id]
+            {:id 100
+             :foo "foo"
+             :bar "bar"}
+            {:only-if [[:= :foo "foo"]]}))))
+
+  (testing "if-exists"
+    (is (= {:update :foos
+            :set-columns {:foo "foo" :bar "bar"}
+            :where [[:= :id 100]]
+            :if-exists true}
+           (r/update-statement
+            :foos
+            [:id]
+            {:id 100
+             :foo "foo"
+             :bar "bar"}
+            {:if-exists true}))))
+
+  (testing "if-not-exists"
+    (is (= {:update :foos
+            :set-columns {:foo "foo" :bar "bar"}
+            :where [[:= :id 100]]
+            :if-exists false}
+           (r/update-statement
+            :foos
+            [:id]
+            {:id 100
+             :foo "foo"
+             :bar "bar"}
+            {:if-not-exists true}))))
+  (testing "using ttl"
+    (is (= {:update :foos
+            :set-columns {:foo "foo"}
+            :where [[:= :id 100]]
+            :using [[:ttl 5000]]}
+           (r/update-statement
+            :foos
+            [:id]
+            {:id 100
+             :foo "foo"}
+            {:using {:ttl 5000}}))))
+  (testing "using timestamp"
+    (is (= {:update :foos
+            :set-columns {:foo "foo"}
+            :where [[:= :id 100]]
+            :using [[:timestamp 5000]]}
+           (r/update-statement
+            :foos
+            [:id]
+            {:id 100
+             :foo "foo"}
+            {:using {:timestamp 5000}})))))
