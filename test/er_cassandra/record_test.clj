@@ -1,9 +1,11 @@
 (ns er-cassandra.record-test
   (:require
    [er-cassandra.util.test :as tu]
+   [er-cassandra.session :as s]
    [er-cassandra.session.alia :as alia-session]
    [er-cassandra.record :as r]
-   [clojure.test :refer [deftest is testing use-fixtures]])
+   [clojure.test :refer [deftest is testing use-fixtures]]
+   [clj-uuid :as uuid])
   (:import
    [clojure.lang ExceptionInfo]))
 
@@ -302,6 +304,16 @@
             {:blah true})))))
 
 (deftest select-test
-  (testing "simple select"
-    @(r/select tu/*session* :foos :id "foo")
-    ))
+  (let [_ @(s/execute
+            tu/*session*
+            "drop table if exists select_test")
+        _ @(s/execute
+            tu/*session*
+            "create table if not exists select_test (id timeuuid primary key)")
+        t (uuid/v1)
+        _ @(s/execute
+            tu/*session*
+            (str "insert into select_test (id) values (" t ")"))]
+    (testing "simple select-one"
+      (is (= {:id t}
+             @(r/select-one tu/*session* :select_test :id t))))))
