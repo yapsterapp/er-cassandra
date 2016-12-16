@@ -1,34 +1,29 @@
 (ns er-cassandra.key
   (:require
-   [clojure.math.combinatorics :refer [cartesian-product]]))
-
-(defn make-sequential
-  [v]
-  (cond (nil? v) v
-        (sequential? v) v
-        :else [v]))
+   [clojure.math.combinatorics :refer [cartesian-product]]
+   [er-cassandra.util.vector :as v]))
 
 (defn partition-key
   "given a primary key spec, return the partition key,
    which is the first element of the primary key spec"
   [key]
-  (let [key (make-sequential key)]
-    (make-sequential (first key))))
+  (let [key (v/coerce key)]
+    (v/coerce (first key))))
 
 (defn cluster-key
   "given a primary key spec, return the cluster key"
   [key]
-  (let [key (make-sequential key)
+  (let [key (v/coerce key)
         ck (next key)]
     (when ck
       (vec ck))))
 
 (defn extract-key-value*
   ([key record-or-key-value {:keys [key-value]}]
-   (let [key (flatten (make-sequential key)) ;; flatten partition key
-         key-value (or (make-sequential key-value)
+   (let [key (flatten (v/coerce key)) ;; flatten partition key
+         key-value (or (v/coerce key-value)
                        (if-not (map? record-or-key-value)
-                         (make-sequential record-or-key-value)
+                         (v/coerce record-or-key-value)
                          (repeat (count key) nil)))
          record (when (map? record-or-key-value)
                   record-or-key-value)
@@ -64,8 +59,8 @@
 
 (defn key-equality-clause
   [key key-value]
-  (let [key (flatten (make-sequential key))
-        key-value (make-sequential key-value)]
+  (let [key (flatten (v/coerce key))
+        key-value (v/coerce key-value)]
     (mapv (fn [k v]
             (if (sequential? v)
               [:in k v]
@@ -80,7 +75,7 @@
    (extract-key-equality-clause key record-or-key-value {}))
 
   ([key record-or-key-value opts]
-   (let [key (make-sequential key)
+   (let [key (v/coerce key)
          kv (extract-key-value key record-or-key-value opts)]
      (key-equality-clause key kv))))
 
@@ -127,7 +122,7 @@
   ([key record col-colls]
    (when-let [kv (not-empty
                   (extract-key-value* key record {}))]
-     (let [key (flatten (make-sequential key))
+     (let [key (flatten (v/coerce key))
            col-values (mapv (fn [k v]
                               (extract-collection-key-components
                                col-colls
