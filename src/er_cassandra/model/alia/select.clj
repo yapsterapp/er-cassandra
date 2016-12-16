@@ -7,7 +7,8 @@
             [er-cassandra.key :as k]
             [er-cassandra.record :as r]
             [er-cassandra.model.types :as t]
-            [er-cassandra.model.model-session :as ms]
+            [er-cassandra.model.model-session :eas ms]
+            [er-cassandra.util.vector :as v]
             [er-cassandra.model.util :as util])
   (:import
    [er_cassandra.session Session]
@@ -114,7 +115,7 @@
 (defn select*
   "select records from primary or lookup tables as required"
   [^Session session ^Entity entity key record-or-key-value {:keys [from] :as opts}]
-   (let [key (k/make-sequential key)
+   (let [key (v/coerce key)
          opts (dissoc opts :from)]
      (if from
        (if-let [full-table (or (t/is-primary-table entity from)
