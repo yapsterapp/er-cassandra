@@ -190,6 +190,8 @@
              (filter identity)
              (apply concat))))
 
+(def delete-opt-keys #{:only-if :if-exists :using :where})
+
 (defn delete-statement
   "returns a Hayt delete statement"
 
@@ -200,6 +202,7 @@
     key
     record-or-key-value
     {:keys [only-if if-exists using where] :as opts}]
+   (check-opts delete-opt-keys opts)
    (let [key-clause (extract-key-equality-clause key record-or-key-value opts)]
      (h/delete table
                (h/where (combine-where key-clause where))

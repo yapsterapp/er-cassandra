@@ -115,7 +115,14 @@
             :foos
             {:id "id"
              :foo "foo"}
-            {:if-not-exists true})))))
+            {:if-not-exists true}))))
+  (testing "unknown opts"
+    (is (thrown-with-msg? ExceptionInfo #"unknown opts"
+           (r/insert-statement
+            :foos
+            {:id "id"
+             :foo "foo"}
+            {:blah true})))))
 
 (deftest update-statement-test
   (testing "simple update"
@@ -208,4 +215,84 @@
             [:id]
             {:id 100
              :foo "foo"}
-            {:using {:timestamp 5000}})))))
+            {:using {:timestamp 5000}}))))
+  (testing "unknown opts"
+    (is (thrown-with-msg? ExceptionInfo #"unknown opts"
+                         (r/update-statement
+                          :foos
+                          [:id]
+                          {:id 100
+                           :foo "foo"}
+                          {:blah true})))))
+
+(deftest delete-statement-test
+  (testing "simple delete"
+    (is (= {:delete :foos
+            :columns :*
+            :where [[:= :id 10]]}
+           (r/delete-statement
+            :foos
+            :id
+            10)))
+    (is (= {:delete :foos
+            :columns :*
+            :where [[:= :id 10][:= :id2 20]]}
+           (r/delete-statement
+            :foos
+            [:id :id2]
+            [10 20])))
+    (is (= {:delete :foos
+            :columns :*
+            :where [[:= :id 10][:= :id2 20]]}
+           (r/delete-statement
+            :foos
+            [:id :id2]
+            {:id 10 :id2 20}))))
+  (testing "using timestamp"
+    (is (= {:delete :foos
+            :columns :*
+            :where [[:= :id 10]]
+            :using [[:timestamp 5000]]}
+           (r/delete-statement
+            :foos
+            :id
+            10
+            {:using {:timestamp 5000}}))))
+  (testing "only-if"
+    (is (= {:delete :foos
+            :columns :*
+            :where [[:= :id 10]]
+            :if [[:= :foo "foo"]]
+            }
+           (r/delete-statement
+            :foos
+            :id
+            10
+            {:only-if [[:= :foo "foo"]]}))))
+  (testing "if-exists"
+    (is (= {:delete :foos
+            :columns :*
+            :where [[:= :id 10]]
+            :if-exists true
+            }
+           (r/delete-statement
+            :foos
+            :id
+            10
+            {:if-exists true}))))
+  (testing "additional where"
+    (is (= {:delete :foos
+            :columns :*
+            :where [[:= :id 10][:= :foo "foo"][:= :bar "bar"]]}
+           (r/delete-statement
+            :foos
+            :id
+            10
+            {:where [[:= :foo "foo"][:= :bar "bar"]]}))))
+  (testing "unknown opts"
+    (is (thrown-with-msg? ExceptionInfo #"unknown opts"
+           (r/delete-statement
+            :foos
+            :id
+            10
+            {:blah true})))))
