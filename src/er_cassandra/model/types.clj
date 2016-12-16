@@ -5,6 +5,7 @@
    [cats.labs.manifold :refer [deferred-context]]
    [schema.core :as s]
    [clj-time.core :as t]
+   [er-cassandra.util.vector :as v]
    [er-cassandra.key :as k]))
 
 (s/defschema CallbackFnSchema
@@ -14,7 +15,7 @@
   {(s/optional-key :after-load) [CallbackFnSchema]
    (s/optional-key :before-save) [CallbackFnSchema]})
 
-;; a private key for a cassandra table
+;; a primary key for a cassandra table
 ;; the first entry may itself be a vector, representing
 ;; a compound partition key
 (s/defschema KeySchema
@@ -32,6 +33,33 @@
 (s/defschema SecondaryKeySchema
   s/Keyword)
 
+;; just map parent fidles to child fields for now
+;; :foreign-key and :parent-entity-key will be
+;; included by default
+(s/defschema DenormalizeSchema
+  {s/Keyword s/Keyword})
+
+;; a Relationship allows fields from a parent Entity or
+;; one of its index tables to be
+;; denormalized to records of a child Entity. 1-1 and 1-many
+;; relationships are supported and large child sets are also
+;; supported
+(s/defschema RelationshipSchema
+  {;; target Entity var - will be dynamically deref'd
+   :target s/Symbol
+   ;; the foreign key which must have the corresponding components
+   ;; in the same order as the parent primary key
+   :foreign-key KeySchema
+   ;; the fields to be denormalized
+   :denormalize DenormalizeSchema})
+
+;; basic table schema shared by primary, secondary
+;; unique-key and lookup tables
+(s/defschema TableSchema
+  {:name s/Keyword
+   :key KeySchema
+   (s/optional-key :relationships) [RelationshipSchema]})
+
 ;; the :key is the primary-key of the table, which may
 ;; have a compound parition key [[pk1 pk2] ck1 ck2]
 ;; the :entity-key is an optional unique identifier for which
@@ -39,9 +67,8 @@
 ;; delete with a secondary index from seocondary and lookup tables
 ;; TODO use the :entity-key to delete stale secondary and lookup records
 (s/defschema PrimaryTableSchema
-  {:name s/Keyword
-   :key KeySchema
-   (s/optional-key :entity-key) SecondaryKeySchema})
+  (merge TableSchema
+         {(s/optional-key :entity-key) SecondaryKeySchema}))
 
 ;; some of the (non-partition) columns in a lookup-table
 ;; key may be collections... these will be expanded to the
@@ -53,22 +80,27 @@
   {(s/optional-key :collections) {s/Keyword
                                   (s/pred #{:list :set :map})}})
 
+(s/defschema EntityKeySchema
+  {(s/optional-key :has-entity-key?) s/Bool})
+
 ;; unique-key tables are lookup tables with a unique
 ;; constraint on the key, enforced with an LWT
 (s/defschema UniqueKeyTableSchema
-  (merge PrimaryTableSchema
-         CollectionKeysSchema))
+  (merge TableSchema
+         CollectionKeysSchema
+         EntityKeySchema))
 
 ;; secondary tables contain all columns from the primary
 ;; table, with a different primary key.
 ;; secondary and lookup tables may be materialized views,
 ;; which will be used for query but won't be upserted to
 (s/defschema SecondaryTableSchema
-  (merge PrimaryTableSchema
+  (merge TableSchema
+         EntityKeySchema
          {(s/optional-key :view?) s/Bool}))
 
 ;; lookup tables contain columns from the uberkey and
-;; a lookup key
+;; a lookup key, plus any additional with-columns
 (s/defschema LookupTableSchema
   (merge SecondaryTableSchema
          CollectionKeysSchema
@@ -82,6 +114,7 @@
    (s/optional-key :callbacks) CallbacksSchema
    (s/optional-key :versioned?) s/Bool})
 
+
 (s/defrecord Entity
     [primary-table :- PrimaryTableSchema
      unique-key-tables :- [UniqueKeyTableSchema]
@@ -92,7 +125,7 @@
 
 (defn ^:private force-key-seq
   [table]
-  (assoc table :key (k/make-sequential (:key table))))
+  (assoc table :key (v/coerce (:key table))))
 
 (defn ^:private force-key-seqs
   [entity-schema table-seq-key]
