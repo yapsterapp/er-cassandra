@@ -3,6 +3,7 @@
    [clojure.test :as t]
    [deferst :refer [defsystem]]
    [deferst.system :as sys]
+   [er-cassandra.session :as s]
    [er-cassandra.session.alia :as alia-session]))
 
 (def ^:dynamic *session* nil)
@@ -28,3 +29,12 @@
             (f)))
         (finally
           (sys/stop-system! sys))))))
+
+(defn create-table
+  [table-name table-def]
+  @(s/execute
+    *session*
+    (str "drop table if exists " (name table-name)))
+  @(s/execute
+    *session*
+    (str "create table " (name table-name) " " table-def)))

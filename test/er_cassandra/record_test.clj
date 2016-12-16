@@ -304,16 +304,14 @@
             {:blah true})))))
 
 (deftest select-test
-  (let [_ @(s/execute
-            tu/*session*
-            "drop table if exists select_test")
-        _ @(s/execute
-            tu/*session*
-            "create table if not exists select_test (id timeuuid primary key)")
+  (let [_ (tu/create-table :select_test "(id timeuuid primary key)")
+
         t (uuid/v1)
-        _ @(s/execute
+        ;; insert with record layer to trigger truncates on session close
+        _ @(r/insert
             tu/*session*
-            (str "insert into select_test (id) values (" t ")"))]
+            :select_test
+            {:id t})]
     (testing "simple select-one"
       (is (= {:id t}
              @(r/select-one tu/*session* :select_test :id t))))))
