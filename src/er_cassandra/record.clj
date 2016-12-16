@@ -2,10 +2,12 @@
   (:refer-clojure :exclude [update])
   (:require
    [plumbing.core :refer :all]
+   [clojure.set :as set]
    [manifold.deferred :as d]
    [manifold.stream :as s]
    [qbits.hayt :as h]
-   [er-cassandra.key :refer [make-sequential extract-key-equality-clause]]
+   [er-cassandra.util.vector :as v]
+   [er-cassandra.key :refer [flatten-key extract-key-equality-clause]]
    [er-cassandra.session :as session])
   (:import
    [er_cassandra.session Session]))
@@ -16,6 +18,16 @@
 ;;
 ;; execution is async and returns a manifold Deferred
 
+(defn check-opts
+  [valid-opts opts]
+  (let [uks (set/difference (set (keys opts)) valid-opts)]
+    (when (not-empty uks)
+      (throw (ex-info "unknown opts" {:unknown-opts uks
+                                      :opts opts
+                                      :valid-opts valid-opts})))))
+
+(def select-opt-keys #{:where :columns :order-by :limit})
+
 (defn select-statement
   "returns a Hayt select statement"
 
@@ -25,7 +37,8 @@
   ([table
     key
     record-or-key-value
-    {:keys [columns where only-if order-by limit] :as opts}]
+    {:keys [where columns order-by limit] :as opts}]
+   (check-opts select-opt-keys opts)
    (let [key-clause (extract-key-equality-clause key record-or-key-value opts)
          where-clause (if (sequential? (first where))
                         where ;; it's already a seq of conditions
@@ -34,7 +47,6 @@
      (h/select table
                (h/where where-clause)
                (when columns (apply h/columns columns))
-               (when only-if (h/only-if only-if))
                (when order-by (apply h/order-by order-by))
                (when limit (h/limit limit))))))
 
@@ -138,7 +150,7 @@
    (let [key-clause (extract-key-equality-clause key record opts)
          set-cols (if (not-empty set-columns)
                     (select-keys record set-columns)
-                    (apply dissoc record (flatten (make-sequential key))))]
+                    (apply dissoc record (flatten-key key)))]
      (h/update table
                (h/set-columns set-cols)
                (h/where key-clause)
