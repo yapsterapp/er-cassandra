@@ -9,6 +9,7 @@
             [er-cassandra.record :as r]
             [er-cassandra.model.types :as t]
             [er-cassandra.model.model-session :as ms]
+            [er-cassandra.util.vector :as v]
             [er-cassandra.model.util :as util]
             [er-cassandra.model.alia.select :as select])
   (:import
@@ -84,7 +85,7 @@
 
    returns a stream of model instance records"
   [^Session session ^Entity entity key record-or-key-value {:keys [from] :as opts}]
-   (let [key (k/make-sequential key)
+   (let [key (v/coerce key)
          opts (dissoc opts :from)]
      (if from
        (if-let [full-table (or (t/is-primary-table entity from)
