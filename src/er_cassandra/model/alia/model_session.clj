@@ -51,8 +51,11 @@
 (defnk create-session
   [contact-points keyspace {port nil} :as args]
   (with-context deferred-context
-    (mlet [alia-session (a/create-session args)]
-      (->AliaModelSession alia-session))))
+    (mlet [[alia-session _] (a/create-session args)
+           :let [model-session (->AliaModelSession alia-session)]]
+      (return
+       [model-session
+        (fn [] (ms/-close model-session))]))))
 
 (defrecord AliaModelSpySession [alia-session model-spy-log-atom]
   ModelSession
@@ -125,16 +128,20 @@
     (reset! model-spy-log-atom [])
     (s/reset-spy-log alia-session)))
 
-(defn create-spy-session*
-  [alia-session]
-  (->AliaModelSpySession alia-session (atom [])))
-
 (defnk create-spy-session
   [contact-points keyspace {port nil} {truncate-on-close nil} :as args]
-  (let [alia-session (a/create-spy-session args)]
-    (create-spy-session* alia-session)))
+  (with-context deferred-context
+    (mlet [[alia-session _] (a/create-spy-session args)
+           :let [spy-session (->AliaModelSpySession alia-session (atom []))]]
+      (return
+       [spy-session
+        (fn [] (ms/-close spy-session))]))))
 
 (defnk create-test-session
   [{contact-points nil} {port nil} {datacenter nil} keyspace :as args]
-  (let [alia-session (a/create-test-session args)]
-    (create-spy-session* alia-session)))
+  (with-context deferred-context
+    (mlet [[alia-test-session _] (a/create-test-session args)
+           :let [model-test-session (->AliaModelSpySession alia-test-session (atom []))]]
+      (return
+       [model-test-session
+        (fn [] (ms/-close model-test-session))]))))
