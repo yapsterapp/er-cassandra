@@ -7,7 +7,7 @@
             [er-cassandra.key :as k]
             [er-cassandra.record :as r]
             [er-cassandra.model.types :as t]
-            [er-cassandra.model.model-session :eas ms]
+            [er-cassandra.model.model-session :as ms]
             [er-cassandra.util.vector :as v]
             [er-cassandra.model.util :as util])
   (:import
