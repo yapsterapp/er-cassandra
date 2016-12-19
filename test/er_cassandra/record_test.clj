@@ -303,15 +303,23 @@
             10
             {:blah true})))))
 
-(deftest select-test
-  (let [_ (tu/create-table :select_test "(id timeuuid primary key)")
+(deftest insert-select-delete-test
+  (let [_ (tu/create-table :stmt_test "(id timeuuid primary key)")
 
         t (uuid/v1)
         ;; insert with record layer to trigger truncates on session close
         _ @(r/insert
             tu/*session*
-            :select_test
+            :stmt_test
             {:id t})]
     (testing "simple select-one"
       (is (= {:id t}
-             @(r/select-one tu/*session* :select_test :id t))))))
+             @(r/select-one tu/*session* :stmt_test :id t))))
+    (testing "delete"
+      (let [_ @(r/delete
+                tu/*session*
+                :stmt_test
+                :id
+                t)]
+        (is (= nil
+               @(r/select-one tu/*session* :stmt_test :id t)))))))
