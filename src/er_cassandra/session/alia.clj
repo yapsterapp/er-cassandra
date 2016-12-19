@@ -111,13 +111,16 @@
   [spy-session]
   (let [stmts (s/spy-log spy-session)]
     (->> stmts
+         (filter map?) ;; don't blow up for manual stmts
          (map #(select-keys % [:insert
                                :update
                                :delete
                                :truncate]))
          (mapcat vals)
          (filter identity)
-         distinct)))
+         distinct
+         sort
+         vec)))
 
 (defn truncate-spy-tables
   "given a spy session, truncate all tables which have been accessed,
@@ -130,12 +133,11 @@
                       {:keyspace ks
                        :mutated-tables mts})))
 
-    (info "truncating spy tables")
+    (info "truncating spy tables:" mts)
 
     (with-context deferred-context
       (mlet [:let [tfns (for [mt mts]
                           (fn [_]
-                            (info "truncating: " mt)
                             (s/execute spy-session (h/truncate mt))
                             (return deferred-context true)))]
 

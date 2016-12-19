@@ -1,6 +1,7 @@
 (ns er-cassandra.util.test
   (:require
    [clojure.test :as t]
+   [taoensso.timbre :refer [trace debug info warn error]]
    [deferst :refer [defsystem]]
    [deferst.system :as sys]
    [er-cassandra.session :as s]
@@ -28,9 +29,13 @@
           (binding [*session* (:cassandra system)]
             (f)))
         (finally
-          (sys/stop-system! sys))))))
+          (try
+            @(sys/stop-system! sys)
+            (catch Exception e
+              (error e "error during test stop-system!"))))))))
 
 (defn create-table
+  "creates a table for test - drops any existing version of the table first"
   [table-name table-def]
   @(s/execute
     *session*
