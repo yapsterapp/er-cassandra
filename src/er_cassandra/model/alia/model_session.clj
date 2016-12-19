@@ -2,6 +2,9 @@
   (:require
    [plumbing.core :refer :all]
    [environ.core :refer [env]]
+   [cats.core :refer [mlet return >>=]]
+   [cats.context :refer [with-context]]
+   [cats.labs.manifold :refer [deferred-context]]
    [er-cassandra.session :as s]
    [er-cassandra.session.alia :as a]
    [er-cassandra.model.model-session :as ms
@@ -45,14 +48,11 @@
   (close [_]
     (s/close alia-session)))
 
-(defn create-session*
-  [alia-session]
-  (->AliaModelSession alia-session))
-
 (defnk create-session
   [contact-points keyspace {port nil} :as args]
-  (let [alia-session (a/create-session args)]
-    (create-session* alia-session)))
+  (with-context deferred-context
+    (mlet [alia-session (a/create-session args)]
+      (->AliaModelSession alia-session))))
 
 (defrecord AliaModelSpySession [alia-session model-spy-log-atom]
   ModelSession
@@ -91,7 +91,10 @@
     (delete* alia-session entity key record-or-key-value opts))
 
   (-close [_]
-    (s/close alia-session))
+    (with-context deferred-context
+      (mlet [_ (s/close alia-session)]
+        (swap! model-spy-log-atom (fn [_] []))
+        (return true))))
 
   ModelSpySession
   (-model-spy-log [_] @model-spy-log-atom)
@@ -108,8 +111,8 @@
     (s/execute-buffered alia-session statement))
   (execute-buffered [_ statement opts]
     (s/execute-buffered alia-session statement opts))
-  (close [_]
-    (s/close alia-session))
+  (close [this]
+    (ms/-close this))
 
   s/KeyspaceProvider
   (keyspace [_]
