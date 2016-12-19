@@ -1,4 +1,4 @@
-(ns er-cassandra.util.test
+(ns er-cassandra.model.util.test
   (:require
    [clojure.test :as t]
    [taoensso.timbre :refer [trace debug info warn error]]
@@ -6,30 +6,29 @@
    [deferst.system :as sys]
    [slf4j-timbre.configure :as logconf]
    [er-cassandra.session :as s]
-   [er-cassandra.session.alia :as alia-session]))
+   [er-cassandra.model.model-session :as ms]
+   [er-cassandra.model.alia.model-session :as ams]))
 
-(def ^:dynamic *session* nil)
+(def ^:dynamic *model-session* nil)
 
-(def alia-test-session-config
+(def alia-test-model-session-config
   {:timbre {:level :warn}
    :config {:alia-session
             {:keyspace "er_cassandra_test"}}})
 
-(def alia-test-session-system-def
+(def alia-test-model-session-system-def
   [[:logging logconf/configure-timbre [:timbre]]
-   [:cassandra
-    alia-session/create-test-session
-    [:config :alia-session]]])
+   [:cassandra ams/create-test-session [:config :alia-session]]])
 
-(defn with-session-fixture
+(defn with-model-session-fixture
   []
   (fn [f]
 
-    (let [sb (sys/system-builder alia-test-session-system-def)
-          sys (sys/start-system! sb alia-test-session-config)]
+    (let [sb (sys/system-builder alia-test-model-session-system-def)
+          sys (sys/start-system! sb alia-test-model-session-config)]
       (try
         (let [system @(sys/system-map sys)]
-          (binding [*session* (:cassandra system)]
+          (binding [*model-session* (:cassandra system)]
             (f)))
         (finally
           (try
@@ -41,8 +40,8 @@
   "creates a table for test - drops any existing version of the table first"
   [table-name table-def]
   @(s/execute
-    *session*
+    *model-session*
     (str "drop table if exists " (name table-name)))
   @(s/execute
-    *session*
+    *model-session*
     (str "create table " (name table-name) " " table-def)))

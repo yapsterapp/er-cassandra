@@ -21,7 +21,7 @@
                  [com.taoensso/timbre "4.7.3"]
 
                  [org.slf4j/slf4j-api "1.7.21"]
-                 [com.fzakaria/slf4j-timbre "0.3.2"
+                 [employeerepublic/slf4j-timbre "0.4.0"
                   :exclusions [org.slf4j/slf4j-api
                                com.taoensso/timbre]]
 
@@ -48,6 +48,8 @@
   :aliases {"test-repl" ["with-profile" "cassandra-unit,repl" "repl"]}
 
   :profiles {:repl {:pedantic? :ranges}
+
+             :test {:resource-paths ["test-resources" "resources"]}
 
              :cassandra-unit
              {:dependencies
