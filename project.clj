@@ -18,12 +18,23 @@
                  [org.clojure/tools.logging "0.3.1"]
 
                  ;; wow, such logging
-                 [com.taoensso/timbre "4.7.3"]
-
+                 [com.taoensso/timbre "4.7.4"]
                  [org.slf4j/slf4j-api "1.7.21"]
-                 [employeerepublic/slf4j-timbre "0.4.0"
-                  :exclusions [org.slf4j/slf4j-api
-                               com.taoensso/timbre]]
+
+                 ;; JAR-HELL WARNING: slf4j-timbre has (needs) :aot :all
+                 ;; which includes compiled version of a bunch of
+                 ;; taoensso projects which will conflict
+                 ;; with uncompiled versions required elsewhere
+                 ;; unless slf4j-timbre is kept up to date
+                 ;;
+                 ;; org.clojure/clojure
+                 ;; org.clojure/tools.reader
+                 ;; org.slf4j/slf4j-api
+                 ;; com.taoensso/timbre,
+                 ;; com.taoensso/encore,
+                 ;; com.taoensso/truss
+                 ;; io.aviso/pretty
+                  [employeerepublic/slf4j-timbre "0.4.2"]
 
                  [org.slf4j/jcl-over-slf4j "1.7.21"]
                  [org.slf4j/log4j-over-slf4j "1.7.21"]
