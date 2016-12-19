@@ -8,6 +8,9 @@
    [qbits.alia.policy.load-balancing :as lb]
    [qbits.alia.manifold :as aliam]
    [qbits.hayt :as h]
+   [cats.core :refer [mlet return >>=]]
+   [cats.context :refer [with-context]]
+   [cats.labs.manifold :refer [deferred-context]]
    [er-cassandra.session :as s])
   (:import
    [er_cassandra.session
@@ -54,6 +57,7 @@
     (alia/shutdown cluster)))
 
 (defnk ^:private create-alia-session*
+  "returns a Deferred<com.datastax.driver.core/Session>"
   [contact-points
    datacenter
    keyspace
@@ -68,17 +72,19 @@
 
         _ (info "create-alia-session*" args)
         cluster (alia/cluster cluster-args)
-        alia-session (alia/connect cluster)]
+        alia-session (alia/connect cluster)
 
-    (when (not-empty init-statements)
-      (doseq [stmt init-statements]
-        (as-> stmt %
-          (str/replace % "${keyspace}" keyspace)
-          (alia/execute alia-session %))))
+        init-fns (for [stmt init-statements]
+                   (fn [_]
+                     (as-> stmt %
+                       (str/replace % "${keyspace}" keyspace)
+                       (alia/execute alia-session %))
+                     (return deferred-context true)))]
 
-    (alia/execute alia-session (str "USE " keyspace ";"))
-
-    alia-session))
+    (with-context deferred-context
+      (mlet [_ (apply >>= (return true) init-fns)
+             _ (alia/execute alia-session (str "USE " keyspace ";"))]
+        (return alia-session)))))
 
 (defrecord AliaSession [keyspace alia-session]
   Session
@@ -95,9 +101,11 @@
 
 (defnk create-session
   [contact-points datacenter keyspace :as args]
-  (->AliaSession
-   keyspace
-   (create-alia-session* args)))
+  (with-context deferred-context
+    (mlet [datastax-session (create-alia-session* args)]
+      (->AliaSession
+       keyspace
+       datastax-session))))
 
 (defn mutated-tables
   [spy-session]
@@ -121,15 +129,29 @@
       (throw (ex-info "truncate-spy-tables is only for *_test keyspaces"
                       {:keyspace ks
                        :mutated-tables mts})))
-    (doseq [mt mts]
-      (s/execute spy-session (h/truncate mt)))
-    (s/reset-spy-log spy-session)))
+
+    (info "truncating spy tables")
+
+    (with-context deferred-context
+      (mlet [:let [tfns (for [mt mts]
+                          (fn [_]
+                            (info "truncating: " mt)
+                            (s/execute spy-session (h/truncate mt))
+                            (return deferred-context true)))]
+
+             _ (if (not-empty tfns)
+                 (apply >>= (return true) tfns)
+                 (return true))]
+
+        (s/reset-spy-log spy-session)
+        (return true)))))
 
 (defrecord AliaSpySession [keyspace alia-session spy-log-atom truncate-on-close]
   Session
   (execute [this statement]
     (s/execute this statement {}))
   (execute [_ statement opts]
+    (info "spying" statement opts)
     (swap! spy-log-atom conj statement)
     (execute* alia-session statement opts))
   (execute-buffered [this statement]
@@ -138,10 +160,11 @@
     (swap! spy-log-atom conj statement)
     (execute-buffered* alia-session statement opts))
   (close [self]
-    (when truncate-on-close
-      (debug "truncating spy tables")
-      (truncate-spy-tables self))
-    (shutdown-session-and-cluster alia-session))
+    (with-context deferred-context
+      (mlet [_ (if truncate-on-close
+                 (truncate-spy-tables self)
+                 (return true))]
+        (shutdown-session-and-cluster alia-session))))
 
   KeyspaceProvider
   (keyspace [_] keyspace)
@@ -152,48 +175,39 @@
 
 (defnk create-spy-session
   [contact-points datacenter keyspace {truncate-on-close nil} :as args]
-  (->AliaSpySession
-   keyspace
-   (create-alia-session* (dissoc args :truncate-on-close))
-   (atom [])
-   truncate-on-close))
-
-(defn with-spy-session-reset*
-  "start an alia spy-session, call a function and truncate
-  all tables which were touched during the function"
-  [spy-session f]
-  (try
-    (f)
-    (finally
-      (truncate-spy-tables spy-session))))
-
-(defmacro with-spy-session-reset
-  [spy-session & body]
-  `(with-spy-session-reset*
-     ~spy-session
-     (fn [] ~@body)))
+  (with-context deferred-context
+    (mlet [datastax-session (create-alia-session* (dissoc args :truncate-on-close))]
+      (->AliaSpySession
+       keyspace
+       datastax-session
+       (atom [])
+       truncate-on-close))))
 
 ;; a test-session is just a spy-session which will initialise it's keyspace
 ;; if necesary and will truncate any used tables when closed
 (defnk create-test-session
   [{contact-points nil} {port nil} {datacenter nil} keyspace :as args]
-  (let [session
-        (create-spy-session
-           (merge
-            args
-            {:contact-points (or contact-points ["localhost"])
-             :port (or port
-                       (some-> (env :cassandra-port) Integer/parseInt)
-                       9042)
-             :datacenter datacenter
-             :init-statements
-             [(str "CREATE KEYSPACE IF NOT EXISTS "
-                   "  \"${keyspace}\" "
-                   "WITH replication = "
-                   "  {'class': 'SimpleStrategy', "
-                   "   'replication_factor': '1'} "
-                   " AND durable_writes = true;")]
+  (with-context deferred-context
+    (mlet [session
+           (create-spy-session
+            (merge
+             args
+             {:contact-points (or contact-points ["localhost"])
+              :port (or port
+                        (some-> (env :cassandra-port) Integer/parseInt)
+                        9042)
+              :datacenter datacenter
+              :init-statements
+              [(str "CREATE KEYSPACE IF NOT EXISTS "
+                    "  \"${keyspace}\" "
+                    "WITH replication = "
+                    "  {'class': 'SimpleStrategy', "
+                    "   'replication_factor': '1'} "
+                    " AND durable_writes = true;")]
 
-             :truncate-on-close true}))]
-    [session
-     (fn [] (s/close session))]))
+              :truncate-on-close true}))]
+      (return
+       [session
+        ;; TODO this fn needs to be async friendly now
+        ;; since we are returning a Deferred<session>
+        (fn [] (s/close session))]))))
