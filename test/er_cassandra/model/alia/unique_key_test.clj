@@ -197,18 +197,33 @@
                {:id :a :baz #{:c}}
                (-> m :unique-key-tables second))))))))
 
+(defn create-singular-unique-key-entity
+  []
+  (tu/create-table :singular_unique_key_test
+                     "(id timeuuid primary key, nick text)")
+  (tu/create-table :singular_unique_key_test_by_nick
+                     "(nick text primary key, id timeuuid)")
+
+  (t/create-entity
+   {:primary-table {:name :singular_unique_key_test :key [:id]}
+    :unique-key-tables [{:name :singular_unique_key_test_by_nick
+                         :key [:nick]}]}))
+
+(defn create-set-unique-key-entity
+  []
+  (tu/create-table :set_unique_key_test
+                   "(id timeuuid primary key, nick set<text>)")
+  (tu/create-table :set_unique_key_test_by_nick
+                   "(nick text primary key, id timeuuid)")
+  (t/create-entity
+   {:primary-table {:name :set_unique_key_test :key [:id]}
+    :unique-key-tables [{:name :set_unique_key_test_by_nick
+                         :key [:nick]
+                         :collections {:nick :set}}]}))
+
 (deftest release-stale-unique-keys-test
   (testing "singular unique key"
-    (let [_ (tu/create-table :singular_unique_key_test
-                             "(id timeuuid primary key, nick text)")
-          _ (tu/create-table :singular_unique_key_test_by_nick
-                             "(nick text primary key, id timeuuid)")
-
-          sm (t/create-entity
-              {:primary-table {:name :singular_unique_key_test :key [:id]}
-               :unique-key-tables [{:name :singular_unique_key_test_by_nick
-                                    :key [:nick]}]})
-
+    (let [sm (create-singular-unique-key-entity)
           [ida idb] [(uuid/v1) (uuid/v1)]
 
           _ @(r/insert tu/*model-session*
@@ -230,15 +245,7 @@
           (is (= :deleted reason))))))
 
   (testing "release values from set unique key"
-    (let [_ (tu/create-table :set_unique_key_test
-                             "(id timeuuid primary key, nick set<text>)")
-          _ (tu/create-table :set_unique_key_test_by_nick
-                             "(nick text primary key, id timeuuid)")
-          cm (t/create-entity
-              {:primary-table {:name :set_unique_key_test :key [:id]}
-               :unique-key-tables [{:name :set_unique_key_test_by_nick
-                                    :key [:nick]
-                                    :collections {:nick :set}}]})
+    (let [cm (create-set-unique-key-entity)
 
           [ida idb] [(uuid/v1) (uuid/v1)]
          _ @(r/insert tu/*model-session*
@@ -250,6 +257,7 @@
           _ @(r/insert tu/*model-session*
                        :set_unique_key_test_by_nick
                        {:nick "bar" :id ida})]
+
       (testing "release set stale unique key values"
         (let [r @(uk/release-stale-unique-keys
                   tu/*model-session*
@@ -267,7 +275,58 @@
                  (set r))))))))
 
 (deftest acquire-unique-keys-test
-  )
+  (testing "acquire singular unique key"
+    (let [sm (create-singular-unique-key-entity)
+          [ida idb] [(uuid/v1) (uuid/v1)]
+
+          _ @(r/insert tu/*model-session*
+                       :singular_unique_key_test
+                       {:id ida :nick "foo"})]
+
+      (testing "acquire a singular unique key"
+        (let [[[status key-desc reason]] @(uk/acquire-unique-keys
+                                           tu/*model-session*
+                                           sm
+                                           {:id ida :nick "foo"})]
+          (is (= :ok status))
+          (is (= {:uber-key [:id] :uber-key-value [ida]
+                  :key [:nick] :key-value ["foo"]} key-desc))
+          (is (= :key/inserted reason))))
+
+      (testing "failing to acquire a singular unique key"
+        (let [[[status key-desc reason]] @(uk/acquire-unique-keys
+                                           tu/*model-session*
+                                           sm
+                                           {:id idb :nick "foo"})]
+          (is (= :fail status))
+          (is (= {:uber-key [:id] :uber-key-value [idb]
+                  :key [:nick] :key-value ["foo"]} key-desc))
+          (is (= :key/notunique reason))))))
+
+  (testing "acquire values in set unique key"
+    (let [cm (create-set-unique-key-entity)
+          [ida idb] [(uuid/v1) (uuid/v1)]
+
+          _ @(r/insert tu/*model-session*
+                       :set_unique_key_test
+                       {:id ida :nick #{"foo" "bar"}})
+          _ @(r/insert tu/*model-session*
+                       :set_unique_key_test_by_nick
+                       {:nick "foo" :id ida})]
+      (testing "acquire values from a set of unique keys"
+        (let [r @(uk/acquire-unique-keys
+                  tu/*model-session*
+                  cm
+                  {:id ida :nick #{"foo" "bar"}})]
+          (is (= #{[:ok
+                    {:uber-key [:id] :uber-key-value [ida]
+                     :key [:nick] :key-value ["foo"]}
+                    :key/owned]
+                   [:ok
+                    {:uber-key [:id] :uber-key-value [ida]
+                     :key [:nick] :key-value ["bar"]}
+                    :key/inserted]}
+                 (set r))))))))
 
 (deftest update-with-acquire-responses-test
   )
