@@ -41,7 +41,7 @@
 
   [session :- Session
    entity :- Entity
-   unique-key-table :- t/TableSchema
+   unique-key-table :- t/UniqueKeyTableSchema
    uber-key-value :- t/KeyValueSchema
    key-value :- t/KeyValueSchema]
 
@@ -168,8 +168,8 @@
           (release-unique-key session entity t uber-key-value kv)))))))
 
 (s/defn acquire-unique-keys
-  [session Session
-   entity Entity
+  [session :- Session
+   entity :- Entity
    record]
   (combine-responses
    (mapcat
