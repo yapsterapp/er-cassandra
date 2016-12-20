@@ -4,6 +4,7 @@
    [cats.core :refer [mlet return]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
+   [schema.core :as s]
    [er-cassandra.session]
    [er-cassandra.key :as k]
    [er-cassandra.record :as r]
@@ -27,12 +28,17 @@
                           lwt-insert-response)]
       (= insert-uber-key owner-uber-key))))
 
-(defn acquire-unique-key
+(s/defn ^:always-validate acquire-unique-key
   "acquire a single unique key.
    returns a Deferred[[:ok <keydesc> info]] if the key was acquired
    successfully, a ErrorDeferred[[:fail <keydesc> reason]]"
 
-  [^Session session ^Entity entity unique-key-table uber-key-value key-value]
+  [session :- Session
+   entity :- Entity
+   unique-key-table :- t/TableSchema
+   uber-key-value :- t/KeyValueSchema
+   key-value :- t/KeyValueSchema]
+
   (let [uber-key (t/uber-key entity)
         key (:key unique-key-table)
         unique-key-record (create-lookup-record
