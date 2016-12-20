@@ -2,11 +2,13 @@
   (:require
    [er-cassandra.model.util.test :as tu]
    [clojure.test :as test :refer [deftest is are testing use-fixtures]]
+   [schema.test :as st]
    [clj-uuid :as uuid]
    [er-cassandra.record :as r]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.alia.unique-key :as uk]))
 
+(use-fixtures :once st/validate-schemas)
 (use-fixtures :each (tu/with-model-session-fixture))
 
 (deftest applied?-test
@@ -196,7 +198,73 @@
                (-> m :unique-key-tables second))))))))
 
 (deftest release-stale-unique-keys-test
-  )
+  (testing "singular unique key"
+    (let [_ (tu/create-table :singular_unique_key_test
+                             "(id timeuuid primary key, nick text)")
+          _ (tu/create-table :singular_unique_key_test_by_nick
+                             "(nick text primary key, id timeuuid)")
+
+          sm (t/create-entity
+              {:primary-table {:name :singular_unique_key_test :key [:id]}
+               :unique-key-tables [{:name :singular_unique_key_test_by_nick
+                                    :key [:nick]}]})
+
+          [ida idb] [(uuid/v1) (uuid/v1)]
+
+          _ @(r/insert tu/*model-session*
+                       :singular_unique_key_test
+                       {:id ida :nick "foo"})
+          _ @(r/insert tu/*model-session*
+                       :singular_unique_key_test_by_nick
+                       {:nick "foo" :id ida})]
+
+      (testing "release singular stale unique key"
+        (let [[[status key-desc reason]] @(uk/release-stale-unique-keys
+                                           tu/*model-session*
+                                           sm
+                                           {:id ida :nick "foo"}
+                                           {:id ida :nick nil})]
+          (is (= :ok status))
+          (is (= {:uber-key [:id] :uber-key-value [ida]
+                  :key [:nick] :key-value ["foo"]} key-desc))
+          (is (= :deleted reason))))))
+
+  (testing "release values from set unique key"
+    (let [_ (tu/create-table :set_unique_key_test
+                             "(id timeuuid primary key, nick set<text>)")
+          _ (tu/create-table :set_unique_key_test_by_nick
+                             "(nick text primary key, id timeuuid)")
+          cm (t/create-entity
+              {:primary-table {:name :set_unique_key_test :key [:id]}
+               :unique-key-tables [{:name :set_unique_key_test_by_nick
+                                    :key [:nick]
+                                    :collections {:nick :set}}]})
+
+          [ida idb] [(uuid/v1) (uuid/v1)]
+         _ @(r/insert tu/*model-session*
+                       :set_unique_key_test
+                       {:id ida :nick #{"foo" "bar" "baz"}})
+          _ @(r/insert tu/*model-session*
+                       :set_unique_key_test_by_nick
+                       {:nick "foo" :id ida})
+          _ @(r/insert tu/*model-session*
+                       :set_unique_key_test_by_nick
+                       {:nick "bar" :id ida})]
+      (testing "release set stale unique key values"
+        (let [r @(uk/release-stale-unique-keys
+                  tu/*model-session*
+                  cm
+                  {:id ida :nick #{"foo" "bar" "baz"}}
+                  {:id ida :nick #{"foo"}})]
+          (is (= #{[:ok
+                    {:uber-key [:id] :uber-key-value [ida]
+                     :key [:nick] :key-value ["bar"]}
+                    :deleted]
+                   [:ok
+                    {:uber-key [:id] :uber-key-value [ida]
+                     :key [:nick] :key-value ["baz"]}
+                    :stale]}
+                 (set r))))))))
 
 (deftest acquire-unique-keys-test
   )

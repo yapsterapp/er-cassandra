@@ -81,7 +81,7 @@
 ;; collection column
 (s/defschema CollectionKeysSchema
   {(s/optional-key :collections) {s/Keyword
-                                  (s/pred #{:list :set :map})}})
+                                  (s/enum :list :set :map)}})
 
 (s/defschema EntityKeySchema
   {(s/optional-key :has-entity-key?) s/Bool})

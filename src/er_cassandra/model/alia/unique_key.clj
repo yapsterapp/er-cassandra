@@ -28,7 +28,13 @@
                           lwt-insert-response)]
       (= insert-uber-key owner-uber-key))))
 
-(s/defn ^:always-validate acquire-unique-key
+(s/defschema KeyDescSchema
+  {:uber-key t/KeySchema
+   :uber-key-value t/KeyValueSchema
+   :key t/KeySchema
+   :key-value t/KeyValueSchema})
+
+(s/defn acquire-unique-key
   "acquire a single unique key.
    returns a Deferred[[:ok <keydesc> info]] if the key was acquired
    successfully, a ErrorDeferred[[:fail <keydesc> reason]]"
@@ -97,11 +103,11 @@
            :else     [:fail key-desc :key/notunique] ;; someone else won
            ))))))
 
-(s/defn ^:always-validate release-unique-key
+(s/defn release-unique-key
   "remove a single unique key"
   [session :- Session
    entity :- Entity
-   unique-key-table :- t/TableSchema
+   unique-key-table :- t/UniqueKeyTableSchema
    uber-key-value :- t/KeyValueSchema
    key-value :- t/KeyValueSchema]
 
@@ -130,8 +136,11 @@
            deleted? [:ok key-desc :deleted]
            :else    [:ok key-desc :stale]))))))
 
-(defn stale-unique-key-values
-  [^Entity entity old-record new-record unique-key-table]
+(s/defn stale-unique-key-values
+  [entity :- Entity
+   old-record
+   new-record
+   unique-key-table :- t/UniqueKeyTableSchema]
   (let [key (:key unique-key-table)
         col-colls (:collections unique-key-table)]
     (when (k/has-key? key new-record)
@@ -143,8 +152,11 @@
                                                          col-colls))]
         (filter identity (set/difference old-kvs new-kvs))))))
 
-(defn release-stale-unique-keys
-  [^Session session ^Entity entity old-record new-record]
+(s/defn release-stale-unique-keys
+  [session :- Session
+   entity :- Entity
+   old-record
+   new-record]
   (combine-responses
    (mapcat
     identity
@@ -155,8 +167,10 @@
         (for [kv stale-kvs]
           (release-unique-key session entity t uber-key-value kv)))))))
 
-(defn acquire-unique-keys
-  [^Session session ^Entity entity record]
+(s/defn acquire-unique-keys
+  [session Session
+   entity Entity
+   record]
   (combine-responses
    (mapcat
     identity
