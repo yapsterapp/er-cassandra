@@ -469,7 +469,97 @@
              :email #{"foo@bar.com" "foo@baz.com"}})))))
 
 (deftest upsert-primary-record-without-unique-keys-test
-  )
+  (let [_ (tu/create-table :upsert_primary_without_unique_keys_test
+                           "(id timeuuid primary key, nick text, a text, b text)")
+
+        m (t/create-entity
+           {:primary-table {:name :upsert_primary_without_unique_keys_test :key [:id]}
+            :unique-key-tables [{:name :upsert_primary_without_unique_keys_test_by_nick
+                                 :key [:nick]}]})]
+    (testing "simple insert"
+      (let [id (uuid/v1)
+            r @(uk/upsert-primary-record-without-unique-keys
+                tu/*model-session*
+                m
+                {:id id :nick "foo" :a "ana" :b "anb"}
+                {})]
+        (is (= [{:id id :nick nil :a "ana" :b "anb"} nil] r))))
+
+    (testing "update existing record"
+      (let [id (uuid/v1)
+            _ @(r/insert tu/*model-session*
+                         :upsert_primary_without_unique_keys_test
+                         {:id id :nick "blah" :a "olda" :b "oldb"})
+            r @(uk/upsert-primary-record-without-unique-keys
+                tu/*model-session*
+                m
+                {:id id :nick "foo" :a "newa"}
+                {})]
+        (is (= [{:id id :nick "blah" :a "newa" :b "oldb"} nil] r))))
+
+    (testing "with if-not-exists"
+
+      (let [id (uuid/v1)]
+        (testing "if it doesn't already exist"
+          (let [r @(uk/upsert-primary-record-without-unique-keys
+                    tu/*model-session*
+                    m
+                    {:id id :nick "foo" :a "ana" :b "anb"}
+                    {:if-not-exists true})]
+            (is (= [{:id id :a "ana" :b "anb"} nil] r))))
+
+        (testing "if it does already exist"
+          (let [r @(uk/upsert-primary-record-without-unique-keys
+                    tu/*model-session*
+                    m
+                    {:id id :nick "foo" :a "ana" :b "anb"}
+                    {:if-not-exists true})]
+            (is (= [nil [[:upsert/primary-record-upsert-error
+                          {:record
+                           {:id id,
+                            :nick "foo",
+                            :a "ana",
+                            :b "anb"},
+                           :if-not-exists true,
+                           :only-if nil,
+                           :tag :upsert/primary-record-upsert-error,
+                           :message "couldn't upsert primary record"}]]]
+                   r))))))
+
+    (testing "with only-if"
+      (testing "if it already exists"
+        (let [id (uuid/v1)
+              _ @(r/insert tu/*model-session*
+                           :upsert_primary_without_unique_keys_test
+                           {:id id :nick "blah" :a "olda" :b "oldb"})
+              r @(uk/upsert-primary-record-without-unique-keys
+                  tu/*model-session*
+                  m
+                  {:id id :nick "foo" :a "newa" :b "newb"}
+                  {:only-if [[:= :nick "blah"]]})]
+          (is (= [{:id id :nick "blah" :a "newa" :b "newb"} nil]
+                 r))))
+
+      (testing "if it doesn't already exist"
+        (let [id (uuid/v1)
+              r @(uk/upsert-primary-record-without-unique-keys
+                  tu/*model-session*
+                  m
+                  {:id id :nick "foo" :a "newa" :b "newb"}
+                  {:only-if [[:= :nick "blah"]]})]
+          (is (= [nil
+                  [[:upsert/primary-record-upsert-error
+                    {:record
+                     {:id id,
+                      :nick "foo",
+                      :a "newa",
+                      :b "newb"},
+                     :if-not-exists nil,
+                     :only-if [[:= :nick "blah"]],
+                     :tag :upsert/primary-record-upsert-error,
+                     :message "couldn't upsert primary record"}]]]
+                 r)))
+        ))))
 
 (deftest update-unique-keys-after-primary-upsert-test
   )
