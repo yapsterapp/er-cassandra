@@ -28,11 +28,18 @@
                           lwt-insert-response)]
       (= insert-uber-key owner-uber-key))))
 
+(s/defschema StatusSchema (s/enum :ok :fail))
+
 (s/defschema KeyDescSchema
   {:uber-key t/KeySchema
    :uber-key-value t/KeyValueSchema
    :key t/KeySchema
    :key-value t/KeyValueSchema})
+
+(s/defschema AcquireUniqueKeyResultSchema
+  [(s/one StatusSchema :status)
+   (s/one KeyDescSchema :key-desc)
+   (s/enum :key/inserted :key/owned :key/updated :key/notunique)])
 
 (s/defn acquire-unique-key
   "acquire a single unique key.
@@ -103,6 +110,11 @@
            :else     [:fail key-desc :key/notunique] ;; someone else won
            ))))))
 
+(s/defschema ReleaseUniqueKeyResultSchema
+  [(s/one StatusSchema :status)
+   (s/one KeyDescSchema :key-desc)
+   (s/enum :deleted :stale)])
+
 (s/defn release-unique-key
   "remove a single unique key"
   [session :- Session
@@ -136,10 +148,10 @@
            deleted? [:ok key-desc :deleted]
            :else    [:ok key-desc :stale]))))))
 
-(s/defn stale-unique-key-values
+(s/defn stale-unique-key-values :- [t/KeyValueSchema]
   [entity :- Entity
-   old-record
-   new-record
+   old-record :- (s/maybe {s/Keyword s/Any})
+   new-record :- (s/maybe {s/Keyword s/Any})
    unique-key-table :- t/UniqueKeyTableSchema]
   (let [key (:key unique-key-table)
         col-colls (:collections unique-key-table)]
@@ -155,8 +167,8 @@
 (s/defn release-stale-unique-keys
   [session :- Session
    entity :- Entity
-   old-record
-   new-record]
+   old-record :- (s/maybe {s/Keyword s/Any})
+   new-record :- (s/maybe {s/Keyword s/Any})]
   (combine-responses
    (mapcat
     identity
@@ -170,7 +182,7 @@
 (s/defn acquire-unique-keys
   [session :- Session
    entity :- Entity
-   record]
+   record :- (s/maybe {s/Keyword s/Any})]
   (combine-responses
    (mapcat
     identity
@@ -194,11 +206,16 @@
                                     uber-key-value
                                     kv))))))))))
 
-(defn update-with-acquire-responses
-  "assume the the very last column in the key is the
+(s/defn update-with-acquire-responses
+  "remove unique key values which couldn't be acquired
+   from the entity record
+
+   assumes the the very last column in the key is the
    unique value that couldn't be acquired. perhaps this needs
    to become more flexible"
-  [table acquire-key-responses record]
+  [table :- t/UniqueKeyTableSchema
+   acquire-key-responses :- [AcquireUniqueKeyResultSchema]
+   record  :- (s/maybe {s/Keyword s/Any})]
   (reduce (fn [r [status
                   {:keys [uber-key uber-key-value
                           key key-value]:as key-desc}
