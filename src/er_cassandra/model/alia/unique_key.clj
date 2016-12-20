@@ -97,9 +97,14 @@
            :else     [:fail key-desc :key/notunique] ;; someone else won
            ))))))
 
-(defn release-unique-key
+(s/defn ^:always-validate release-unique-key
   "remove a single unique key"
-  [^Session session ^Entity entity unique-key-table uber-key-value key-value]
+  [session :- Session
+   entity :- Entity
+   unique-key-table :- t/TableSchema
+   uber-key-value :- t/KeyValueSchema
+   key-value :- t/KeyValueSchema]
+
   (let [uber-key (t/uber-key entity)
         key (:key unique-key-table)
         ;; only-if can't reference primary-key components
@@ -109,7 +114,6 @@
                                            key)
         key-desc {:uber-key uber-key :uber-key-value uber-key-value
                   :key key :key-value key-value}]
-    (prn [npk-uber-key npk-uber-key-value])
     (with-context deferred-context
       (mlet [delete-result (r/delete session
                                      (:name unique-key-table)

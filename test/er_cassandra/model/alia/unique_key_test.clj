@@ -96,14 +96,71 @@
                 :uber-key-value [ida]
                 :key [:nick]
                 :key-value ["foo"]} key-desc))
-        (is (= :key/notunique reason))))
-
-
-
-    ))
+        (is (= :key/notunique reason))))))
 
 (deftest release-unique-key-test
-  )
+  (let [_ (tu/create-table :unique_key_test
+                           "(id timeuuid primary key, nick text)")
+        _ (tu/create-table :unique_key_test_by_nick
+                           "(nick text primary key, id timeuuid)")
+        m (t/create-entity
+           {:primary-table {:name :unique_key_test :key [:id]}
+            :unique-key-tables [{:name :unique_key_test_by_nick :key [:nick]}]})
+
+        [ida idb] [(uuid/v1) (uuid/v1)]
+
+        _ (r/insert tu/*model-session*
+                    :unique_key_test
+                    {:id ida :nick "foo"})
+        _ (r/insert tu/*model-session*
+                    :unique_key_test_by_nick
+                    {:nick "foo" :id ida})]
+    (testing "release an owned key"
+      (let [[status key-desc reason] @(uk/release-unique-key
+                                       tu/*model-session*
+                                       m
+                                       (-> m :unique-key-tables first)
+                                       [ida]
+                                       ["foo"])]
+        (is (= :ok status))
+        (is (= {:uber-key (t/uber-key m)
+                :uber-key-value [ida]
+                :key [:nick]
+                :key-value ["foo"]}))
+        (is (= :deleted reason))))
+
+    (testing "releasing a non-existing key"
+      (let [[status key-desc reason] @(uk/release-unique-key
+                                       tu/*model-session*
+                                       m
+                                       (-> m :unique-key-tables first)
+                                       [ida]
+                                       ["foo"])]
+        (is (= :ok status))
+        (is (= {:uber-key (t/uber-key m)
+                :uber-key-value [ida]
+                :key [:nick]
+                :key-value ["foo"]}))
+        (is (= :stale reason))))
+
+    (testing "attempting to release someone else's key"
+      (let [;; first give the key back to ida
+            _ (r/insert tu/*model-session*
+                        :unique_key_test_by_nick
+                        {:nick "foo" :id ida})
+            [status key-desc reason] @(uk/release-unique-key
+                                       tu/*model-session*
+                                       m
+                                       (-> m :unique-key-tables first)
+                                       [idb]
+                                       ["foo"])]
+
+        (is (= :ok status))
+        (is (= {:uber-key (t/uber-key m)
+                :uber-key-value [ida]
+                :key [:nick]
+                :key-value ["foo"]}))
+        (is (= :stale reason))))))
 
 (deftest stale-unique-key-values-test
   (let [m (t/create-entity
