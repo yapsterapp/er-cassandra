@@ -451,7 +451,22 @@
                 :key/notunique]]))))))
 
 (deftest without-unique-keys-test
-  )
+  (let [m (t/create-entity
+           {:primary-table {:name :unique_key_test :key [:org_id :id]}
+            :unique-key-tables [{:name :unique_key_test_by_nick
+                                 :key [:org_id :nick]}
+                                {:name :unique_key_test_by_email
+                                 :key [:org_id :email]
+                                 :collections {:email :set}}]})
+        [org-id ida] [(uuid/v1) (uuid/v1)]]
+    (is (= {:org_id org-id
+            :id ida}
+           (uk/without-unique-keys
+            m
+            {:org_id org-id
+             :id ida
+             :nick "foo"
+             :email #{"foo@bar.com" "foo@baz.com"}})))))
 
 (deftest upsert-primary-record-without-unique-keys-test
   )

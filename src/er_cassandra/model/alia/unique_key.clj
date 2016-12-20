@@ -292,9 +292,10 @@
           new-record
           (:unique-key-tables entity)))
 
-(defn without-unique-keys
+(s/defn without-unique-keys
   "remove (the final part of) unique key columns from a record"
-  [^Entity entity record]
+  [entity :- Entity
+   record :- MaybeRecordSchema]
   (let [unique-key-tabless (:unique-key-tables entity)]
     (reduce (fn [r t]
               (let [key-col (last (:key t))]
