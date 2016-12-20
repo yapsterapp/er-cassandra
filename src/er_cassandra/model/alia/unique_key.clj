@@ -303,35 +303,46 @@
             record
             unique-key-tabless)))
 
-(defn upsert-primary-record-without-unique-keys
+(s/defn upsert-primary-record-without-unique-keys
   "attempts to upsert a primary record minus it's unique keys,
    possibly with an LWT and conditions if options if-not-exists or only-if
    are provided.
    returns a Deferred [upserted-record-or-nil failure-description]"
-  ([^Session session ^Entity entity record {:keys [if-not-exists only-if]}]
+  ([session :- Session
+    entity :- Entity
+    record :- MaybeRecordSchema
+    {:keys [if-not-exists
+            only-if]} :- {(s/optional-key :if-not-exists) (s/maybe s/Bool)
+                          (s/optional-key :only-if) (s/maybe [s/Any])}]
+   (assert (not (and if-not-exists only-if)))
    (with-context deferred-context
      (mlet [primary-table-name (get-in entity [:primary-table :name])
             primary-table-key (get-in entity [:primary-table :key])
 
-            ;; always test for presence if given an only-if condition
-            :let [if-not-exists (boolean
-                                 (or if-not-exists
-                                     only-if))]
-
             nok-record (without-unique-keys entity record)
 
-            insert-response (if if-not-exists
+            insert-response (cond
+                              if-not-exists
                               (r/insert session
                                         primary-table-name
                                         nok-record
                                         {:if-not-exists true})
+
+                              (not only-if)
                               (r/insert session
                                         primary-table-name
-                                        nok-record))
+                                        nok-record)
 
-            :let [inserted? (if if-not-exists
+                              :else ;; only-if
+                              (return nil))
+
+            :let [inserted? (cond
+                              if-not-exists
                               (applied? insert-response)
-                              true)]
+
+                              (not only-if) true
+
+                              :else false)]
 
             update-response (if (and (not inserted?)
                                      only-if)
@@ -367,7 +378,7 @@
           [upserted-record nil]
 
           [nil [(e/general-error-log-entry
-                 {:error-tag :upsert/primary-record-exists
+                 {:error-tag :upsert/primary-record-upsert-error
                   :message "couldn't upsert primary record"
                   :primary-table primary-table-name
                   :uber-key-value (t/extract-uber-key-value entity record)
@@ -375,14 +386,14 @@
                           :if-not-exists if-not-exists
                           :only-if only-if}})]]))))))
 
-(defn update-unique-keys-after-primary-upsert
+(s/defn update-unique-keys-after-primary-upsert
   "attempts to acquire unique keys for an owner... returns
    a Deferred[Right[[updated-owner-record failed-keys]]] with an updated
    owner record containing only the keys that could be acquired"
-  [^Session session
-   ^Entity entity
-   old-key-record ;; record with old unique keys
-   new-record] ;; record with updated unique keys
+  [session :- Session
+   entity :- Entity
+   old-key-record :- MaybeRecordSchema ;; record with old unique keys
+   new-record :- MaybeRecordSchema] ;; record with updated unique keys
   (with-context deferred-context
     (mlet [release-key-responses (release-stale-unique-keys
                                   session
@@ -411,13 +422,18 @@
       (return [updated-record
                acquire-failures]))))
 
-(defn upsert-primary-record-and-update-unique-keys
+(s/defn upsert-primary-record-and-update-unique-keys
   "first upserts the primary record, with any constraints,
    then updates unique keys. returns a
    Deferred[updated-record-or-nil failure-descriptions]"
-  ([^Session session ^Entity entity new-record]
+  ([session :- Session
+    entity :- Entity
+    new-record :- MaybeRecordSchema]
    (upsert-primary-record-and-update-unique-keys session entity new-record {}))
-  ([^Session session ^Entity entity new-record opts]
+  ([session :- Session
+    entity :- Entity
+    new-record :- MaybeRecordSchema
+    opts]
    (with-context deferred-context
      (mlet [[rec-old-keys
              upsert-errors] (upsert-primary-record-without-unique-keys
