@@ -246,8 +246,10 @@
           record
           acquire-key-responses))
 
-(defn describe-acquire-failures
-  [^Entity entity requested-record acquire-key-responses]
+(s/defn describe-acquire-failures
+  [entity :- Entity
+   requested-record :- (s/maybe {s/Keyword s/Any})
+   acquire-key-responses :- [AcquireUniqueKeyResultSchema]]
   (let [failures (filter (fn [[status key-desc reason]]
                            (not= :ok status))
                          acquire-key-responses)
