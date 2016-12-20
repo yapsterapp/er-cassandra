@@ -28,6 +28,9 @@
    :else
    [s/Keyword]))
 
+(s/defschema KeyValueSchema
+  [(s/one s/Any :key-component) s/Any])
+
 ;; a secondary key on a cassandra table has only
 ;; a single column
 (s/defschema SecondaryKeySchema
