@@ -406,10 +406,49 @@
                 :key/notunique]]))))))
 
 (deftest responses-for-key-test
-  )
+  (let [ida (uuid/v1)]
+    (is (= [[:fail
+             {:uber-key [:id] :uber-key-value [ida]
+              :key [:nick] :key-value ["foo"]}
+             :key/notunique]]
+           (uk/responses-for-key
+            [:nick]
+            [[:fail
+              {:uber-key [:id] :uber-key-value [ida]
+               :key [:nick] :key-value ["foo"]}
+              :key/notunique]
+             [:fail
+              {:uber-key [:id] :uber-key-value [ida]
+               :key [:blah] :key-value ["bar"]}
+              :key/notunique]])))))
 
 (deftest update-record-by-key-response-test
-  )
+  (testing "updating record according to acquire responses"
+    (let [m (t/create-entity
+             {:primary-table {:name :unique_key_test :key [:id]}
+              :unique-key-tables [{:name :unique_key_test_by_nick
+                                   :key [:nick]}
+                                  {:name :unique_key_test_by_email
+                                   :key [:email]
+                                   :collections {:email :set}}]})
+          ida (uuid/v1)]
+      (is (= {:id ida
+              :nick nil
+              :email #{"foo@bar.com"}}
+             (uk/update-record-by-key-responses
+              m
+              nil
+              {:id ida
+               :nick "foo"
+               :email #{"foo@bar.com" "foo@baz.com"}}
+              [[:fail
+                {:uber-key [:id] :uber-key-value [ida]
+                 :key [:nick] :key-value ["foo"]}
+                :key/notunique]
+               [:fail
+                {:uber-key [:id] :uber-key-value [ida]
+                 :key [:email] :key-value ["foo@baz.com"]}
+                :key/notunique]]))))))
 
 (deftest without-unique-keys-test
   )

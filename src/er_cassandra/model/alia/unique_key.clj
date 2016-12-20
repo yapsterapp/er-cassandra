@@ -30,6 +30,8 @@
 
 (s/defschema StatusSchema (s/enum :ok :fail))
 
+(s/defschema MaybeRecordSchema (s/maybe {s/Keyword s/Any}))
+
 (s/defschema KeyDescSchema
   {:uber-key t/KeySchema
    :uber-key-value t/KeyValueSchema
@@ -150,8 +152,8 @@
 
 (s/defn stale-unique-key-values :- [t/KeyValueSchema]
   [entity :- Entity
-   old-record :- (s/maybe {s/Keyword s/Any})
-   new-record :- (s/maybe {s/Keyword s/Any})
+   old-record :- MaybeRecordSchema
+   new-record :- MaybeRecordSchema
    unique-key-table :- t/UniqueKeyTableSchema]
   (let [key (:key unique-key-table)
         col-colls (:collections unique-key-table)]
@@ -167,8 +169,8 @@
 (s/defn release-stale-unique-keys
   [session :- Session
    entity :- Entity
-   old-record :- (s/maybe {s/Keyword s/Any})
-   new-record :- (s/maybe {s/Keyword s/Any})]
+   old-record :- MaybeRecordSchema
+   new-record :- MaybeRecordSchema]
   (combine-responses
    (mapcat
     identity
@@ -182,7 +184,7 @@
 (s/defn acquire-unique-keys
   [session :- Session
    entity :- Entity
-   record :- (s/maybe {s/Keyword s/Any})]
+   record :- MaybeRecordSchema]
   (combine-responses
    (mapcat
     identity
@@ -215,7 +217,7 @@
    to become more flexible"
   [table :- t/UniqueKeyTableSchema
    acquire-key-responses :- [AcquireUniqueKeyResultSchema]
-   record  :- (s/maybe {s/Keyword s/Any})]
+   record  :- MaybeRecordSchema]
   (reduce (fn [r [status
                   {:keys [uber-key uber-key-value
                           key key-value]:as key-desc}
@@ -248,7 +250,7 @@
 
 (s/defn describe-acquire-failures
   [entity :- Entity
-   requested-record :- (s/maybe {s/Keyword s/Any})
+   requested-record :- MaybeRecordSchema
    acquire-key-responses :- [AcquireUniqueKeyResultSchema]]
   (let [failures (filter (fn [[status key-desc reason]]
                            (not= :ok status))
@@ -271,20 +273,24 @@
            :key key
            :key-value key-value}))))))
 
-(defn responses-for-key
-  [match-key responses]
+(s/defn responses-for-key
+  [match-key :- t/KeySchema
+   responses :- [AcquireUniqueKeyResultSchema]]
   (filter (fn [[_ {:keys [key]} _]]
             (= key match-key))
           responses))
 
-(defn update-record-by-key-responses
-  [model old-record new-record acquire-key-responses]
+(s/defn update-record-by-key-responses
+  [entity :- Entity
+   old-record :- MaybeRecordSchema
+   new-record :- MaybeRecordSchema
+   acquire-key-responses :- [AcquireUniqueKeyResultSchema]]
 
   (reduce (fn [nr t]
             (let [ars (responses-for-key (:key t) acquire-key-responses)]
               (update-with-acquire-responses t ars nr)))
           new-record
-          (:unique-key-tables model)))
+          (:unique-key-tables entity)))
 
 (defn without-unique-keys
   "remove (the final part of) unique key columns from a record"
