@@ -356,7 +356,54 @@
       (is (= {:id ida :nick #{"bar"}} r)))))
 
 (deftest describe-acquire-failures-test
-  )
+  (testing "describe singular acquisition failure"
+    (let [m (create-singular-unique-key-entity)
+          [ida idb] [(uuid/v1) (uuid/v1)]]
+      (is (= [[:key/notunique
+               {:tag :key/notunique,
+                :message ":nick is not unique: foo",
+                :type :key,
+                :primary-table :singular_unique_key_test,
+                :uber-key-value [ida],
+                :key [:nick],
+                :key-value ["foo"]}]]
+             (uk/describe-acquire-failures
+              m
+              {:id ida :nick "foo"}
+              [[:fail
+                {:uber-key [:id] :uber-key-value [ida]
+                 :key [:nick] :key-value ["foo"]}
+                :key/notunique]])))))
+  (testing "describe set value acquisition failure"
+    (let [m (create-set-unique-key-entity)
+          [ida idb] [(uuid/v1) (uuid/v1)]]
+      (is (= [[:key/notunique
+               {:tag :key/notunique,
+                :message ":nick is not unique: foo",
+                :type :key,
+                :primary-table :set_unique_key_test,
+                :uber-key-value [ida],
+                :key [:nick],
+                :key-value ["foo"]}]
+              [:key/notunique
+               {:tag :key/notunique,
+                :message ":nick is not unique: bar",
+                :type :key,
+                :primary-table :set_unique_key_test,
+                :uber-key-value [ida],
+                :key [:nick],
+                :key-value ["bar"]}]]
+             (uk/describe-acquire-failures
+              m
+              {:id ida :nick #{"foo" "bar" "baz"}}
+              [[:fail
+                {:uber-key [:id] :uber-key-value [ida]
+                 :key [:nick] :key-value ["foo"]}
+                :key/notunique]
+               [:fail
+                {:uber-key [:id] :uber-key-value [ida]
+                 :key [:nick] :key-value ["bar"]}
+                :key/notunique]]))))))
 
 (deftest responses-for-key-test
   )
