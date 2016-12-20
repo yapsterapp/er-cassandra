@@ -329,7 +329,31 @@
                  (set r))))))))
 
 (deftest update-with-acquire-responses-test
-  )
+  (testing "removing singular unacquired value"
+    (let [sm (create-singular-unique-key-entity)
+          [ida idb] [(uuid/v1) (uuid/v1)]
+          r (uk/update-with-acquire-responses
+             (-> sm :unique-key-tables first)
+             [[:fail
+               {:uber-key [:id] :uber-key-value [ida]
+                :key [:nick] :key-value ["foo"]}
+               :key/notunique]]
+             {:id ida
+              :nick "foo"})]
+      (is (= {:id ida :nick nil} r))))
+
+  (testing "removing unacquired collection values"
+    (let [cm (create-set-unique-key-entity)
+          [ida idb] [(uuid/v1) (uuid/v1)]
+          r (uk/update-with-acquire-responses
+             (-> cm :unique-key-tables first)
+             [[:fail
+               {:uber-key [:id] :uber-key-value [ida]
+                :key [:nick] :key-value ["foo"]}
+               :key/notunique]]
+             {:id ida
+              :nick #{"foo" "bar"}})]
+      (is (= {:id ida :nick #{"bar"}} r)))))
 
 (deftest describe-acquire-failures-test
   )
