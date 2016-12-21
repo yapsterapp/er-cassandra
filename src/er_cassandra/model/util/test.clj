@@ -5,6 +5,7 @@
    [deferst :refer [defsystem]]
    [deferst.system :as sys]
    [slf4j-timbre.configure :as logconf]
+   [er-cassandra.record :as r]
    [er-cassandra.session :as s]
    [er-cassandra.model.model-session :as ms]
    [er-cassandra.model.alia.model-session :as ams]))
@@ -45,3 +46,7 @@
   @(s/execute
     *model-session*
     (str "create table " (name table-name) " " table-def)))
+
+(defn fetch-record
+  [table key key-value]
+  @(r/select-one *model-session* table key key-value))
