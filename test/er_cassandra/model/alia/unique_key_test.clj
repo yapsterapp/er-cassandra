@@ -39,7 +39,7 @@
   []
   (tu/create-table
    :mixed_unique_key_test
-   "(org_id timeuuid, id timeuuid, nick text, email set<text>, phone list<text>, primary key (org_id, id))")
+   "(org_id timeuuid, id timeuuid, nick text, email set<text>, phone list<text>, stuff text,  primary key (org_id, id))")
   (tu/create-table
    :mixed_unique_key_test_by_nick
    "(nick text, org_id timeuuid, id timeuuid, primary key (org_id, nick))")
@@ -603,6 +603,7 @@
                             :id ida})
               updated-a {:org_id org-id
                          :id ida
+                         :stuff "blah"
                          :nick "foo"
                          :email #{"foo@bar.com"}
                          :phone ["123456"]}
@@ -640,11 +641,13 @@
                                    {:org_id org-id :id idb}
                                    {:org_id org-id
                                     :id idb
+                                    :stuff "boo"
                                     :nick "foo"
                                     :email #{"foo@bar.com" "bar@baz.com" "blah@bloo.com"}
                                     :phone ["123456" "09876" "777777"]})
               updated-b {:org_id org-id
                          :id idb
+                         :stuff "boo"
                          :nick nil
                          :email #{"bar@baz.com" "blah@bloo.com"}
                          :phone ["09876" "777777"]}]
@@ -701,6 +704,7 @@
       (testing "updates and removals"
         (let [updated-b {:org_id org-id
                          :id idb
+                         :stuff "fooo"
                          :nick "bar"
                          :email #{"bar@baz.com" "woo@woo.com"}
                          :phone ["777777" "111111"]}
@@ -740,4 +744,72 @@
 
 
 (deftest upsert-primary-record-and-update-unique-keys-test
-  )
+  (let [m (create-mixed-unique-key-entity)
+        [org-id ida idb] [(uuid/v1) (uuid/v1) (uuid/v1)]]
+    (testing "success"
+      (let [updated-a {:org_id org-id
+                       :id ida
+                       :stuff "stuff"
+                       :nick "foo"
+                       :email #{"foo@bar.com"}
+                       :phone ["123456"]}
+            [record
+             acquire-failures] @(uk/upsert-primary-record-and-update-unique-keys
+                                 tu/*model-session*
+                                 m
+                                 updated-a)]
+        (is (= updated-a record))
+        (is (empty? acquire-failures))
+        (is (= updated-a (fetch-record :mixed_unique_key_test
+                                       [:org_id :id] [org-id ida])))))
+    (testing "if-not-exists failure"
+      (let [old-a (fetch-record :mixed_unique_key_test
+                                [:org_id :id] [org-id ida])
+            updated-a {:org_id org-id
+                       :id ida
+                       :stuff "blah"
+                       :nick "foofoo"
+                       :email #{"foofoo@bar.com"}
+                       :phone ["12345654321"]}
+            [record
+             errors] @(uk/upsert-primary-record-and-update-unique-keys
+                                 tu/*model-session*
+                                 m
+                                 updated-a
+                                 {:if-not-exists true})]
+        (is (= nil record))
+        (is (= [[:upsert/primary-record-upsert-error
+                 {:record updated-a,
+                  :if-not-exists true,
+                  :only-if nil,
+                  :tag :upsert/primary-record-upsert-error,
+                  :message "couldn't upsert primary record"}]]
+               errors))
+        (is (= old-a (fetch-record :mixed_unique_key_test
+                                   [:org_id :id] [org-id ida])))))
+
+    (testing "only-if failure"
+      (let [old-a (fetch-record :mixed_unique_key_test
+                                [:org_id :id] [org-id ida])
+            updated-a {:org_id org-id
+                       :id ida
+                       :stuff "wha"
+                       :nick "foofoo"
+                       :email #{"foofoo@bar.com"}
+                       :phone ["12345654321"]}
+            [record
+             errors] @(uk/upsert-primary-record-and-update-unique-keys
+                                 tu/*model-session*
+                                 m
+                                 updated-a
+                                 {:only-if [[:= :nick "bar"]]})]
+        (is (= nil record))
+        (is (= [[:upsert/primary-record-upsert-error
+                 {:record updated-a,
+                  :if-not-exists nil,
+                  :only-if [[:= :nick "bar"]],
+                  :tag :upsert/primary-record-upsert-error,
+                  :message "couldn't upsert primary record"}]]
+               errors))
+        (is (= old-a (fetch-record :mixed_unique_key_test
+                                   [:org_id :id] [org-id ida])))))))
