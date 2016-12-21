@@ -18,6 +18,17 @@
   (t/create-entity
    {:primary-table {:name :simple_upsert_test :key [:id]}}))
 
+(defn create-secondary-entity
+  []
+  (tu/create-table :secondary_upsert_test
+                   "(org_id timeuuid, id timeuuid, nick text, primary key (org_id, id))")
+  (tu/create-table :secondary_upsert_test_by_nick
+                   "(org_id timeuuid, nick text, id timeuuid, primary key (org_id, nick))")
+  (t/create-entity
+   {:primary-table {:name :secondary_upsert_test :key [:org_id :id]}
+    :secondary-tables [{:name :secondary_upsert_test_by_nick
+                        :key [:org_id :nick]}]}))
+
 (deftest delete-record-test
   (let [m (create-simple-entity)
         id (uuid/v1)
@@ -43,6 +54,56 @@
     (is (= r record))
     (is (= :upserted reason))
     (is (= r (fetch-record :simple_upsert_test :id id)))))
+
+(deftest stale-secondary-key-value-test
+  (let [m (t/create-entity
+           {:primary-table {:name :foos :key [:id]}
+            :secondary-tables [{:name :foos_by_bar :key [:bar]}]})
+        st (-> m :secondary-tables first)]
+
+    (testing "ignores secondary keys when missing from new-record"
+      (is (= nil
+             (u/stale-secondary-key-value
+              m
+              {:id :a :bar :b}
+              {:id :a}
+              (-> m :secondary-tables first)))))
+
+    (testing "correctly identifies a stale singular secondary key value"
+      (is (= [:b]
+             (u/stale-secondary-key-value
+              m
+              {:id :a :bar :b}
+              {:id :a :bar nil}
+              (-> m :secondary-tables first)))))))
+
+(deftest delete-stale-secondaries-test
+  (let [m (create-secondary-entity)
+        [org-id id] [(uuid/v1) (uuid/v1)]
+        r {:org_id org-id :id id :nick "foo"}
+        _ @(r/insert tu/*model-session* :secondary_upsert_test r)
+        old-r (fetch-record :secondary_upsert_test [:org_id :id] [org-id id])
+        [status
+         record
+         reason] @(u/delete-stale-secondaries
+                   tu/*model-session*
+                   m
+                   old-r
+                   {:org_id org-id :id id :nick "bar"})]
+    (is (= r old-r))
+    (is (= nil (fetch-record :secondary_upsert_test_by_nick [:org_id :nick] [org-id "foo"])))))
+
+(deftest upsert-secondaries-test
+  (let [m (create-secondary-entity)
+        [org-id id] [(uuid/v1) (uuid/v1)]
+        r {:org_id org-id :id id :nick "bar"}
+        [status
+         record
+         reason] @(u/upsert-secondaries
+                   tu/*model-session*
+                   m
+                   r)]
+    (is (= r (fetch-record :secondary_upsert_test_by_nick [:org_id :nick] [org-id "bar"])))))
 
 (deftest stale-lookup-key-values-test
   (let [m (t/create-entity
@@ -77,27 +138,9 @@
                {:id :a :baz #{:c}}
                (-> m :lookup-key-tables second))))))))
 
-(deftest stale-secondary-key-value-test
-  (let [m (t/create-entity
-           {:primary-table {:name :foos :key [:id]}
-            :secondary-tables [{:name :foos_by_bar :key [:bar]}]})
-        st (-> m :secondary-tables first)]
+(deftest delete-stale-lookups-test)
 
-    (testing "ignores secondary keys when missing from new-record"
-      (is (= nil
-             (u/stale-secondary-key-value
-              m
-              {:id :a :bar :b}
-              {:id :a}
-              (-> m :secondary-tables first)))))
-
-    (testing "correctly identifies a stale singular secondary key value"
-      (is (= [:b]
-             (u/stale-secondary-key-value
-              m
-              {:id :a :bar :b}
-              {:id :a :bar nil}
-              (-> m :secondary-tables first)))))))
+(deftest lookup-record-seq-test)
 
 (deftest with-columns-option-for-lookups
   (let [m (t/create-entity
@@ -128,3 +171,14 @@
           :C1    (:c1 lrecord)
           :C2    (:c2 lrecord)
           false  (contains? lrecord :c3))))))
+
+(deftest upsert-lookups-test)
+
+(deftest copy-unique-keys-test)
+
+(deftest has-lookups?-test
+  )
+
+(deftest update-secondaries-and-lookups-test)
+
+(deftest upsert*-test)
