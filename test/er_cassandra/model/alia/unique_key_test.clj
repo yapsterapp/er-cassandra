@@ -11,6 +11,59 @@
 (use-fixtures :once st/validate-schemas)
 (use-fixtures :each (tu/with-model-session-fixture))
 
+(defn create-singular-unique-key-entity
+  []
+  (tu/create-table :singular_unique_key_test
+                     "(id timeuuid primary key, nick text)")
+  (tu/create-table :singular_unique_key_test_by_nick
+                     "(nick text primary key, id timeuuid)")
+
+  (t/create-entity
+   {:primary-table {:name :singular_unique_key_test :key [:id]}
+    :unique-key-tables [{:name :singular_unique_key_test_by_nick
+                         :key [:nick]}]}))
+
+(defn create-set-unique-key-entity
+  []
+  (tu/create-table :set_unique_key_test
+                   "(id timeuuid primary key, nick set<text>)")
+  (tu/create-table :set_unique_key_test_by_nick
+                   "(nick text primary key, id timeuuid)")
+  (t/create-entity
+   {:primary-table {:name :set_unique_key_test :key [:id]}
+    :unique-key-tables [{:name :set_unique_key_test_by_nick
+                         :key [:nick]
+                         :collections {:nick :set}}]}))
+
+(defn create-mixed-unique-key-entity
+  []
+  (tu/create-table
+   :mixed_unique_key_test
+   "(org_id timeuuid, id timeuuid, nick text, email set<text>, phone list<text>, primary key (org_id, id))")
+  (tu/create-table
+   :mixed_unique_key_test_by_nick
+   "(nick text, org_id timeuuid, id timeuuid, primary key (org_id, nick))")
+  (tu/create-table
+   :mixed_unique_key_test_by_email
+   "(email text primary key, org_id timeuuid, id timeuuid)")
+  (tu/create-table
+   :mixed_unique_key_test_by_phone
+   "(phone text primary key, org_id timeuuid, id timeuuid)")
+  (t/create-entity
+   {:primary-table {:name :mixed_unique_key_test :key [:org_id :id]}
+    :unique-key-tables [{:name :mixed_unique_key_test_by_nick
+                         :key [:org_id :nick]}
+                        {:name :mixed_unique_key_test_by_email
+                         :key [:email]
+                         :collections {:email :set}}
+                        {:name :mixed_unique_key_test_by_phone
+                         :key [:phone]
+                         :collections {:phone :list}}]}))
+
+(defn fetch-record
+  [table key key-value]
+  @(r/select-one tu/*model-session* table key key-value))
+
 (deftest applied?-test
   (is (= true (boolean (uk/applied? {(keyword "[applied]") true}))))
   (is (= false (boolean (uk/applied? {})))))
@@ -197,29 +250,7 @@
                {:id :a :baz #{:c}}
                (-> m :unique-key-tables second))))))))
 
-(defn create-singular-unique-key-entity
-  []
-  (tu/create-table :singular_unique_key_test
-                     "(id timeuuid primary key, nick text)")
-  (tu/create-table :singular_unique_key_test_by_nick
-                     "(nick text primary key, id timeuuid)")
 
-  (t/create-entity
-   {:primary-table {:name :singular_unique_key_test :key [:id]}
-    :unique-key-tables [{:name :singular_unique_key_test_by_nick
-                         :key [:nick]}]}))
-
-(defn create-set-unique-key-entity
-  []
-  (tu/create-table :set_unique_key_test
-                   "(id timeuuid primary key, nick set<text>)")
-  (tu/create-table :set_unique_key_test_by_nick
-                   "(nick text primary key, id timeuuid)")
-  (t/create-entity
-   {:primary-table {:name :set_unique_key_test :key [:id]}
-    :unique-key-tables [{:name :set_unique_key_test_by_nick
-                         :key [:nick]
-                         :collections {:nick :set}}]}))
 
 (deftest release-stale-unique-keys-test
   (testing "singular unique key"
@@ -562,7 +593,151 @@
         ))))
 
 (deftest update-unique-keys-after-primary-upsert-test
-  )
+  (testing "with mixed unique keys"
+    (let [m (create-mixed-unique-key-entity)
+          [org-id ida idb] [(uuid/v1) (uuid/v1) (uuid/v1)]]
+      (testing "acquire some keys"
+        (let [_ @(r/insert tu/*model-session*
+                           :mixed_unique_key_test
+                           {:org_id org-id
+                            :id ida})
+              updated-a {:org_id org-id
+                         :id ida
+                         :nick "foo"
+                         :email #{"foo@bar.com"}
+                         :phone ["123456"]}
+              [record
+               acquire-failures] @(uk/update-unique-keys-after-primary-upsert
+                                   tu/*model-session*
+                                   m
+                                   {:org_id org-id :id ida}
+                                   updated-a)]
+          (is (= updated-a record))
+          (is (empty? acquire-failures))
+
+          (is (= updated-a
+                 (fetch-record :mixed_unique_key_test [:org_id :id] [org-id ida])))
+          (is (= {:org_id org-id :id ida :nick "foo"}
+                 (fetch-record :mixed_unique_key_test_by_nick
+                               [:org_id :nick] [org-id "foo"])))
+          (is (= {:email "foo@bar.com" :org_id org-id :id ida}
+                 (fetch-record :mixed_unique_key_test_by_email
+                               :email "foo@bar.com")))
+          (is (= {:phone "123456" :org_id org-id :id ida}
+                 (fetch-record :mixed_unique_key_test_by_phone
+                               :phone "123456")))))
+
+      (testing "mixed acquire / failure"
+        (let [_ @(r/insert tu/*model-session*
+                           :mixed_unique_key_test
+                           {:org_id org-id
+                            :id idb})
+
+              [record
+               acquire-failures] @(uk/update-unique-keys-after-primary-upsert
+                                   tu/*model-session*
+                                   m
+                                   {:org_id org-id :id idb}
+                                   {:org_id org-id
+                                    :id idb
+                                    :nick "foo"
+                                    :email #{"foo@bar.com" "bar@baz.com" "blah@bloo.com"}
+                                    :phone ["123456" "09876" "777777"]})
+              updated-b {:org_id org-id
+                         :id idb
+                         :nick nil
+                         :email #{"bar@baz.com" "blah@bloo.com"}
+                         :phone ["09876" "777777"]}]
+          (is (= updated-b record))
+          (is (= #{[:key/notunique
+                    {:tag :key/notunique,
+                     :message ":phone is not unique: 123456",
+                     :type :key,
+                     :primary-table :mixed_unique_key_test,
+                     :uber-key-value [org-id idb],
+                     :key [:phone],
+                     :key-value ["123456"]}]
+                   [:key/notunique
+                    {:tag :key/notunique,
+                     :message ":nick is not unique: foo",
+                     :type :key,
+                     :primary-table :mixed_unique_key_test,
+                     :uber-key-value [org-id idb],
+                     :key [:org_id :nick],
+                     :key-value [org-id "foo"]}]
+                   [:key/notunique
+                    {:tag :key/notunique,
+                     :message ":email is not unique: foo@bar.com",
+                     :type :key,
+                     :primary-table :mixed_unique_key_test,
+                     :uber-key-value [org-id idb],
+                     :key [:email],
+                     :key-value ["foo@bar.com"]}]}
+                 (set acquire-failures)))
+
+          (is (= updated-b
+                 (fetch-record :mixed_unique_key_test
+                               [:org_id :id] [org-id idb])))
+          ;; ida keys remain with ida
+          (is (= {:nick "foo" :org_id org-id :id ida}
+                 (fetch-record :mixed_unique_key_test_by_nick
+                               [:org_id :nick] [org-id "foo"])))
+          (is (= {:phone "123456" :org_id org-id :id ida}
+                 (fetch-record :mixed_unique_key_test_by_phone
+                               :phone "123456")))
+          (is (= {:email "foo@bar.com" :org_id org-id :id ida}
+                 (fetch-record :mixed_unique_key_test_by_email :email "foo@bar.com")))
+
+          ;; idb gets the new keys
+          (is (= {:phone "09876" :org_id org-id :id idb}
+                 (fetch-record :mixed_unique_key_test_by_phone :phone "09876")))
+          (is (= {:phone "777777" :org_id org-id :id idb}
+                 (fetch-record :mixed_unique_key_test_by_phone :phone "777777")))
+          (is (= {:email "bar@baz.com" :org_id org-id :id idb}
+                 (fetch-record :mixed_unique_key_test_by_email :email "bar@baz.com")))
+          (is (= {:email "blah@bloo.com" :org_id org-id :id idb}
+                 (fetch-record :mixed_unique_key_test_by_email :email "blah@bloo.com")))))
+
+      (testing "updates and removals"
+        (let [updated-b {:org_id org-id
+                         :id idb
+                         :nick "bar"
+                         :email #{"bar@baz.com" "woo@woo.com"}
+                         :phone ["777777" "111111"]}
+
+              old-r (fetch-record :mixed_unique_key_test
+                                  [:org_id :id] [org-id idb])
+
+              [record
+               acquire-failures] @(uk/update-unique-keys-after-primary-upsert
+                                   tu/*model-session*
+                                   m
+                                   old-r
+                                   updated-b)]
+
+          (is (= updated-b
+                 record))
+          (is (empty? acquire-failures))
+
+          (is (= updated-b
+                 (fetch-record :mixed_unique_key_test [:org_id :id] [org-id idb])))
+
+          ;; stale keys
+          (is (= nil
+                 (fetch-record :mixed_unique_key_test_by_phone :phone "09876")))
+          (is (= nil
+                 (fetch-record :mixed_unique_key_test_by_email :email "blah@bloo.com")))
+
+          ;; preserved and new keys
+          (is (= {:phone "777777" :org_id org-id :id idb}
+                 (fetch-record :mixed_unique_key_test_by_phone :phone "777777")))
+          (is (= {:phone "111111" :org_id org-id :id idb}
+                 (fetch-record :mixed_unique_key_test_by_phone :phone "111111")))
+          (is (= {:email "bar@baz.com" :org_id org-id :id idb}
+                 (fetch-record :mixed_unique_key_test_by_email :email "bar@baz.com")))
+          (is (= {:email "woo@woo.com" :org_id org-id :id idb}
+                 (fetch-record :mixed_unique_key_test_by_email :email "woo@woo.com"))))))))
+
 
 (deftest upsert-primary-record-and-update-unique-keys-test
   )
