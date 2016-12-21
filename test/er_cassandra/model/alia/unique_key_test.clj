@@ -1,6 +1,6 @@
 (ns er-cassandra.model.alia.unique-key-test
   (:require
-   [er-cassandra.model.util.test :as tu]
+   [er-cassandra.model.util.test :as tu :refer [fetch-record]]
    [clojure.test :as test :refer [deftest is are testing use-fixtures]]
    [schema.test :as st]
    [clj-uuid :as uuid]
@@ -60,9 +60,6 @@
                          :key [:phone]
                          :collections {:phone :list}}]}))
 
-(defn fetch-record
-  [table key key-value]
-  @(r/select-one tu/*model-session* table key key-value))
 
 (deftest applied?-test
   (is (= true (boolean (uk/applied? {(keyword "[applied]") true}))))
