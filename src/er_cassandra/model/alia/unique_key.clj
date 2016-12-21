@@ -388,7 +388,7 @@
 
 (s/defn update-unique-keys-after-primary-upsert
   "attempts to acquire unique keys for an owner... returns
-   a Deferred[Right[[updated-owner-record failed-keys]]] with an updated
+   a Deferred<[updated-owner-record failed-keys]> with an updated
    owner record containing only the keys that could be acquired"
   [session :- Session
    entity :- Entity
