@@ -30,8 +30,6 @@
 
 (s/defschema StatusSchema (s/enum :ok :fail))
 
-(s/defschema MaybeRecordSchema (s/maybe {s/Keyword s/Any}))
-
 (s/defschema KeyDescSchema
   {:uber-key t/KeySchema
    :uber-key-value t/KeyValueSchema
@@ -152,8 +150,8 @@
 
 (s/defn stale-unique-key-values :- [t/KeyValueSchema]
   [entity :- Entity
-   old-record :- MaybeRecordSchema
-   new-record :- MaybeRecordSchema
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema
    unique-key-table :- t/UniqueKeyTableSchema]
   (let [key (:key unique-key-table)
         col-colls (:collections unique-key-table)]
@@ -169,8 +167,8 @@
 (s/defn release-stale-unique-keys
   [session :- Session
    entity :- Entity
-   old-record :- MaybeRecordSchema
-   new-record :- MaybeRecordSchema]
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema]
   (combine-responses
    (mapcat
     identity
@@ -184,7 +182,7 @@
 (s/defn acquire-unique-keys
   [session :- Session
    entity :- Entity
-   record :- MaybeRecordSchema]
+   record :- t/MaybeRecordSchema]
   (combine-responses
    (mapcat
     identity
@@ -217,7 +215,7 @@
    to become more flexible"
   [table :- t/UniqueKeyTableSchema
    acquire-key-responses :- [AcquireUniqueKeyResultSchema]
-   record  :- MaybeRecordSchema]
+   record  :- t/MaybeRecordSchema]
   (reduce (fn [r [status
                   {:keys [uber-key uber-key-value
                           key key-value]:as key-desc}
@@ -250,7 +248,7 @@
 
 (s/defn describe-acquire-failures
   [entity :- Entity
-   requested-record :- MaybeRecordSchema
+   requested-record :- t/MaybeRecordSchema
    acquire-key-responses :- [AcquireUniqueKeyResultSchema]]
   (let [failures (filter (fn [[status key-desc reason]]
                            (not= :ok status))
@@ -282,8 +280,8 @@
 
 (s/defn update-record-by-key-responses
   [entity :- Entity
-   old-record :- MaybeRecordSchema
-   new-record :- MaybeRecordSchema
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema
    acquire-key-responses :- [AcquireUniqueKeyResultSchema]]
 
   (reduce (fn [nr t]
@@ -295,7 +293,7 @@
 (s/defn without-unique-keys
   "remove (the final part of) unique key columns from a record"
   [entity :- Entity
-   record :- MaybeRecordSchema]
+   record :- t/MaybeRecordSchema]
   (let [unique-key-tabless (:unique-key-tables entity)]
     (reduce (fn [r t]
               (let [key-col (last (:key t))]
@@ -310,7 +308,7 @@
    returns a Deferred [upserted-record-or-nil failure-description]"
   ([session :- Session
     entity :- Entity
-    record :- MaybeRecordSchema
+    record :- t/MaybeRecordSchema
     {:keys [if-not-exists
             only-if]} :- {(s/optional-key :if-not-exists) (s/maybe s/Bool)
                           (s/optional-key :only-if) (s/maybe [s/Any])}]
@@ -392,8 +390,8 @@
    owner record containing only the keys that could be acquired"
   [session :- Session
    entity :- Entity
-   old-key-record :- MaybeRecordSchema ;; record with old unique keys
-   new-record :- MaybeRecordSchema] ;; record with updated unique keys
+   old-key-record :- t/MaybeRecordSchema ;; record with old unique keys
+   new-record :- t/MaybeRecordSchema] ;; record with updated unique keys
   (with-context deferred-context
     (mlet [release-key-responses (release-stale-unique-keys
                                   session
@@ -428,11 +426,11 @@
    Deferred[updated-record-or-nil failure-descriptions]"
   ([session :- Session
     entity :- Entity
-    new-record :- MaybeRecordSchema]
+    new-record :- t/MaybeRecordSchema]
    (upsert-primary-record-and-update-unique-keys session entity new-record {}))
   ([session :- Session
     entity :- Entity
-    new-record :- MaybeRecordSchema
+    new-record :- t/MaybeRecordSchema
     opts]
    (with-context deferred-context
      (mlet [[rec-old-keys

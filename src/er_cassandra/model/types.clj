@@ -8,6 +8,9 @@
    [er-cassandra.util.vector :as v]
    [er-cassandra.key :as k]))
 
+(s/defschema RecordSchema {s/Keyword s/Any})
+(s/defschema MaybeRecordSchema (s/maybe RecordSchema))
+
 (s/defschema CallbackFnSchema
   (s/make-fn-schema s/Any [[{s/Keyword s/Any}]]))
 
