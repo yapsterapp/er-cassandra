@@ -22,11 +22,13 @@
   (s/conditional
 
    (fn [k] (-> k first sequential?))
-   [(s/optional [s/Keyword] :compound-parition-key)
+   [(s/one
+     [(s/one s/Keyword :partition-key-component) s/Keyword]
+     :compound-parition-key)
     s/Keyword]
 
    :else
-   [s/Keyword]))
+   [(s/one s/Keyword :key-component) s/Keyword]))
 
 (s/defschema KeyValueSchema
   [(s/one s/Any :key-component) s/Any])
@@ -58,7 +60,7 @@
 
 ;; basic table schema shared by primary, secondary
 ;; unique-key and lookup tables
-(s/defschema TableSchema
+(s/defschema BaseTableSchema
   {:name s/Keyword
    :key KeySchema
    (s/optional-key :relationships) [RelationshipSchema]})
@@ -70,8 +72,9 @@
 ;; delete with a secondary index from seocondary and lookup tables
 ;; TODO use the :entity-key to delete stale secondary and lookup records
 (s/defschema PrimaryTableSchema
-  (merge TableSchema
-         {(s/optional-key :entity-key) SecondaryKeySchema}))
+  (merge BaseTableSchema
+         {(s/optional-key :entity-key) SecondaryKeySchema}
+         {:type (s/eq :primary)}))
 
 ;; some of the (non-partition) columns in a lookup-table
 ;; key may be collections... these will be expanded to the
@@ -86,28 +89,42 @@
 (s/defschema EntityKeySchema
   {(s/optional-key :has-entity-key?) s/Bool})
 
+(s/defschema MaterializedViewSchema
+  {(s/optional-key :view?) s/Bool})
+
 ;; unique-key tables are lookup tables with a unique
 ;; constraint on the key, enforced with an LWT
 (s/defschema UniqueKeyTableSchema
-  (merge TableSchema
+  (merge BaseTableSchema
          CollectionKeysSchema
-         EntityKeySchema))
+         EntityKeySchema
+         {:type (s/eq :uniquekey)}))
 
 ;; secondary tables contain all columns from the primary
 ;; table, with a different primary key.
 ;; secondary and lookup tables may be materialized views,
 ;; which will be used for query but won't be upserted to
 (s/defschema SecondaryTableSchema
-  (merge TableSchema
+  (merge BaseTableSchema
          EntityKeySchema
-         {(s/optional-key :view?) s/Bool}))
+         MaterializedViewSchema
+         {:type (s/eq :secondary)}))
 
 ;; lookup tables contain columns from the uberkey and
 ;; a lookup key, plus any additional with-columns
 (s/defschema LookupTableSchema
   (merge SecondaryTableSchema
          CollectionKeysSchema
-         {(s/optional-key :with-columns) [s/Keyword]}))
+         MaterializedViewSchema
+         {(s/optional-key :with-columns) [s/Keyword]}
+         {:type (s/eq :lookup)}))
+
+(s/defschema TableSchema
+  (s/conditional
+   #(= (:type %) :primary) PrimaryTableSchema
+   #(= (:type %) :secondary) SecondaryTableSchema
+   #(= (:type %) :uniquekey) UniqueKeyTableSchema
+   #(= (:type %) :lookup) LookupTableSchema))
 
 (s/defschema EntitySchema
   {:primary-table PrimaryTableSchema
@@ -126,37 +143,42 @@
      callbacks :- CallbacksSchema
      versioned? :- s/Bool])
 
-(defn ^:private force-key-seq
-  [table]
-  (assoc table :key (v/coerce (:key table))))
+(defn ^:private conform-table
+  [table-type table]
+  (assoc table
+         :type table-type
+         :key (v/coerce (:key table))))
 
-(defn ^:private force-key-seqs
-  [entity-schema table-seq-key]
+(defn ^:private conform-tables
+  [entity-schema [table-type table-seq-key]]
   (assoc entity-schema
          table-seq-key
-         (mapv force-key-seq
+         (mapv (partial conform-table table-type)
                (get entity-schema table-seq-key))))
 
-(defn ^:private force-all-key-seqs
+(defn ^:private conform-all-tables
   "ensure all keys are given as sequences of components"
   [entity-schema]
-  (reduce force-key-seqs
+  (reduce conform-tables
           (assoc entity-schema
                  :primary-table
-                 (force-key-seq (:primary-table entity-schema)))
-          [:unique-key-tables
-           :secondary-tables
-           :lookup-key-tables]))
+                 (conform-table :primary (:primary-table entity-schema)))
+          [[:uniquekey :unique-key-tables]
+           [:secondary :secondary-tables]
+           [:lookup :lookup-key-tables]]))
 
 (s/defn ^:always-validate create-entity :- Entity
   "create an entity record from a spec"
-  [entity-spec :- EntitySchema]
-  (map->Entity (merge {:unique-key-tables []
-                       :secondary-tables []
-                       :lookup-key-tables []
-                       :callbacks {}
-                       :versioned? false}
-                      (force-all-key-seqs entity-spec))))
+  [entity-spec]
+  (let [spec (conform-all-tables entity-spec)]
+    (s/validate EntitySchema spec)
+    (strict-map->Entity
+     (merge {:unique-key-tables []
+             :secondary-tables []
+             :lookup-key-tables []
+             :callbacks {}
+             :versioned? false}
+            spec))))
 
 (defmacro defentity
   [name entity-spec]
