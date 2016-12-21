@@ -1,8 +1,48 @@
 (ns er-cassandra.model.alia.upsert-test
   (:require
-   [clojure.test :as test :refer [deftest is are testing]]
+   [er-cassandra.model.util.test :as tu :refer [fetch-record]]
+   [clojure.test :as test :refer [deftest is are testing use-fixtures]]
+   [schema.test :as st]
+   [clj-uuid :as uuid]
+   [er-cassandra.record :as r]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.alia.upsert :as u]))
+
+(use-fixtures :once st/validate-schemas)
+(use-fixtures :each (tu/with-model-session-fixture))
+
+(defn create-simple-entity
+  []
+  (tu/create-table :simple_upsert_test
+                   "(id timeuuid primary key, nick text)")
+  (t/create-entity
+   {:primary-table {:name :simple_upsert_test :key [:id]}}))
+
+(deftest delete-record-test
+  (let [m (create-simple-entity)
+        id (uuid/v1)
+        _ @(r/insert tu/*model-session* :simple_upsert_test {:id id :nick "foo"})
+        [status
+         detail
+         reason] @(u/delete-record tu/*model-session* m (:primary-table m) [id])]
+    (is (= :ok status))
+    (is (= {:table :simple_upsert_test
+            :key [:id]
+            :key-value [id]} detail))
+    (is (= :deleted reason))
+    (is (= nil (fetch-record :simple_upsert_test :id id)))))
+
+(deftest upsert-record-test
+  (let [m (create-simple-entity)
+        id (uuid/v1)
+        r {:id id :nick "foo"}
+        [status
+         record
+         reason] @(u/upsert-record tu/*model-session* m (:primary-table m) r)]
+    (is (= :ok status))
+    (is (= r record))
+    (is (= :upserted reason))
+    (is (= r (fetch-record :simple_upsert_test :id id)))))
 
 (deftest stale-lookup-key-values-test
   (let [m (t/create-entity

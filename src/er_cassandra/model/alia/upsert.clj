@@ -1,12 +1,12 @@
 (ns er-cassandra.model.alia.upsert
   (:require
    [clojure.set :as set]
+   [schema.core :as s]
    [manifold.deferred :as d]
    [cats.core :refer [mlet return]]
    [cats.data :refer [pair]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
-   [er-cassandra.session :as s]
    [er-cassandra.key :as k]
    [er-cassandra.record :as r]
    [er-cassandra.model.types :as t]
@@ -18,8 +18,11 @@
    [er_cassandra.session Session]
    [er_cassandra.model.types Entity]))
 
-(defn delete-record
-  [^Session session ^Entity entity table key-value]
+(s/defn delete-record
+  [session :- Session
+   entity :- Entity
+   table :- t/TableSchema
+   key-value :- t/KeyValueSchema]
   (with-context deferred-context
     (mlet [delete-result (r/delete session
                                    (:name table)
@@ -30,8 +33,11 @@
              :key (:key table)
              :key-value key-value} :deleted]))))
 
-(defn upsert-record
-  [^Session session ^Entity entity table record]
+(s/defn upsert-record
+  [session :- Session
+   entity :- Entity
+   table :- t/TableSchema
+   record :- t/RecordSchema]
   (with-context deferred-context
     (mlet [insert-result (r/insert session
                                    (:name table)
