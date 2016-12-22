@@ -41,8 +41,8 @@
 (s/defschema SecondaryKeySchema
   s/Keyword)
 
-;; just map parent fidles to child fields for now
-;; :foreign-key and :parent-entity-key will be
+;; just map source fields to target fields for now
+;; :foreign-key and :source-entity-key will be
 ;; included by default
 (s/defschema DenormalizeSchema
   {s/Keyword s/Keyword})
@@ -52,21 +52,39 @@
 ;; denormalized to records of a child Entity. 1-1 and 1-many
 ;; relationships are supported and large child sets are also
 ;; supported
-(s/defschema RelationshipSchema
-  {;; target Entity var - will be dynamically deref'd
-   :target s/Symbol
-   ;; the foreign key which must have the corresponding components
-   ;; in the same order as the parent primary key
-   :foreign-key KeySchema
-   ;; the fields to be denormalized
-   :denormalize DenormalizeSchema})
+(s/defschema DenormalizationRelationshipSchema
+  (let [BaseDenormalizationRelationshipSchema
+        {;; namespace qualified keyword referencing the target Entity var.
+         ;; will be dynamically deref'd
+         :target s/Keyword
+         ;; the fields to be denormalized
+         :denormalize DenormalizeSchema
+         ;; a type-1 UUID column in the child required
+         ;; for two-pass relationship denormalization... this column
+         ;; essentially belongs to this relationship
+         :version s/Keyword
+         ;; what to do with target records if a source record
+         ;; is deleted
+         :cascade (s/enum :none :null :delete)}]
+
+    (s/conditional
+     :foreign-key
+     (merge
+      BaseDenormalizationRelationshipSchema
+      {;; the foreign key which must have the corresponding components
+       ;; in the same order as the parent primary key
+       :foreign-key KeySchema})
+
+     :foreign-entity-key
+     (merge
+      BaseDenormalizationRelationshipSchema
+      {:foreign-entity-key SecondaryKeySchema}))))
 
 ;; basic table schema shared by primary, secondary
 ;; unique-key and lookup tables
 (s/defschema BaseTableSchema
   {:name s/Keyword
-   :key KeySchema
-   (s/optional-key :relationships) [RelationshipSchema]})
+   :key KeySchema})
 
 ;; the :key is the primary-key of the table, which may
 ;; have a compound parition key [[pk1 pk2] ck1 ck2]
@@ -135,7 +153,9 @@
    (s/optional-key :secondary-tables) [SecondaryTableSchema]
    (s/optional-key :lookup-key-tables) [LookupTableSchema]
    (s/optional-key :callbacks) CallbacksSchema
-   (s/optional-key :versioned?) s/Bool})
+   (s/optional-key :versioned?) s/Bool
+   (s/optional-key :denorm-targets) {s/Keyword DenormalizationRelationshipSchema}
+   (s/optional-key :denorm-sources) {s/Keyword s/Keyword}})
 
 
 (s/defrecord Entity
@@ -144,7 +164,9 @@
      secondary-tables :- [SecondaryTableSchema]
      lookup-key-tables :- [LookupTableSchema]
      callbacks :- CallbacksSchema
-     versioned? :- s/Bool])
+     versioned? :- s/Bool
+     denorm-targets :- {s/Keyword DenormalizationRelationshipSchema}
+     denorm-sources :- {s/Keyword s/Keyword}])
 
 (defn ^:private conform-table
   [table-type table]
@@ -180,7 +202,9 @@
              :secondary-tables []
              :lookup-key-tables []
              :callbacks {}
-             :versioned? false}
+             :versioned? false
+             :denorm-targets {}
+             :denorm-sources {}}
             spec))))
 
 (defmacro defentity
