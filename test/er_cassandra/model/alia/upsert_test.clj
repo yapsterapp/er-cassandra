@@ -223,10 +223,35 @@
     (is (= nil (fetch-record :upsert_mixed_lookup_test_by_phone
                              [:phone] "456")))))
 
-(deftest lookup-record-seq-test)
+(deftest lookup-record-seq-test
+  (testing "mixed lookups seq"
+    (let [m (create-mixed-lookup-entity)
+          nick-t (->> m :lookup-key-tables
+                      (filter #(= :upsert_mixed_lookup_test_by_nick (:name %)))
+                      first)
+          email-t (->> m :lookup-key-tables
+                       (filter #(= :upsert_mixed_lookup_test_by_email (:name %)))
+                       first)
+          phone-t (->> m :lookup-key-tables
+                       (filter #(= :upsert_mixed_lookup_test_by_phone (:name %)))
+                       first)
+          [org-id id] [(uuid/v1) (uuid/v1)]
+          r {:org_id org-id :id id
+             :nick "foo"
+             :email #{"foo@bar.com" "foo@baz.com"}
+             :phone ["123" "456"]}
 
-(deftest with-columns-option-for-lookups
-  (let [m (t/create-entity
+          rs (u/lookup-record-seq m nil r)]
+
+      (is (= (set
+              [[nick-t {:org_id org-id :id id :nick "foo"}]
+               [email-t {:org_id org-id :id id :email "foo@bar.com"}]
+               [email-t {:org_id org-id :id id :email "foo@baz.com"}]
+               [phone-t {:org_id org-id :id id :phone "123"}]
+               [phone-t {:org_id org-id :id id :phone "456"}]])
+             (set rs)))))
+  (testing "with-columns option"
+    (let [m (t/create-entity
            {:primary-table {:name :foos :key [:id]}
             :secondary-tables [{:name :foos_by_bar :key [:bar]}
                                {:name :foos_by_baz :key [:baz]}]
@@ -253,9 +278,41 @@
           1      (count lookups)
           :C1    (:c1 lrecord)
           :C2    (:c2 lrecord)
-          false  (contains? lrecord :c3))))))
+          false  (contains? lrecord :c3)))))))
 
-(deftest upsert-lookups-test)
+
+(deftest upsert-lookups-test
+  (let [m (create-mixed-lookup-entity)
+        [org-id id] [(uuid/v1) (uuid/v1)]
+
+        nick-foo-r {:org_id org-id :id id :nick "foo"}
+
+        [status
+         record
+         reason] @(u/upsert-lookups
+                   tu/*model-session*
+                   m
+                   nil
+                   {:org_id org-id :id id
+                    :nick "foo"
+                    :email #{"foo@bar.com" "foo@baz.com"}
+                    :phone ["123" "456"]})]
+
+    (is (= {:org_id org-id :id id :nick "foo"}
+           (fetch-record :upsert_mixed_lookup_test_by_nick
+                         [:org_id :nick] [org-id "foo"])))
+    (is (= {:org_id org-id :id id :email "foo@bar.com"}
+           (fetch-record :upsert_mixed_lookup_test_by_email
+                         [:email] ["foo@bar.com"])))
+    (is (= {:org_id org-id :id id :email "foo@baz.com"}
+           (fetch-record :upsert_mixed_lookup_test_by_email
+                         [:email] ["foo@baz.com"])))
+    (is (= {:org_id org-id :id id :phone "123"}
+           (fetch-record :upsert_mixed_lookup_test_by_phone
+                         [:phone] "123")))
+    (is (= {:org_id org-id :id id :phone "456"}
+           (fetch-record :upsert_mixed_lookup_test_by_phone
+                         [:phone] "456")))))
 
 (deftest copy-unique-keys-test)
 
