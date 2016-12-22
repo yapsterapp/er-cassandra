@@ -59,10 +59,6 @@
          :target s/Keyword
          ;; the fields to be denormalized
          :denormalize DenormalizeSchema
-         ;; a type-1 UUID column in the child required
-         ;; for two-pass relationship denormalization... this column
-         ;; essentially belongs to this relationship
-         :version s/Keyword
          ;; what to do with target records if a source record
          ;; is deleted
          :cascade (s/enum :none :null :delete)}]

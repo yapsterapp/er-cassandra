@@ -76,6 +76,9 @@
                       (select-keys opts [:columns :where :only-if :order-by :limit]))
     (dissoc opts :columns :where :only-if :order-by :limit))))
 
+;; TODO change to return a Deferred<Stream> which turns out to be a lot more
+;; convenient to work with
+
 (defn select-buffered
   "select a stream of records
 
