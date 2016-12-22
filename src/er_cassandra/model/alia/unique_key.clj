@@ -312,7 +312,6 @@
     {:keys [if-not-exists
             only-if]} :- {(s/optional-key :if-not-exists) (s/maybe s/Bool)
                           (s/optional-key :only-if) (s/maybe [s/Any])}]
-   (assert (not (and if-not-exists only-if)))
    (with-context deferred-context
      (mlet [primary-table-name (get-in entity [:primary-table :name])
             primary-table-key (get-in entity [:primary-table :key])
