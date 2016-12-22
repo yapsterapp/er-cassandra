@@ -50,3 +50,7 @@
 (defn fetch-record
   [table key key-value]
   @(r/select-one *model-session* table key key-value))
+
+(defn insert-record
+  [table record]
+  @(r/insert *model-session* table record))
