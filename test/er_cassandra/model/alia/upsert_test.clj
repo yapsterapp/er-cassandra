@@ -338,7 +338,21 @@
             {})))))
 
 (deftest has-lookups?-test
-  )
+  (let [m (t/create-entity
+           {:primary-table {:name :has_lookups_test :key [:org_id :id]}
+            :unique-key-tables [{:name :has_lookups_test_by_nick
+                                 :key [:org_id :nick]}]})]
+    (is (= false (u/has-lookups? m))))
+  (let [m (t/create-entity
+           {:primary-table {:name :has_lookups_test :key [:org_id :id]}
+            :lookup-key-tables [{:name :has_lookups_test_by_nick
+                                 :key [:org_id :nick]}]})]
+    (is (= true (u/has-lookups? m))))
+  (let [m (t/create-entity
+           {:primary-table {:name :has_lookups_test :key [:org_id :id]}
+            :secondary-tables [{:name :has_lookups_test_by_nick
+                                :key [:org_id :nick]}]})]
+    (is (= true (u/has-lookups? m)))))
 
 (deftest update-secondaries-and-lookups-test)
 
