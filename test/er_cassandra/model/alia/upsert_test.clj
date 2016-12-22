@@ -54,6 +54,36 @@
                          :key [:phone]
                          :collections {:phone :list}}]}))
 
+(defn create-lookup-and-secondaries-entity
+  []
+  (tu/create-table
+   :upsert_lookup_and_secondaries_test
+   "(org_id timeuuid, id timeuuid, nick text, email set<text>, phone list<text>, stuff text, thing text, primary key (org_id, id))")
+  (tu/create-table
+   :upsert_lookup_and_secondaries_test_by_nick
+   "(nick text, org_id timeuuid, id timeuuid, primary key (org_id, nick))")
+  (tu/create-table
+   :upsert_lookup_and_secondaries_test_by_email
+   "(email text primary key, org_id timeuuid, id timeuuid)")
+  (tu/create-table
+   :upsert_lookup_and_secondaries_test_by_phone
+   "(phone text primary key, org_id timeuuid, id timeuuid)")
+  (tu/create-table
+   :upsert_lookup_and_secondaries_test_by_thing
+   "(org_id timeuuid, id timeuuid, nick text, email set<text>, phone list<text>, stuff text, thing text, primary key (org_id, thing))"
+   )
+  (t/create-entity
+   {:primary-table {:name :upsert_lookup_and_secondaries_test :key [:org_id :id]}
+    :lookup-key-tables [{:name :upsert_lookup_and_secondaries_test_by_nick
+                         :key [:org_id :nick]}
+                        {:name :upsert_lookup_and_secondaries_test_by_email
+                         :key [:email]
+                         :collections {:email :set}}
+                        {:name :upsert_lookup_and_secondaries_test_by_phone
+                         :key [:phone]
+                         :collections {:phone :list}}]
+    :secondary-tables [{:name :upsert_lookup_and_secondaries_test_by_thing
+                        :key [:org_id :thing]}]}))
 
 (deftest delete-record-test
   (let [m (create-simple-entity)
@@ -354,6 +384,40 @@
                                 :key [:org_id :nick]}]})]
     (is (= true (u/has-lookups? m)))))
 
-(deftest update-secondaries-and-lookups-test)
+(deftest update-secondaries-and-lookups-test
+  (let [m (create-lookup-and-secondaries-entity)
+        [org-id id] [(uuid/v1) (uuid/v1)]]
+
+    (testing "first insert"
+      (let [record {:org_id org-id
+                    :id id
+                    :nick "foo"
+                    :stuff "whateva"
+                    :thing "innit"
+                    :email #{"foo@bar.com" "foo@baz.com"}
+                    :phone ["123" "456"]}
+            r @(u/update-secondaries-and-lookups
+                tu/*model-session*
+                m
+                nil
+                record)]
+        (is (= {:org_id org-id :id id :nick "foo"}
+               (fetch-record :upsert_lookup_and_secondaries_test_by_nick
+                             [:org_id :nick] [org-id "foo"])))
+        (is (= record
+               (fetch-record :upsert_lookup_and_secondaries_test_by_thing
+                             [:org_id :thing] [org-id "innit"])))
+        (is (= {:org_id org-id :id id :email "foo@bar.com"}
+               (fetch-record :upsert_lookup_and_secondaries_test_by_email
+                             [:email] ["foo@bar.com"])))
+        (is (= {:org_id org-id :id id :email "foo@baz.com"}
+               (fetch-record :upsert_lookup_and_secondaries_test_by_email
+                             [:email] ["foo@baz.com"])))
+        (is (= {:org_id org-id :id id :phone "123"}
+               (fetch-record :upsert_lookup_and_secondaries_test_by_phone
+                             [:phone] "123")))
+        (is (= {:org_id org-id :id id :phone "456"}
+               (fetch-record :upsert_lookup_and_secondaries_test_by_phone
+                             [:phone] "456")))))))
 
 (deftest upsert*-test)
