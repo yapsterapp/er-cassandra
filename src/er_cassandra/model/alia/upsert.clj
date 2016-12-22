@@ -114,7 +114,6 @@
     identity
     (for [t (t/mutable-lookup-tables entity)]
       (let [stale-kvs (stale-lookup-key-values entity old-record new-record t)]
-
         (for [kv stale-kvs]
           (delete-record session entity t kv)))))))
 
