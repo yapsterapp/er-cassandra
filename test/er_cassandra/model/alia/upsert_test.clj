@@ -1,6 +1,6 @@
 (ns er-cassandra.model.alia.upsert-test
   (:require
-   [er-cassandra.model.util.test :as tu :refer [fetch-record]]
+   [er-cassandra.model.util.test :as tu :refer [fetch-record insert-record]]
    [clojure.test :as test :refer [deftest is are testing use-fixtures]]
    [schema.test :as st]
    [clj-uuid :as uuid]
@@ -28,6 +28,32 @@
    {:primary-table {:name :secondary_upsert_test :key [:org_id :id]}
     :secondary-tables [{:name :secondary_upsert_test_by_nick
                         :key [:org_id :nick]}]}))
+
+(defn create-mixed-lookup-entity
+  []
+  (tu/create-table
+   :upsert_mixed_lookup_test
+   "(org_id timeuuid, id timeuuid, nick text, email set<text>, phone list<text>, stuff text,  primary key (org_id, id))")
+  (tu/create-table
+   :upsert_mixed_lookup_test_by_nick
+   "(nick text, org_id timeuuid, id timeuuid, primary key (org_id, nick))")
+  (tu/create-table
+   :upsert_mixed_lookup_test_by_email
+   "(email text primary key, org_id timeuuid, id timeuuid)")
+  (tu/create-table
+   :upsert_mixed_lookup_test_by_phone
+   "(phone text primary key, org_id timeuuid, id timeuuid)")
+  (t/create-entity
+   {:primary-table {:name :upsert_mixed_lookup_test :key [:org_id :id]}
+    :lookup-key-tables [{:name :upsert_mixed_lookup_test_by_nick
+                         :key [:org_id :nick]}
+                        {:name :upsert_mixed_lookup_test_by_email
+                         :key [:email]
+                         :collections {:email :set}}
+                        {:name :upsert_mixed_lookup_test_by_phone
+                         :key [:phone]
+                         :collections {:phone :list}}]}))
+
 
 (deftest delete-record-test
   (let [m (create-simple-entity)
@@ -81,8 +107,8 @@
   (let [m (create-secondary-entity)
         [org-id id] [(uuid/v1) (uuid/v1)]
         r {:org_id org-id :id id :nick "foo"}
-        _ @(r/insert tu/*model-session* :secondary_upsert_test r)
-        old-r (fetch-record :secondary_upsert_test [:org_id :id] [org-id id])
+        _ @(r/insert tu/*model-session* :secondary_upsert_test_by_nick r)
+        old-r (fetch-record :secondary_upsert_test_by_nick [:org_id :nick] [org-id "foo"])
         [status
          record
          reason] @(u/delete-stale-secondaries
@@ -138,7 +164,64 @@
                {:id :a :baz #{:c}}
                (-> m :lookup-key-tables second))))))))
 
-(deftest delete-stale-lookups-test)
+(deftest delete-stale-lookups-test
+  (let [m (create-mixed-lookup-entity)
+        [org-id id] [(uuid/v1) (uuid/v1)]
+
+        nick-foo-r {:org_id org-id :id id :nick "foo"}
+
+        _ (insert-record :upsert_mixed_lookup_test_by_nick nick-foo-r)
+        _ (is (= nick-foo-r (fetch-record
+                             :upsert_mixed_lookup_test_by_nick
+                             [:org_id :nick] [org-id "foo"])))
+
+        email-foobar-r {:org_id org-id :id id :email "foo@bar.com"}
+        _ (insert-record :upsert_mixed_lookup_test_by_email email-foobar-r)
+        _ (is (= email-foobar-r (fetch-record
+                                 :upsert_mixed_lookup_test_by_email
+                                 [:email] ["foo@bar.com"])))
+        email-foobaz-r {:org_id org-id :id id :email "foo@baz.com"}
+        _ (insert-record :upsert_mixed_lookup_test_by_email email-foobaz-r)
+        _ (is (= email-foobaz-r (fetch-record
+                                 :upsert_mixed_lookup_test_by_email
+                                 [:email] ["foo@baz.com"])))
+
+        phone-123-r {:org_id org-id :id id :phone "123"}
+        _ (insert-record :upsert_mixed_lookup_test_by_phone phone-123-r)
+        _ (is (= phone-123-r (fetch-record
+                              :upsert_mixed_lookup_test_by_phone
+                              [:phone] "123")))
+
+        phone-456-r {:org_id org-id :id id :phone "456"}
+        _ (insert-record :upsert_mixed_lookup_test_by_phone phone-456-r)
+        _ (is (= phone-456-r (fetch-record
+                              :upsert_mixed_lookup_test_by_phone
+                              [:phone] "456")))
+
+        [status
+         record
+         reason] @(u/delete-stale-lookups
+                   tu/*model-session*
+                   m
+                   {:org_id org-id :id id
+                    :nick "foo"
+                    :email #{"foo@bar.com" "foo@baz.com"}
+                    :phone ["123" "456"]}
+                   {:org_id org-id :id id
+                    :nick "bar"
+                    :email #{"foo@bar.com" "blah@wah.com"}
+                    :phone ["123" "789"]})]
+
+    (is (= nil (fetch-record :upsert_mixed_lookup_test_by_nick
+                             [:org_id :nick] [org-id "foo"])))
+    (is (= email-foobar-r (fetch-record :upsert_mixed_lookup_test_by_email
+                                        [:email] ["foo@bar.com"])))
+    (is (= nil (fetch-record :upsert_mixed_lookup_test_by_email
+                             [:email] ["foo@baz.com"])))
+    (is (= phone-123-r (fetch-record :upsert_mixed_lookup_test_by_phone
+                                     [:phone] "123")))
+    (is (= nil (fetch-record :upsert_mixed_lookup_test_by_phone
+                             [:phone] "456")))))
 
 (deftest lookup-record-seq-test)
 
