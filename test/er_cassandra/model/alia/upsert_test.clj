@@ -85,6 +85,58 @@
     :secondary-tables [{:name :upsert_lookup_and_secondaries_test_by_thing
                         :key [:org_id :thing]}]}))
 
+(defn create-unique-lookup-secondaries-entity
+  []
+  (tu/create-table
+   :upsert_unique_lookup_secondaries_test
+   "(org_id timeuuid, id timeuuid, nick text, email set<text>, phone list<text>, thing text, title text, tag set<text>, dept list<text>, stuff text, primary key (org_id, id))")
+
+  (tu/create-table
+   :upsert_unique_lookup_secondaries_test_by_nick
+   "(nick text, org_id timeuuid, id timeuuid, primary key (org_id, nick))")
+  (tu/create-table
+   :upsert_unique_lookup_secondaries_test_by_email
+   "(email text primary key, org_id timeuuid, id timeuuid)")
+  (tu/create-table
+   :upsert_unique_lookup_secondaries_test_by_phone
+   "(phone text primary key, org_id timeuuid, id timeuuid)")
+
+  (tu/create-table
+   :upsert_unique_lookup_secondaries_test_by_thing
+   "(org_id timeuuid, id timeuuid, nick text, email set<text>, phone list<text>, thing text, title text, tag set<text>, dept list<text>, stuff text, primary key (org_id, thing))")
+
+  (tu/create-table
+   :upsert_unique_lookup_secondaries_test_by_title
+   "(title text, org_id timeuuid, id timeuuid, primary key (org_id, title))")
+  (tu/create-table
+   :upsert_unique_lookup_secondaries_test_by_tag
+   "(tag text primary key, org_id timeuuid, id timeuuid)")
+  (tu/create-table
+   :upsert_unique_lookup_secondaries_test_by_dept
+   "(dept text primary key, org_id timeuuid, id timeuuid)")
+
+  (t/create-entity
+   {:primary-table {:name :upsert_unique_lookup_secondaries_test :key [:org_id :id]}
+    :unique-key-tables [{:name :upsert_unique_lookup_secondaries_test_by_nick
+                         :key [:org_id :nick]}
+                        {:name :upsert_unique_lookup_secondaries_test_by_email
+                         :key [:email]
+                         :collections {:email :set}}
+                        {:name :upsert_unique_lookup_secondaries_test_by_phone
+                         :key [:phone]
+                         :collections {:phone :list}}]
+    :secondary-tables [{:name :upsert_unique_lookup_secondaries_test_by_thing
+                        :key [:org_id :thing]}]
+    :lookup-key-tables [{:name :upsert_unique_lookup_secondaries_test_by_title
+                         :key [:org_id :title]}
+                        {:name :upsert_unique_lookup_secondaries_test_by_tag
+                         :key [:tag]
+                         :collections {:tag :set}}
+                        {:name :upsert_unique_lookup_secondaries_test_by_dept
+                         :key [:dept]
+                         :collections {:dept :list}}]}))
+
+
 (deftest delete-record-test
   (let [m (create-simple-entity)
         id (uuid/v1)
@@ -420,4 +472,26 @@
                (fetch-record :upsert_lookup_and_secondaries_test_by_phone
                              [:phone] "456")))))))
 
-(deftest upsert*-test)
+(deftest upsert*-test
+  (let [m (create-unique-lookup-secondaries-entity)
+        [org-id id] [(uuid/v1) (uuid/v1)]
+
+        record {:org_id org-id
+                :id id
+
+                :stuff "whateva"
+
+                :nick "foo"
+                :email #{"foo@bar.com" "foo@baz.com"}
+                :phone ["123" "456"]
+
+                :thing "blah"
+
+                :title "mr"
+                :tag #{"quick" "slow"}
+                :dept ["hr" "dev"]}
+
+        _ @(u/upsert* tu/*model-session* m record {})]
+
+    (is (= record (fetch-record :upsert_unique_lookup_secondaries_test
+                                [:org_id :id] [org-id id])))))
