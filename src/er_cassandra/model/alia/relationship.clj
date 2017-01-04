@@ -22,11 +22,17 @@
 (s/defschema DenormalizeOp
   (s/enum :upsert :delete))
 
-(defn deref-target-entity
-  [kw]
-  (let [var (ns-resolve (-> kw namespace symbol)
-                        (-> kw name symbol))]
-    @var))
+(defn- deref-target-entity
+  "given a namespace qualififed symbol or keyword referring to a
+   var with an Entity, return the Entity... otherwise return whatever
+   is given"
+  [entity-var-ref]
+  (if (or (keyword? entity-var-ref)
+          (symbol? entity-var-ref))
+    (deref
+     (ns-resolve (namespace entity-var-ref) (name entity-var-ref)))
+
+    entity-var-ref))
 
 (s/defn foreign-key-val
   "returns [fk fk-val] for the denorm relationship"
@@ -53,7 +59,7 @@
    target-record :- t/RecordSchema
    denorm-op :- DenormalizeOp]
   (let [[fk fk-val :as fk-vals] (foreign-key-val source-entity source-record denorm-rel)
-        fk-map (into {} fk-vals)
+        fk-map (into {} (map vector fk fk-val))
         denorm-vals (->> (:denormalize denorm-rel)
                          (map (fn [[scol tcol]]
                                 [tcol (get source-record scol)]))
@@ -96,13 +102,16 @@
    target-entity :- Entity
    source-record :- t/RecordSchema
    denorm-rel :- t/DenormalizationRelationshipSchema]
-  (let [[fk fk-val] (foreign-key-val source-entity source-record denorm-rel)
+  (with-context deferred-context
+    (mlet [:let [[fk fk-val] (foreign-key-val source-entity source-record denorm-rel)]
 
-        trs (m/select-buffered
-             session
-             target-entity
-             fk-val)]
-    (return deferred-context trs)))
+          trs (m/select-buffered
+               session
+               target-entity
+               fk
+               fk-val)]
+
+      (return deferred-context trs))))
 
 (defn only-error
   "given a Deferred keep only errors, otherwise returning Deferred<nil>"
@@ -117,6 +126,7 @@
    source-entity :- Entity
    target-entity :- Entity
    source-record :- t/RecordSchema
+   denorm-rel-kw :- s/Keyword
    denorm-rel :- t/DenormalizationRelationshipSchema
    denorm-op :- DenormalizeOp]
   (with-context deferred-context
@@ -131,7 +141,7 @@
                              (st/map #(denormalize-to-target-record
                                        session
                                        source-entity
-                                       (-> % :target deref-target-entity)
+                                       target-entity
                                        source-record
                                        denorm-rel
                                        %
@@ -143,24 +153,27 @@
 
       ;; if there are errors, return the first as an exemplar
       (if (nil? maybe-err)
-        (return [denorm-rel [:ok]])
-        (return [denorm-rel [:fail maybe-err]])))))
+        (return [denorm-rel-kw [:ok]])
+        (return [denorm-rel-kw [:fail maybe-err]])))))
 
-;; (s/defn denormalize
-;;   "denormalize all relationships for a given source record
-;;    returns [[denorm-rel [status maybe-err]]*]"
-;;   [session :- Session
-;;    source-entity :- Entity
-;;    source-record :- t/RecordSchema
-;;    denorm-op :- DenormalizeOp]
-;;   (let [rels (-> source-entity :denorm-targets vals)
-;;         v (uuid/v1)
-;;         resps (->> rels
-;;                    (map #(denormalize-rel session
-;;                                           source-entity
-;;                                           target-entity
-;;                                           source-record
-;;                                           %
-;;                                           denorm-op
-;;                                           v)))]
-;;     (apply d/zip resps)))
+
+
+(s/defn denormalize
+  "denormalize all relationships for a given source record
+   returns [[denorm-rel-kw [status maybe-err]]*]"
+  [session :- Session
+   source-entity :- Entity
+   source-record :- t/RecordSchema
+   denorm-op :- DenormalizeOp]
+  (let [resps (->> source-entity
+                   :denorm-targets
+                   (map
+                    (fn [[rel-kw rel]]
+                      (denormalize-rel session
+                                       source-entity
+                                       (deref-target-entity (:target rel))
+                                       source-record
+                                       rel-kw
+                                       rel
+                                       denorm-op))))]
+    (apply d/zip resps)))
