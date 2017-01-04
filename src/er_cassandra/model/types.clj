@@ -149,7 +149,6 @@
    (s/optional-key :secondary-tables) [SecondaryTableSchema]
    (s/optional-key :lookup-key-tables) [LookupTableSchema]
    (s/optional-key :callbacks) CallbacksSchema
-   (s/optional-key :versioned?) s/Bool
    (s/optional-key :denorm-targets) {s/Keyword DenormalizationRelationshipSchema}
    (s/optional-key :denorm-sources) {s/Keyword s/Keyword}})
 
@@ -160,7 +159,6 @@
      secondary-tables :- [SecondaryTableSchema]
      lookup-key-tables :- [LookupTableSchema]
      callbacks :- CallbacksSchema
-     versioned? :- s/Bool
      denorm-targets :- {s/Keyword DenormalizationRelationshipSchema}
      denorm-sources :- {s/Keyword s/Keyword}])
 
@@ -198,7 +196,6 @@
              :secondary-tables []
              :lookup-key-tables []
              :callbacks {}
-             :versioned? false
              :denorm-targets {}
              :denorm-sources {}}
             spec))))
