@@ -48,9 +48,6 @@
             t))
         (:lookup-key-tables entity)))
 
-(def select-err-msg
-  "Versioned tables can only perform selects when :limit option is set to 1.")
-
 (defn select-from-full-table
   "one fetch - straight from a table. they key must be either
    a full primary key, or a partition key combined with some
@@ -61,8 +58,6 @@
         opts (-> opts
                  (dissoc :key-value)
                  (assoc :row-generator (ms/->EntityInstanceRowGenerator)))]
-    (when (and (:versioned? entity) (not= 1 (:limit opts)))
-      (throw (ex-info select-err-msg {:model entity :opts opts})))
     (r/select session (:name table) key kv opts)))
 
 (defn select-from-lookup-table

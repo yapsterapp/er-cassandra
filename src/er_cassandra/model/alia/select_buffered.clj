@@ -24,9 +24,6 @@
    (let [opts (-> opts
                   (assoc :row-generator (ms/->EntityInstanceRowGenerator)))]
 
-     (when (and (:versioned? entity) (not= 1 (:limit opts)))
-       (throw (ex-info select/select-err-msg {:entity entity :opts opts})))
-
      (r/select-buffered session (:name table) opts)))
 
   ([^Session session ^Entity entity table key record-or-key-value opts]
@@ -34,9 +31,6 @@
          opts (-> opts
                   (dissoc :key-value)
                   (assoc :row-generator (ms/->EntityInstanceRowGenerator)))]
-
-     (when (and (:versioned? entity) (not= 1 (:limit opts)))
-       (throw (ex-info select/select-err-msg {:entity entity :opts opts})))
 
      (r/select-buffered session (:name table) key kv opts))))
 
