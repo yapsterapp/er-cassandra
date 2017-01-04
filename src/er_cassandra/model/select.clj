@@ -25,18 +25,35 @@
     opts)))
 
 (defn select-buffered
+  ([^ModelSession session ^Entity entity]
+   (select-buffered session entity {}))
+
+  ([^ModelSession session ^Entity entity opts]
+   (with-context deferred-context
+     (mlet [strm (ms/-select-buffered session entity opts)]
+       (->> strm
+            (s/map (fn [mi]
+                     (t/run-callbacks-single
+                      entity
+                      :after-load
+                      mi
+                      opts)))
+            return))))
+
   ([^ModelSession session ^Entity entity key record-or-key-value]
    (select-buffered session entity key record-or-key-value {}))
 
   ([^ModelSession session ^Entity entity key record-or-key-value opts]
-   (let [strm (ms/-select-buffered session entity key record-or-key-value opts)]
-     (->> strm
-          (s/map (fn [mi]
-                   (t/run-callbacks-single
-                    entity
-                    :after-load
-                    mi
-                    opts)))))))
+   (with-context deferred-context
+     (mlet [strm (ms/-select-buffered session entity key record-or-key-value opts)]
+       (->> strm
+            (s/map (fn [mi]
+                     (t/run-callbacks-single
+                      entity
+                      :after-load
+                      mi
+                      opts)))
+            return)))))
 
 (defn select-one
   "select a single record, using an index table if necessary"

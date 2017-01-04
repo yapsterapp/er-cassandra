@@ -20,16 +20,25 @@
   "one buffered fetch - straight from a table. they key must be either
    a full primary key, or a partition key combined with some
    clustering key conditions (given as :where options)"
-  [^Session session ^Entity entity table key record-or-key-value opts]
-  (let [kv (k/extract-key-value key record-or-key-value opts)
-        opts (-> opts
-                 (dissoc :key-value)
-                 (assoc :row-generator (ms/->EntityInstanceRowGenerator)))]
+  ([^Session session ^Entity entity table opts]
+   (let [opts (-> opts
+                  (assoc :row-generator (ms/->EntityInstanceRowGenerator)))]
 
-    (when (and (:versioned? entity) (not= 1 (:limit opts)))
-      (throw (ex-info select/select-err-msg {:entity entity :opts opts})))
+     (when (and (:versioned? entity) (not= 1 (:limit opts)))
+       (throw (ex-info select/select-err-msg {:entity entity :opts opts})))
 
-    (r/select-buffered session (:name table) key kv opts)))
+     (r/select-buffered session (:name table) opts)))
+
+  ([^Session session ^Entity entity table key record-or-key-value opts]
+   (let [kv (k/extract-key-value key record-or-key-value opts)
+         opts (-> opts
+                  (dissoc :key-value)
+                  (assoc :row-generator (ms/->EntityInstanceRowGenerator)))]
+
+     (when (and (:versioned? entity) (not= 1 (:limit opts)))
+       (throw (ex-info select/select-err-msg {:entity entity :opts opts})))
+
+     (r/select-buffered session (:name table) key kv opts))))
 
 (defn select-buffered-from-lookup-table
   "two fetches - use the lookup-key to get a stream of uber-keys, then
@@ -44,47 +53,61 @@
 
   [^Session session ^Entity entity table key record-or-key-value
    {:keys [buffer-size] :as opts}]
-  (let [lkv (k/extract-key-value (or key (:key table)) record-or-key-value opts)
-        key (if lkv (or key (:key table)) (k/partition-key (:key table)))
-        key-value (if lkv
-                    lkv
-                    (k/extract-key-value
-                     (k/partition-key (:key table)) record-or-key-value opts))
-        opts (dissoc opts :key-value)
+  (with-context deferred-context
+    (mlet
+      [:let [lkv (k/extract-key-value (or key (:key table))
+                                      record-or-key-value
+                                      opts)
+             key (if lkv
+                   (or key (:key table))
+                   (k/partition-key (:key table)))
+             key-value (if lkv
+                         lkv
+                         (k/extract-key-value
+                          (k/partition-key (:key table))
+                          record-or-key-value
+                          opts))
+             opts (dissoc opts :key-value)
 
-        ;; query lookups with a downstream buffer to limit concurrency
-        ;; of join queries
-        lookup-opts (-> opts
-                        (dissoc :columns)
-                        (assoc :buffer-size (or buffer-size 25)))
+             ;; query lookups with a downstream buffer to limit concurrency
+             ;; of join queries
+             lookup-opts (-> opts
+                             (dissoc :columns)
+                             (assoc :buffer-size (or buffer-size 25)))
 
-        primary-opts (-> opts
-                         (dissoc :where :only-if :order-by :limit)
-                         (assoc :row-generator (ms/->EntityInstanceRowGenerator)))
+             primary-opts (-> opts
+                              (dissoc :where :only-if :order-by :limit)
+                              (assoc :row-generator (ms/->EntityInstanceRowGenerator)))]
 
-        lrs (r/select-buffered session
-                               (:name table)
-                               key
-                               key-value
-                               lookup-opts)]
-
-    (->> lrs
-         (stream/map (fn [lr]
-                       (let [pkv (t/extract-uber-key-value entity lr)]
-                         (r/select-one
-                          session
-                          (get-in entity [:primary-table :name])
-                          (get-in entity [:primary-table :key])
-                          pkv
-                          primary-opts))))
-         stream/realize-each
-         (stream/filter identity))))
+       lrs (r/select-buffered session
+                              (:name table)
+                              key
+                              key-value
+                              lookup-opts)]
+      (->> lrs
+           (stream/map (fn [lr]
+                         (let [pkv (t/extract-uber-key-value entity lr)]
+                           (r/select-one
+                            session
+                            (get-in entity [:primary-table :name])
+                            (get-in entity [:primary-table :key])
+                            pkv
+                            primary-opts))))
+           stream/realize-each
+           (stream/filter identity)
+           return))))
 
 (defn select-buffered*
   "select records from primary or lookup tables as required
 
-   returns a stream of model instance records"
-  [^Session session ^Entity entity key record-or-key-value {:keys [from] :as opts}]
+   returns a Deferred<Stream<record>>"
+  ([^Session session ^Entity entity] (select-buffered* session entity {}))
+  ([^Session session ^Entity entity opts]
+   (select-buffered-from-full-table session
+                                    entity
+                                    (:primary-table entity)
+                                    opts))
+  ([^Session session ^Entity entity key record-or-key-value {:keys [from] :as opts}]
    (let [key (v/coerce key)
          opts (dissoc opts :from)]
      (if from
@@ -139,4 +162,4 @@
                    {:reason [:fail
                              {:entity entity
                               :key key}
-                             :no-matching-key]})))))))
+                             :no-matching-key]}))))))))
