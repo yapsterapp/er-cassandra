@@ -1,5 +1,10 @@
 (ns er-cassandra.model.delete
   (:require
+   [cats.core :refer [mlet return]]
+   [cats.context :refer [with-context]]
+   [cats.labs.manifold :refer [deferred-context]]
+   [manifold.deferred :as d]
+   [manifold.stream :as s]
    [er-cassandra.model.model-session :as ms]
    [er-cassandra.model.util :refer [combine-responses]])
   (:import
@@ -24,3 +29,23 @@
        (map (fn [record]
               (delete session entity key record)))
        combine-responses))
+
+(defn delete-buffered
+  "delete each record in a Stream<record>, optionally controlling
+   concurrency with :buffer-size. returns a Deferred<Stream<response>>
+   of delete responses"
+  ([^ModelSession session ^Entity entity key record-stream]
+   (delete-buffered session entity key record-stream {:buffer-size 25}))
+  ([^ModelSession session
+    ^Entity entity
+    key
+    record-stream
+    {:keys [buffer-size] :as opts}]
+   (with-context deferred-context
+     (->> record-stream
+          (s/map #(delete session entity key % (dissoc opts :buffer-size)))
+          ((fn [s]
+             (if buffer-size
+               (s/buffer buffer-size s)
+               s)))
+          return))))
