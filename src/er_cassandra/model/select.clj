@@ -33,11 +33,13 @@
      (mlet [strm (ms/-select-buffered session entity opts)]
        (->> strm
             (s/map (fn [mi]
-                     (t/run-callbacks-single
-                      entity
-                      :after-load
-                      mi
-                      opts)))
+                     (if (ms/entity-instance? mi)
+                       (t/run-callbacks-single
+                        entity
+                        :after-load
+                        mi
+                        opts)
+                       mi)))
             return))))
 
   ([^ModelSession session ^Entity entity key record-or-key-value]
@@ -48,11 +50,13 @@
      (mlet [strm (ms/-select-buffered session entity key record-or-key-value opts)]
        (->> strm
             (s/map (fn [mi]
-                     (t/run-callbacks-single
-                      entity
-                      :after-load
-                      mi
-                      opts)))
+                     (if (ms/entity-instance? mi)
+                       (t/run-callbacks-single
+                        entity
+                        :after-load
+                        mi
+                        opts)
+                       mi)))
             return)))))
 
 (defn select-one
