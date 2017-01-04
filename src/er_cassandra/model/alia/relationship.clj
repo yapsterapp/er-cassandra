@@ -51,19 +51,43 @@
    source-record :- t/RecordSchema
    denorm-rel :- t/DenormalizationRelationshipSchema
    target-record :- t/RecordSchema
-   denorm-op :- DenormalizeOp
-   denorm-version :- s/Uuid]
+   denorm-op :- DenormalizeOp]
   (let [[fk fk-val :as fk-vals] (foreign-key-val source-entity source-record denorm-rel)
         fk-map (into {} fk-vals)
         denorm-vals (->> (:denormalize denorm-rel)
-                         (map (fn [scol tcol]
+                         (map (fn [[scol tcol]]
                                 [tcol (get source-record scol)]))
                          (into {}))
-        all-denorm-vals (merge denorm-vals fk-map)
-        new-target-record (merge target-record all-denorm-vals)]
-    (m/upsert session
-              target-entity
-              new-target-record)))
+        ]
+    (case denorm-op
+
+      :upsert
+      (let [all-denorm-vals (merge denorm-vals fk-map)
+            new-target-record (merge target-record all-denorm-vals)]
+        (m/upsert session
+                  target-entity
+                  new-target-record))
+
+      :delete
+      (let [cascade (:cascade target-entity)]
+        (case cascade
+
+          :none
+          (return true)
+
+          :null
+          (let [null-denorm-vals (->> denorm-vals
+                                      (map (fn [[k v]] [k nil]))
+                                      (into {}))]
+            (m/upsert session
+                      target-entity
+                      (merge target-record null-denorm-vals)))
+
+          :delete
+          (m/delete session
+                    target-entity
+                    (-> target-entity :primary-table :key)
+                    target-record))))))
 
 (s/defn target-record-stream
   "returns a Deferred<Stream<record>> of target records"
@@ -89,49 +113,54 @@
 
 (s/defn denormalize-rel
   "denormalizes a single relationship"
-  [source-entity :- Entity
+  [session :- Session
+   source-entity :- Entity
    target-entity :- Entity
    source-record :- t/RecordSchema
    denorm-rel :- t/DenormalizationRelationshipSchema
-   denorm-op :- DenormalizeOp
-   denorm-version :- s/Uuid]
+   denorm-op :- DenormalizeOp]
   (with-context deferred-context
-    (mlet [trs (target-record-stream source-entity
+    (mlet [trs (target-record-stream session
+                                     source-entity
                                      target-entity
                                      source-record
                                      denorm-rel)
 
-           ;; a stream of any errors
+           ;; a (hopefully empty) stream of any errors from denormalization
            :let [trerrs (->> trs
                              (st/map #(denormalize-to-target-record
+                                       session
                                        source-entity
-                                       target-entity
+                                       (-> % :target deref-target-entity)
                                        source-record
                                        denorm-rel
                                        %
-                                       denorm-op
-                                       denorm-version))
+                                       denorm-op))
                              (st/map only-error)
-                             (st/filter identity))]]
+                             (st/filter identity))]
+
+           maybe-err (st/take! trerrs)]
 
       ;; if there are errors, return the first as an exemplar
-      (if (st/drained? trerrs)
-        (return nil)
-        (st/take! trerrs)))))
+      (if (nil? maybe-err)
+        (return [denorm-rel [:ok]])
+        (return [denorm-rel [:fail maybe-err]])))))
 
-(s/defn denormalize
-  "denormalize all relationships for a given source record"
-  [source-entity :- Entity
-   target-entity :- Entity
-   source-record :- t/RecordSchema
-   denorm-op :- DenormalizeOp]
-  (let [rels (-> source-entity :denorm-targets vals)
-        v (uuid/v1)
-        resps (->> rels
-                   (map #(denormalize-rel source-entity
-                                          target-entity
-                                          source-record
-                                          %
-                                          denorm-op
-                                          v)))]
-    (apply d/zip resps)))
+;; (s/defn denormalize
+;;   "denormalize all relationships for a given source record
+;;    returns [[denorm-rel [status maybe-err]]*]"
+;;   [session :- Session
+;;    source-entity :- Entity
+;;    source-record :- t/RecordSchema
+;;    denorm-op :- DenormalizeOp]
+;;   (let [rels (-> source-entity :denorm-targets vals)
+;;         v (uuid/v1)
+;;         resps (->> rels
+;;                    (map #(denormalize-rel session
+;;                                           source-entity
+;;                                           target-entity
+;;                                           source-record
+;;                                           %
+;;                                           denorm-op
+;;                                           v)))]
+;;     (apply d/zip resps)))
