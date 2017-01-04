@@ -38,16 +38,19 @@
    opts))
 
 (defn- execute-buffered*
+  "execute a statement returning a Deferred<Stream<record>>"
   [alia-session statement opts]
-  (aliam/execute-buffered
-   alia-session
-   (do
-     (when *trace*
-       (debug statement))
-     (if (string? statement)
-       statement
-       (h/->raw statement)))
-   opts))
+  (return
+   deferred-context
+   (aliam/execute-buffered
+    alia-session
+    (do
+      (when *trace*
+        (debug statement))
+      (if (string? statement)
+        statement
+        (h/->raw statement)))
+    opts)))
 
 (defn shutdown-session-and-cluster
   [session]
