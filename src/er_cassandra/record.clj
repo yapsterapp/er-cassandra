@@ -34,9 +34,18 @@
              (apply concat))))
 
 (def select-opt-keys #{:where :columns :order-by :limit})
+(def full-table-select-opt-keys #{:columns :limit})
 
 (defn select-statement
   "returns a Hayt select statement"
+
+  ([table] (select-statement table {}))
+
+  ([table {:keys [limit columns] :as opts}]
+   (check-opts full-table-select-opt-keys opts)
+   (h/select table
+             (when columns (apply h/columns columns))
+             (when limit (h/limit limit))))
 
   ([table key record-or-key-value]
    (select-statement table key record-or-key-value {}))
@@ -86,6 +95,18 @@
    the query stream. the query-buffer will be sized by the :fetch-size opt
    if given"
 
+  ([^Session session table] (select-buffered session table {}))
+
+  ([^Session session table opts]
+   (let [stmt (select-statement
+               table
+               (select-keys opts [:columns :limit]))]
+     (session/execute-buffered
+      session
+      stmt
+      (-> opts
+          (dissoc :columns :limit)))))
+
   ([^Session session table key record-or-key-value]
    (select session table key record-or-key-value {}))
 
@@ -94,18 +115,16 @@
     key
     record-or-key-value
     {:keys [buffer-size] :as opts}]
-   (let [strm (session/execute-buffered
-               session
-               (select-statement
-                table
-                key
-                record-or-key-value
-                (select-keys opts [:columns :where :only-if :order-by :limit]))
-               (-> opts
-                   (dissoc :columns :where :only-if :order-by :limit :buffer-size)))]
-     (if buffer-size
-       (s/buffer buffer-size strm)
-       strm))))
+   (let [stmt (select-statement
+               table
+               key
+               record-or-key-value
+               (select-keys opts [:columns :where :only-if :order-by :limit]))]
+     (session/execute-buffered
+      session
+      stmt
+      (-> opts
+          (dissoc :columns :where :only-if :order-by :limit))))))
 
 (defn select-one
   "select a single record"
