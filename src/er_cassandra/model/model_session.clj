@@ -12,7 +12,9 @@
   (-select [this ^Entity entity key record-or-key-value opts]
     "select entity instances")
 
-  (-select-buffered [this ^Entity entity key record-or-key-value opts]
+  (-select-buffered
+    [this ^Entity entity opts]
+    [this ^Entity entity key record-or-key-value opts]
     "select entity instances, returning a stream of results")
 
   (-upsert [this ^Entity entity record opts]

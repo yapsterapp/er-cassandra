@@ -24,6 +24,9 @@
   (-select [_ entity key record-or-key-value opts]
     (select* alia-session entity key record-or-key-value opts))
 
+  (-select-buffered [_ entity opts]
+    (select-buffered* alia-session entity opts))
+
   (-select-buffered [_ entity key record-or-key-value opts]
     (select-buffered* alia-session entity key record-or-key-value opts))
 
@@ -69,6 +72,12 @@
                                     :record-or-key-value record-or-key-value
                                     :opts opts})
     (select* alia-session entity key record-or-key-value opts))
+
+  (-select-buffered [_ entity opts]
+    (swap! model-spy-log-atom conj {:action :select
+                                    :entity entity
+                                    :opts opts})
+    (select-buffered* alia-session entity opts))
 
   (-select-buffered [_ entity key record-or-key-value opts]
     (swap! model-spy-log-atom conj {:action :select
