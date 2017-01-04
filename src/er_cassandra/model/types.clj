@@ -56,7 +56,9 @@
   (let [BaseDenormalizationRelationshipSchema
         {;; namespace qualified keyword referencing the target Entity var.
          ;; will be dynamically deref'd
-         :target s/Keyword
+         :target (s/conditional
+                  keyword? s/Keyword
+                  :else {s/Keyword s/Any})
          ;; the fields to be denormalized
          :denormalize DenormalizeSchema
          ;; what to do with target records if a source record
