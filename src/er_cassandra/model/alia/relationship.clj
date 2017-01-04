@@ -1,7 +1,7 @@
 (ns er-cassandra.model.alia.relationship
   (:require
    [clojure.set :as set]
-   [cats.core :refer [mlet return]]
+   [cats.core :refer [mlet return >>=]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
    [manifold.deferred :as d]
@@ -128,7 +128,8 @@
    source-record :- t/RecordSchema
    denorm-rel-kw :- s/Keyword
    denorm-rel :- t/DenormalizationRelationshipSchema
-   denorm-op :- DenormalizeOp]
+   denorm-op :- DenormalizeOp
+   opts :- {(s/optional-key :buffer-size) s/Int}]
   (with-context deferred-context
     (mlet [trs (target-record-stream session
                                      source-entity
@@ -146,6 +147,7 @@
                                        denorm-rel
                                        %
                                        denorm-op))
+                             (st/buffer (or (:buffer-size opts) 25))
                              (st/map only-error)
                              (st/filter identity))]
 
@@ -164,16 +166,24 @@
   [session :- Session
    source-entity :- Entity
    source-record :- t/RecordSchema
-   denorm-op :- DenormalizeOp]
-  (let [resps (->> source-entity
-                   :denorm-targets
-                   (map
-                    (fn [[rel-kw rel]]
-                      (denormalize-rel session
-                                       source-entity
-                                       (deref-target-entity (:target rel))
-                                       source-record
-                                       rel-kw
-                                       rel
-                                       denorm-op))))]
-    (apply d/zip resps)))
+   denorm-op :- DenormalizeOp
+   opts :- {(s/optional-key :buffer-size) s/Int}]
+  (let [targets (:denorm-targets source-entity)
+
+        mfs (->> targets
+                 (map (fn [[rel-kw rel]]
+                        (fn [resps]
+                          (with-context deferred-context
+                            (mlet [resp (denormalize-rel session
+                                                         source-entity
+                                                         (deref-target-entity (:target rel))
+                                                         source-record
+                                                         rel-kw
+                                                         rel
+                                                         denorm-op
+                                                         opts)]
+                              (return (conj resps resp))))))))]
+
+    ;; process one relationship at a time, otherwise the buffer-size is
+    ;; uncontrolled
+    (apply >>= (return deferred-context []) mfs)))

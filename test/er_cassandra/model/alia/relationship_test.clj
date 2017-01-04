@@ -40,9 +40,10 @@
         _ (insert-record :simple_relationship_test sr)
         _ (upsert-instance t {:id tid :parent_id sid :nick "bar"})
 
-        resp @(rel/denormalize tu/*model-session* s sr :upsert)
+        resp @(rel/denormalize tu/*model-session* s sr :upsert {})
         potr (fetch-record :simple_relationship_test_target [:id] [tid])
         potri (fetch-record :simple_relationship_test_target_by_parent_id [:parent_id] [sid])
         ]
+    (is (= [[:test [:ok]]] resp))
     (is (= "foo" (:nick potr)))
     (is (= "foo" (:nick potri)))))
