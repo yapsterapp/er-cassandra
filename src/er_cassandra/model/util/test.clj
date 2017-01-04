@@ -7,6 +7,7 @@
    [slf4j-timbre.configure :as logconf]
    [er-cassandra.record :as r]
    [er-cassandra.session :as s]
+   [er-cassandra.model :as m]
    [er-cassandra.model.model-session :as ms]
    [er-cassandra.model.alia.model-session :as ams]))
 
@@ -54,3 +55,7 @@
 (defn insert-record
   [table record]
   @(r/insert *model-session* table record))
+
+(defn upsert-instance
+  [entity record]
+  @(m/upsert *model-session* entity record))
