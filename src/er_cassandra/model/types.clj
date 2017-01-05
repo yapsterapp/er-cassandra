@@ -21,7 +21,7 @@
 ;; a primary key for a cassandra table
 ;; the first entry may itself be a vector, representing
 ;; a compound partition key
-(s/defschema KeySchema
+(s/defschema PrimaryKeySchema
   (s/conditional
 
    (fn [k] (-> k first sequential?))
@@ -35,6 +35,9 @@
 
 (s/defschema KeyValueSchema
   [(s/one s/Any :key-component) s/Any])
+
+(s/defschema ForeignKeySchema
+  [(s/one s/Keyword :foreign-key-component) s/Keyword])
 
 ;; a secondary key on a cassandra table has only
 ;; a single column
@@ -71,7 +74,7 @@
       BaseDenormalizationRelationshipSchema
       {;; the foreign key which must have the corresponding components
        ;; in the same order as the parent primary key
-       :foreign-key KeySchema})
+       :foreign-key ForeignKeySchema})
 
      :foreign-entity-key
      (merge
@@ -82,7 +85,7 @@
 ;; unique-key and lookup tables
 (s/defschema BaseTableSchema
   {:name s/Keyword
-   :key KeySchema})
+   :key PrimaryKeySchema})
 
 ;; the :key is the primary-key of the table, which may
 ;; have a compound parition key [[pk1 pk2] ck1 ck2]
