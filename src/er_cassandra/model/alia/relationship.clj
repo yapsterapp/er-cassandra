@@ -39,15 +39,8 @@
   [source-entity :- Entity
    source-record :- t/RecordSchema
    denorm-rel :- t/DenormalizationRelationshipSchema]
-  (cond
-    (:foreign-key denorm-rel)
-    (let [uk-val (t/extract-uber-key-value source-entity source-record)]
-      [(:foreign-key denorm-rel) uk-val])
-
-    (:foreign-entity-key denorm-rel)
-    (let [ek (-> source-entity :primary-table :entity-key)
-          ek-val (k/extract-key-value ek source-record)]
-      [(:foreign-entity-key denorm-rel) ek-val])))
+  (let [uk-val (t/extract-uber-key-value source-entity source-record)]
+    [(:foreign-key denorm-rel) uk-val]))
 
 (s/defn denormalize-to-target-record
   "denormalize to a single target record"
