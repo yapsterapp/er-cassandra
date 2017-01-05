@@ -151,13 +151,13 @@
     (is (= :deleted reason))
     (is (= nil (fetch-record :simple_upsert_test :id id)))))
 
-(deftest upsert-record-test
+(deftest insert-record-test
   (let [m (create-simple-entity)
         id (uuid/v1)
         r {:id id :nick "foo"}
         [status
          record
-         reason] @(u/upsert-record tu/*model-session* m (:primary-table m) r)]
+         reason] @(u/insert-record tu/*model-session* m (:primary-table m) r)]
     (is (= :ok status))
     (is (= r record))
     (is (= :upserted reason))
