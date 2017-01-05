@@ -162,7 +162,7 @@
 
 (s/defn denormalize
   "denormalize all relationships for a given source record
-   returns [[denorm-rel-kw [status maybe-err]]*]"
+   returns Deferred<[[denorm-rel-kw [status maybe-err]]*]>"
   [session :- Session
    source-entity :- Entity
    source-record :- t/RecordSchema
