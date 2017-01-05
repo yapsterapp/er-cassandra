@@ -18,7 +18,7 @@
   (tu/create-table :simple_relationship_test_target
                    "(id timeuuid primary key, parent_id uuid, nick text)")
   (tu/create-table :simple_relationship_test_target_by_parent_id
-                   "(id timeuuid, parent_id uuid primary key, nick text)")
+                   "(id timeuuid, parent_id uuid, nick text, primary key (parent_id, id))")
   (let [target (t/create-entity
                 {:primary-table {:name :simple_relationship_test_target
                                  :key [:id]}
@@ -42,11 +42,34 @@
 
         resp @(rel/denormalize tu/*model-session* s sr :upsert {})
         potr (fetch-record :simple_relationship_test_target [:id] [tid])
-        potri (fetch-record :simple_relationship_test_target_by_parent_id [:parent_id] [sid])
+        potri (fetch-record :simple_relationship_test_target_by_parent_id
+                            [:parent_id] [sid])
         ]
     (is (= [[:test [:ok]]] resp))
     (is (= "foo" (:nick potr)))
     (is (= "foo" (:nick potri)))))
+
+(deftest update-simple-relationship-multiple-records-test
+  (let [[s t] (create-simple-relationship)
+        [sid tida tidb] [(uuid/v1) (uuid/v1) (uuid/v1)]
+        sr {:id sid :nick "foo"}
+        _ (insert-record :simple_relationship_test sr)
+        _ (upsert-instance t {:id tida :parent_id sid :nick "bar"})
+        _ (upsert-instance t {:id tidb :parent_id sid :nick "bar"})
+
+        resp @(rel/denormalize tu/*model-session* s sr :upsert {})
+        potra (fetch-record :simple_relationship_test_target [:id] [tida])
+        potrai (fetch-record :simple_relationship_test_target_by_parent_id
+                             [:parent_id :id] [sid tida])
+        potrb (fetch-record :simple_relationship_test_target [:id] [tidb])
+        potrbi (fetch-record :simple_relationship_test_target_by_parent_id
+                             [:parent_id :id] [sid tidb])
+        ]
+    (is (= [[:test [:ok]]] resp))
+    (is (= "foo" (:nick potra)))
+    (is (= "foo" (:nick potrai)))
+    (is (= "foo" (:nick potrb)))
+    (is (= "foo" (:nick potrbi)))))
 
 (defn create-composite-key-relationship
   []
