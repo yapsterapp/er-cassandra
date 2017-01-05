@@ -53,7 +53,7 @@
   (tu/create-table :ck_relationship_test
                    "(ida uuid, idb uuid, nick text, nock text, primary key ((ida, idb)))")
   (tu/create-table :ck_relationship_test_target
-                   "(id uuid primary key, source_ida uuid, , source_idb uuid, target_nick text, target_nock text)")
+                   "(id uuid primary key, source_ida uuid, source_idb uuid, target_nick text, target_nock text)")
   (tu/create-table :ck_relationship_test_target_by_source_ids
                    "(id uuid, source_ida uuid, source_idb uuid, target_nick text, target_nock text, primary key ((source_ida, source_idb)))")
   (let [target (t/create-entity
@@ -89,3 +89,67 @@
             :target_nick "foo" :target_nock "foofoo"} potr))
     (is (= {:id tid :source_ida sida :source_idb sidb
             :target_nick "foo" :target_nock "foofoo"} potri))))
+
+(defn create-multi-relationship
+  []
+  (tu/create-table :multi_relationship_test
+                   "(ida uuid, idb uuid, nick text, nock text, primary key ((ida, idb)))")
+  (tu/create-table :multi_relationship_test_target_a
+                   "(tida uuid primary key, source_ida uuid, source_idb uuid, target_nick text)")
+  (tu/create-table :multi_relationship_test_target_a_by_source_ids
+                   "(tida uuid, source_ida uuid, source_idb uuid, target_nick text, primary key ((source_ida, source_idb)))")
+  (tu/create-table :multi_relationship_test_target_b
+                   "(tidb uuid primary key, source_ida uuid, source_idb uuid, target_nock text)")
+  (tu/create-table :multi_relationship_test_target_b_by_source_ids
+                   "(tidb uuid, source_ida uuid, source_idb uuid, target_nock text, primary key ((source_ida, source_idb)))")
+  (let [target-a (t/create-entity
+                  {:primary-table {:name :multi_relationship_test_target_a
+                                   :key [:tida]}
+                   :secondary-tables [{:name :multi_relationship_test_target_a_by_source_ids
+                                       :key [[:source_ida :source_idb]]}]})
+        target-b (t/create-entity
+                  {:primary-table {:name :multi_relationship_test_target_b
+                                   :key [:tidb]}
+                   :secondary-tables [{:name :multi_relationship_test_target_b_by_source_ids
+                                       :key [[:source_ida :source_idb]]}]})
+        source (t/create-entity
+                {:primary-table {:name :multi_relationship_test
+                                 :key [[:ida :idb]]}
+                 :denorm-targets {:test-a {:target target-a
+                                           :denormalize {:nick :target_nick}
+                                           :cascade :none
+                                           :foreign-key [:source_ida :source_idb]}
+                                  :test-b {:target target-b
+                                           :denormalize {:nock :target_nock}
+                                           :cascade :none
+                                           :foreign-key [:source_ida :source_idb]}}})]
+    [source target-a target-b]))
+
+(deftest update-composite-key-relationship-test
+  (let [[s ta tb] (create-multi-relationship)
+        [sida sidb tida tidb] [(uuid/v1) (uuid/v1) (uuid/v1) (uuid/v1)]
+        sr {:ida sida :idb sidb :nick "foo" :nock "foofoo"}
+        _ (insert-record :multi_relationship_test sr)
+        _ (upsert-instance ta {:tida tida :source_ida sida :source_idb sidb
+                               :target_nick "bar"})
+        _ (upsert-instance tb {:tidb tidb :source_ida sida :source_idb sidb
+                               :target_nock "bar"})
+
+        resp @(rel/denormalize tu/*model-session* s sr :upsert {})
+        potra (fetch-record :multi_relationship_test_target_a [:tida] [tida])
+        potrai (fetch-record :multi_relationship_test_target_a_by_source_ids
+                             [:source_ida :source_idb] [sida sidb])
+        potrb (fetch-record :multi_relationship_test_target_b [:tidb] [tidb])
+        potrbi (fetch-record :multi_relationship_test_target_b_by_source_ids
+                             [:source_ida :source_idb] [sida sidb])
+        ]
+    (is (= [[:test-a [:ok]]
+            [:test-b [:ok]]] resp))
+    (is (= {:tida tida :source_ida sida :source_idb sidb
+            :target_nick "foo"} potra))
+    (is (= {:tida tida :source_ida sida :source_idb sidb
+            :target_nick "foo"} potrai))
+    (is (= {:tidb tidb :source_ida sida :source_idb sidb
+            :target_nock "foofoo"} potrb))
+    (is (= {:tidb tidb :source_ida sida :source_idb sidb
+            :target_nock "foofoo"} potrbi))))
