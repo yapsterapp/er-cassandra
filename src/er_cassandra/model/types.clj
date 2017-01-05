@@ -45,8 +45,7 @@
   s/Keyword)
 
 ;; just map source fields to target fields for now
-;; :foreign-key and :source-entity-key will be
-;; included by default
+;; :source primary-key columns will always be included
 (s/defschema DenormalizeSchema
   {s/Keyword s/Keyword})
 
@@ -56,30 +55,20 @@
 ;; relationships are supported and large child sets are also
 ;; supported
 (s/defschema DenormalizationRelationshipSchema
-  (let [BaseDenormalizationRelationshipSchema
-        {;; namespace qualified keyword referencing the target Entity var.
-         ;; will be dynamically deref'd
-         :target (s/conditional
-                  keyword? s/Keyword
-                  :else {s/Keyword s/Any})
-         ;; the fields to be denormalized
-         :denormalize DenormalizeSchema
-         ;; what to do with target records if a source record
-         ;; is deleted
-         :cascade (s/enum :none :null :delete)}]
+  {;; namespace qualified keyword referencing the target Entity var.
+   ;; will be dynamically deref'd
+   :target (s/conditional
+            keyword? s/Keyword
+            :else {s/Keyword s/Any})
+   ;; the fields to be denormalized
+   :denormalize DenormalizeSchema
+   ;; what to do with target records if a source record
+   ;; is deleted
+   :cascade (s/enum :none :null :delete)
 
-    (s/conditional
-     :foreign-key
-     (merge
-      BaseDenormalizationRelationshipSchema
-      {;; the foreign key which must have the corresponding components
-       ;; in the same order as the parent primary key
-       :foreign-key ForeignKeySchema})
-
-     :foreign-entity-key
-     (merge
-      BaseDenormalizationRelationshipSchema
-      {:foreign-entity-key SecondaryKeySchema}))))
+   ;; the foreign key which must have the corresponding components
+   ;; in the same order as the parent primary key
+   :foreign-key ForeignKeySchema})
 
 ;; basic table schema shared by primary, secondary
 ;; unique-key and lookup tables
@@ -89,13 +78,8 @@
 
 ;; the :key is the primary-key of the table, which may
 ;; have a compound parition key [[pk1 pk2] ck1 ck2]
-;; the :entity-key is an optional unique identifier for which
-;; a value taken from the primary record will be used to
-;; delete with a secondary index from seocondary and lookup tables
-;; TODO use the :entity-key to delete stale secondary and lookup records
 (s/defschema PrimaryTableSchema
   (merge BaseTableSchema
-         {(s/optional-key :entity-key) SecondaryKeySchema}
          {:type (s/eq :primary)}))
 
 ;; some of the (non-partition) columns in a lookup-table
@@ -108,9 +92,6 @@
   {(s/optional-key :collections) {s/Keyword
                                   (s/enum :list :set :map)}})
 
-(s/defschema EntityKeySchema
-  {(s/optional-key :has-entity-key?) s/Bool})
-
 (s/defschema MaterializedViewSchema
   {(s/optional-key :view?) s/Bool})
 
@@ -119,7 +100,6 @@
 (s/defschema UniqueKeyTableSchema
   (merge BaseTableSchema
          CollectionKeysSchema
-         EntityKeySchema
          {:type (s/eq :uniquekey)}))
 
 ;; secondary tables contain all columns from the primary
@@ -128,7 +108,6 @@
 ;; which will be used for query but won't be upserted to
 (s/defschema SecondaryTableSchema
   (merge BaseTableSchema
-         EntityKeySchema
          MaterializedViewSchema
          {:type (s/eq :secondary)}))
 
