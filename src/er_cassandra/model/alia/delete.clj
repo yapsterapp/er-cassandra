@@ -4,6 +4,7 @@
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
 
+   [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.alia.unique-key :as alia-unique-key]
    [er-cassandra.model.alia.upsert :as alia-upsert]
