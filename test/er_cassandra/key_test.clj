@@ -1,6 +1,10 @@
 (ns er-cassandra.key-test
-  (:require [clojure.test :as test :refer [deftest is are testing]]
-            [er-cassandra.key :as k]))
+  (:require
+   [clojure.test :as test :refer [deftest is are testing use-fixtures]]
+   [schema.test :as st]
+   [er-cassandra.key :as k]))
+
+(use-fixtures :once st/validate-schemas)
 
 (deftest partition-key-test
   (is (= [:foo] (k/partition-key :foo)))

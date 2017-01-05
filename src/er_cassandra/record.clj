@@ -2,9 +2,9 @@
   (:refer-clojure :exclude [update])
   (:require
    [plumbing.core :refer :all]
+   [schema.core :as s]
    [clojure.set :as set]
    [manifold.deferred :as d]
-   [manifold.stream :as s]
    [qbits.hayt :as h]
    [er-cassandra.util.vector :as v]
    [er-cassandra.key :refer [flatten-key extract-key-equality-clause]]
@@ -18,14 +18,6 @@
 ;;
 ;; execution is async and returns a manifold Deferred
 
-(defn check-opts
-  [valid-opts opts]
-  (let [uks (set/difference (set (keys opts)) valid-opts)]
-    (when (not-empty uks)
-      (throw (ex-info "unknown opts" {:unknown-opts uks
-                                      :opts opts
-                                      :valid-opts valid-opts})))))
-
 (defn combine-where
   [& clauses]
   (into []
@@ -33,28 +25,96 @@
              (filter identity)
              (apply concat))))
 
-(def select-opt-keys #{:where :columns :order-by :limit})
-(def full-table-select-opt-keys #{:columns :limit})
+(s/defschema WhereClauseSchema
+  [(s/one (s/enum :<= :< := :>= :> :in) :where-op)
+   (s/one s/Keyword :where-col)
+   (s/one s/Any :where-val)])
 
-(defn select-statement
+(s/defschema WhereSchema
+  [(s/one WhereClauseSchema :first-where-clause)
+   WhereClauseSchema])
+
+(s/defschema ColumnsSchema
+  [(s/one s/Keyword :first-col) s/Keyword])
+
+(s/defschema OrderByClauseSchema
+  [(s/one s/Keyword :order-by-col)
+   (s/one (s/enum :asc :desc) :order-by-dir)])
+
+(s/defschema OrderBySchema
+  [(s/one OrderByClauseSchema :first-order-by-clause)
+   OrderByClauseSchema])
+
+(s/defschema LimitSchema s/Int)
+
+(s/defschema FullTableSelectOptsSchema
+  {(s/optional-key :columns) ColumnsSchema
+   (s/optional-key :limit) LimitSchema})
+
+(s/defschema SelectOptsSchema
+  (merge
+   FullTableSelectOptsSchema
+   {(s/optional-key :where) WhereSchema
+    (s/optional-key :order-by) OrderBySchema}))
+
+(s/defschema PartitionKeySchema
+  (s/conditional
+   keyword?
+   s/Keyword
+
+   :else
+   [(s/one s/Keyword :partition-key-first-component)
+    s/Keyword]))
+
+(s/defschema KeySchema
+  (s/conditional
+   keyword?
+   s/Keyword
+
+   :else
+   [(s/one PartitionKeySchema :partition-key)
+    s/Keyword]))
+
+(s/defschema KeyValueComponentSchema
+  (s/pred some? :key-value-component))
+
+(s/defschema RecordSchema
+  {s/Keyword s/Any})
+
+(s/defschema RecordOrKeyValueSchema
+  (s/conditional
+   map?
+   RecordSchema
+
+   sequential?
+   [(s/one KeyValueComponentSchema :first-key-value-component)
+    KeyValueComponentSchema]
+
+   :else
+   KeyValueComponentSchema))
+
+(s/defn select-statement
   "returns a Hayt select statement"
 
-  ([table] (select-statement table {}))
+  ([table :- s/Keyword]
+   (select-statement table {}))
 
-  ([table {:keys [limit columns] :as opts}]
-   (check-opts full-table-select-opt-keys opts)
+  ([table :- s/Keyword
+    {:keys [limit columns] :as opts} :- FullTableSelectOptsSchema]
+
    (h/select table
              (when columns (apply h/columns columns))
              (when limit (h/limit limit))))
 
-  ([table key record-or-key-value]
+  ([table :- s/Keyword
+    key :- KeySchema
+    record-or-key-value :- RecordOrKeyValueSchema]
    (select-statement table key record-or-key-value {}))
 
-  ([table
-    key
-    record-or-key-value
-    {:keys [where columns order-by limit] :as opts}]
-   (check-opts select-opt-keys opts)
+  ([table :- s/Keyword
+    key :- KeySchema
+    record-or-key-value :- RecordOrKeyValueSchema
+    {:keys [where columns order-by limit] :as opts} :- SelectOptsSchema]
    (let [key-clause (extract-key-equality-clause key record-or-key-value opts)
          where-clause (if (sequential? (first where))
                         where ;; it's already a seq of conditions
@@ -137,17 +197,23 @@
     (select session table key record-or-key-value (merge opts {:limit 1}))
     first)))
 
-(def insert-opt-keys #{:if-not-exists :using})
+(s/defschema UpsertUsingSchema
+  {(s/optional-key :ttl) s/Int
+   (s/optional-key :timestamp) s/Int})
 
-(defn insert-statement
+(s/defschema InsertOptsSchema
+  {(s/optional-key :if-not-exists) s/Bool
+   (s/optional-key :using) UpsertUsingSchema})
+
+(s/defn insert-statement
   "returns a Hayt insert statement"
 
-  ([table record] (insert-statement table record {}))
+  ([table :- s/Keyword
+    record :- RecordSchema] (insert-statement table record {}))
 
-  ([table
-    record
-    {:keys [if-not-exists using] :as opts}]
-   (check-opts insert-opt-keys opts)
+  ([table :- s/Keyword
+    record :- RecordSchema
+    {:keys [if-not-exists using] :as opts} :- InsertOptsSchema]
    (h/insert table
              (h/values record)
              (when if-not-exists (h/if-not-exists true))
@@ -170,18 +236,28 @@
      (dissoc opts :if-not-exists :using))
     first)))
 
-(def update-opt-keys #{:only-if :if-exists :if-not-exists :using :set-columns})
+(s/defschema UpdateOptsSchema
+  {(s/optional-key :only-if) WhereSchema
+   (s/optional-key :if-exists) s/Bool
+   (s/optional-key :if-not-exists) s/Bool
+   (s/optional-key :using) UpsertUsingSchema
+   (s/optional-key :set-columns) ColumnsSchema})
 
-(defn update-statement
+(s/defn update-statement
   "returns a Hayt update statement"
 
-  ([table key record] (update-statement table key record {}))
+  ([table :- s/Keyword
+    key :- KeySchema
+    record :- RecordSchema] (update-statement table key record {}))
 
-  ([table
-    key
-    record
-    {:keys [only-if if-exists if-not-exists using set-columns] :as opts}]
-   (check-opts update-opt-keys opts)
+  ([table :- s/Keyword
+    key :- KeySchema
+    record :- RecordSchema
+    {:keys [only-if
+            if-exists
+            if-not-exists
+            using
+            set-columns] :as opts} :- UpdateOptsSchema]
    (let [key-clause (extract-key-equality-clause key record opts)
          set-cols (if (not-empty set-columns)
                     (select-keys record set-columns)
@@ -212,19 +288,27 @@
      (dissoc opts :only-if :if-exists :using :set-columns))
     first)))
 
-(def delete-opt-keys #{:only-if :if-exists :using :where})
+(s/defschema DeleteUsingSchema
+  {(s/optional-key :timestamp) s/Int})
 
-(defn delete-statement
+(s/defschema DeleteOptsSchema
+  {(s/optional-key :only-if) WhereSchema
+   (s/optional-key :if-exists) s/Bool
+   (s/optional-key :using) DeleteUsingSchema
+   (s/optional-key :where) WhereSchema})
+
+(s/defn delete-statement
   "returns a Hayt delete statement"
 
-  ([table key record-or-key-value]
+  ([table :- s/Keyword
+    key :- KeySchema
+    record-or-key-value :- RecordOrKeyValueSchema]
    (delete-statement table key record-or-key-value {}))
 
-  ([table
-    key
-    record-or-key-value
-    {:keys [only-if if-exists using where] :as opts}]
-   (check-opts delete-opt-keys opts)
+  ([table :- s/Keyword
+    key :- KeySchema
+    record-or-key-value :- RecordOrKeyValueSchema
+    {:keys [only-if if-exists using where] :as opts} :- DeleteOptsSchema]
    (let [key-clause (extract-key-equality-clause key record-or-key-value opts)]
      (h/delete table
                (h/where (combine-where key-clause where))

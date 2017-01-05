@@ -4,11 +4,13 @@
    [er-cassandra.session :as s]
    [er-cassandra.session.alia :as alia-session]
    [er-cassandra.record :as r]
+   [schema.test :as st]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [clj-uuid :as uuid])
   (:import
    [clojure.lang ExceptionInfo]))
 
+(use-fixtures :once st/validate-schemas)
 (use-fixtures :each (tu/with-session-fixture))
 
 (deftest select-statement-test
@@ -44,7 +46,7 @@
           :foos
           :id
           "foo"
-          {:where [:= :bar "bar"]})))
+          {:where [[:= :bar "bar"]]})))
     (is (=
          {:select :foos :columns :* :where [[:= :id "foo"] [:= :bar "bar"] [:= :baz "baz"]]}
          (r/select-statement
@@ -80,7 +82,7 @@
           {:limit 5000}))))
 
   (testing "throws with unknown opt"
-    (is (thrown-with-msg? ExceptionInfo #"unknown opts"
+    (is (thrown-with-msg? ExceptionInfo #"does not match schema"
          {:select :foos :columns :* :where [[:= :id "foo"]]}
          (r/select-statement
           :foos
@@ -123,7 +125,7 @@
              :foo "foo"}
             {:if-not-exists true}))))
   (testing "unknown opts"
-    (is (thrown-with-msg? ExceptionInfo #"unknown opts"
+    (is (thrown-with-msg? ExceptionInfo #"does not match schema"
            (r/insert-statement
             :foos
             {:id "id"
@@ -223,7 +225,7 @@
              :foo "foo"}
             {:using {:timestamp 5000}}))))
   (testing "unknown opts"
-    (is (thrown-with-msg? ExceptionInfo #"unknown opts"
+    (is (thrown-with-msg? ExceptionInfo #"does not match schema"
                          (r/update-statement
                           :foos
                           [:id]
@@ -296,7 +298,7 @@
             10
             {:where [[:= :foo "foo"][:= :bar "bar"]]}))))
   (testing "unknown opts"
-    (is (thrown-with-msg? ExceptionInfo #"unknown opts"
+    (is (thrown-with-msg? ExceptionInfo #"does not match schema"
            (r/delete-statement
             :foos
             :id
