@@ -75,11 +75,11 @@
                   new-target-record))
 
       :delete
-      (let [cascade (:cascade target-entity)]
+      (let [cascade (:cascade denorm-rel)]
         (case cascade
 
           :none
-          (return true)
+          (return deferred-context true)
 
           :null
           (let [null-denorm-vals (->> denorm-vals

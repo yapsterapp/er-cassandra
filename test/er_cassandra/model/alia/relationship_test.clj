@@ -12,26 +12,27 @@
 (use-fixtures :each (tu/with-model-session-fixture))
 
 (defn create-simple-relationship
-  []
-  (tu/create-table :simple_relationship_test
-                   "(id timeuuid primary key, nick text)")
-  (tu/create-table :simple_relationship_test_target
-                   "(id timeuuid primary key, parent_id uuid, nick text)")
-  (tu/create-table :simple_relationship_test_target_by_parent_id
-                   "(id timeuuid, parent_id uuid, nick text, primary key (parent_id, id))")
-  (let [target (t/create-entity
-                {:primary-table {:name :simple_relationship_test_target
-                                 :key [:id]}
-                 :secondary-tables [{:name :simple_relationship_test_target_by_parent_id
-                                     :key [:parent_id]}]})
-        source (t/create-entity
-                {:primary-table {:name :simple_relationship_test
-                                 :key [:id]}
-                 :denorm-targets {:test {:target target
-                                         :denormalize {:nick :nick}
-                                         :cascade :none
-                                         :foreign-key [:parent_id]}}})]
-    [source target]))
+  ([] (create-simple-relationship nil))
+  ([cascade-op]
+   (tu/create-table :simple_relationship_test
+                    "(id timeuuid primary key, nick text)")
+   (tu/create-table :simple_relationship_test_target
+                    "(id timeuuid primary key, parent_id uuid, nick text)")
+   (tu/create-table :simple_relationship_test_target_by_parent_id
+                    "(id timeuuid, parent_id uuid, nick text, primary key (parent_id, id))")
+   (let [target (t/create-entity
+                 {:primary-table {:name :simple_relationship_test_target
+                                  :key [:id]}
+                  :secondary-tables [{:name :simple_relationship_test_target_by_parent_id
+                                      :key [:parent_id]}]})
+         source (t/create-entity
+                 {:primary-table {:name :simple_relationship_test
+                                  :key [:id]}
+                  :denorm-targets {:test {:target target
+                                          :denormalize {:nick :nick}
+                                          :cascade (or cascade-op :none)
+                                          :foreign-key [:parent_id]}}})]
+     [source target])))
 
 (deftest update-simple-relationship-test
   (let [[s t] (create-simple-relationship)
@@ -70,6 +71,68 @@
     (is (= "foo" (:nick potrai)))
     (is (= "foo" (:nick potrb)))
     (is (= "foo" (:nick potrbi)))))
+
+(deftest cascade-simple-relationship-multiple-records-test
+  (testing "cascading none"
+    (let [[s t] (create-simple-relationship :none)
+          [sid tida tidb] [(uuid/v1) (uuid/v1) (uuid/v1)]
+          sr {:id sid :nick "foo"}
+          _ (insert-record :simple_relationship_test sr)
+          _ (upsert-instance t {:id tida :parent_id sid :nick "foo"})
+          _ (upsert-instance t {:id tidb :parent_id sid :nick "foo"})
+
+          resp @(rel/denormalize tu/*model-session* s sr :delete {})
+          potra (fetch-record :simple_relationship_test_target [:id] [tida])
+          potrai (fetch-record :simple_relationship_test_target_by_parent_id
+                               [:parent_id :id] [sid tida])
+          potrb (fetch-record :simple_relationship_test_target [:id] [tidb])
+          potrbi (fetch-record :simple_relationship_test_target_by_parent_id
+                               [:parent_id :id] [sid tidb])]
+      (is (= [[:test [:ok]]] resp))
+      (is (= {:id tida :parent_id sid :nick "foo"} potra))
+      (is (= {:id tida :parent_id sid :nick "foo"} potrai))
+      (is (= {:id tidb :parent_id sid :nick "foo"} potrb))
+      (is (= {:id tidb :parent_id sid :nick "foo"} potrbi))))
+  (testing "cascading null"
+    (let [[s t] (create-simple-relationship :null)
+          [sid tida tidb] [(uuid/v1) (uuid/v1) (uuid/v1)]
+          sr {:id sid :nick "foo"}
+          _ (insert-record :simple_relationship_test sr)
+          _ (upsert-instance t {:id tida :parent_id sid :nick "foo"})
+          _ (upsert-instance t {:id tidb :parent_id sid :nick "foo"})
+
+          resp @(rel/denormalize tu/*model-session* s sr :delete {})
+          potra (fetch-record :simple_relationship_test_target [:id] [tida])
+          potrai (fetch-record :simple_relationship_test_target_by_parent_id
+                               [:parent_id :id] [sid tida])
+          potrb (fetch-record :simple_relationship_test_target [:id] [tidb])
+          potrbi (fetch-record :simple_relationship_test_target_by_parent_id
+                               [:parent_id :id] [sid tidb])]
+      (is (= [[:test [:ok]]] resp))
+      (is (= {:id tida :parent_id sid :nick nil} potra))
+      (is (= {:id tida :parent_id sid :nick nil} potrai))
+      (is (= {:id tidb :parent_id sid :nick nil} potrb))
+      (is (= {:id tidb :parent_id sid :nick nil} potrbi))))
+  (testing "cascade delete"
+    (let [[s t] (create-simple-relationship :delete)
+          [sid tida tidb] [(uuid/v1) (uuid/v1) (uuid/v1)]
+          sr {:id sid :nick "foo"}
+          _ (insert-record :simple_relationship_test sr)
+          _ (upsert-instance t {:id tida :parent_id sid :nick "foo"})
+          _ (upsert-instance t {:id tidb :parent_id sid :nick "foo"})
+
+          resp @(rel/denormalize tu/*model-session* s sr :delete {})
+          potra (fetch-record :simple_relationship_test_target [:id] [tida])
+          potrai (fetch-record :simple_relationship_test_target_by_parent_id
+                               [:parent_id :id] [sid tida])
+          potrb (fetch-record :simple_relationship_test_target [:id] [tidb])
+          potrbi (fetch-record :simple_relationship_test_target_by_parent_id
+                               [:parent_id :id] [sid tidb])]
+      (is (= [[:test [:ok]]] resp))
+      (is (= nil potra))
+      (is (= nil potrai))
+      (is (= nil potrb))
+      (is (= nil potrbi)))))
 
 (defn create-composite-key-relationship
   []
