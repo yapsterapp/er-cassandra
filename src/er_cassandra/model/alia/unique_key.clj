@@ -31,9 +31,9 @@
 (s/defschema StatusSchema (s/enum :ok :fail))
 
 (s/defschema KeyDescSchema
-  {:uber-key t/KeySchema
+  {:uber-key t/PrimaryKeySchema
    :uber-key-value t/KeyValueSchema
-   :key t/KeySchema
+   :key t/PrimaryKeySchema
    :key-value t/KeyValueSchema})
 
 (s/defschema AcquireUniqueKeyResultSchema
@@ -272,7 +272,7 @@
            :key-value key-value}))))))
 
 (s/defn responses-for-key
-  [match-key :- t/KeySchema
+  [match-key :- t/PrimaryKeySchema
    responses :- [AcquireUniqueKeyResultSchema]]
   (filter (fn [[_ {:keys [key]} _]]
             (= key match-key))
