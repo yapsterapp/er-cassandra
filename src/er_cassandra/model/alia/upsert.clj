@@ -19,31 +19,39 @@
    [er_cassandra.model.types Entity]))
 
 (s/defn delete-record
-  [session :- Session
-   entity :- Entity
-   table :- t/TableSchema
-   key-value :- t/KeyValueSchema]
-  (with-context deferred-context
-    (mlet [delete-result (r/delete session
-                                   (:name table)
-                                   (:key table)
-                                   key-value)]
-      (return
-       [:ok {:table (:name table)
-             :key (:key table)
-             :key-value key-value} :deleted]))))
+  ([session entity table key-value]
+   (delete-record session entity table key-value {}))
+  ([session :- Session
+    entity :- Entity
+    table :- t/TableSchema
+    key-value :- t/KeyValueSchema
+    opts :- r/DeleteOptsSchema]
+   (with-context deferred-context
+     (mlet [delete-result (r/delete session
+                                    (:name table)
+                                    (:key table)
+                                    key-value
+                                    opts)]
+       (return
+        [:ok {:table (:name table)
+              :key (:key table)
+              :key-value key-value} :deleted])))))
 
-(s/defn upsert-record
-  [session :- Session
-   entity :- Entity
-   table :- t/TableSchema
-   record :- t/RecordSchema]
-  (with-context deferred-context
-    (mlet [insert-result (r/insert session
-                                   (:name table)
-                                   record)]
-      (return
-       [:ok record :upserted]))))
+(s/defn insert-record
+  ([session entity table record]
+   (insert-record session entity table record {}))
+  ([session :- Session
+    entity :- Entity
+    table :- t/TableSchema
+    record :- t/RecordSchema
+    opts :- r/InsertOptsSchema]
+   (with-context deferred-context
+     (mlet [insert-result (r/insert session
+                                    (:name table)
+                                    record
+                                    opts)]
+       (return
+        [:ok record :upserted])))))
 
 (s/defn stale-secondary-key-value
   [entity :- Entity
@@ -89,7 +97,7 @@
        (when (and
               (k/has-key? k record)
               (k/extract-key-value k record))
-         (upsert-record session entity t record))))))
+         (insert-record session entity t record))))))
 
 (s/defn stale-lookup-key-values
   [entity :- Entity
@@ -157,7 +165,7 @@
    record :- t/MaybeRecordSchema]
   (combine-responses
    (for [[t r] (lookup-record-seq entity old-record record)]
-     (upsert-record session entity t r))))
+     (insert-record session entity t r))))
 
 (s/defn copy-unique-keys
   [entity :- Entity
