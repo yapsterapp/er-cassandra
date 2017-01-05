@@ -1,8 +1,11 @@
 (ns er-cassandra.model.types-test
   (:require
-   [clojure.test :as test :refer [deftest is are]]
+   [clojure.test :as test :refer [deftest is are use-fixtures]]
+   [schema.test :as st]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.types :refer :all]))
+
+(use-fixtures :once st/validate-schemas)
 
 (deftest test-satisfies-primary-key?
   (is (thrown? AssertionError (satisfies-primary-key? :foo [:foo])))

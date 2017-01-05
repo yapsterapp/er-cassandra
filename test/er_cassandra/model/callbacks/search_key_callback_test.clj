@@ -1,7 +1,10 @@
 (ns er-cassandra.model.callbacks.search-key-callback-test
   (:require
-   [clojure.test :as test :refer [deftest is are]]
+   [clojure.test :as test :refer [deftest is are use-fixtures]]
+   [schema.test :as st]
    [er-cassandra.model.callbacks.search-key-callback :as cb]))
+
+(use-fixtures :once st/validate-schemas)
 
 (deftest test-normalize-string
   (is (= "foo" (cb/normalize-string "foo")))
