@@ -69,13 +69,11 @@
                                        unique-key-record
                                        (merge (fns/opts-remove-timestamp opts)
                                               {:if-not-exists true}))
-             inserted? (return (applied? insert-response))
-
-             owned? (return
-                     (applied-or-owned?
-                      entity
-                      (t/extract-uber-key-value entity unique-key-record)
-                      insert-response))
+             :let [inserted? (applied? insert-response)
+                   owned? (applied-or-owned?
+                           entity
+                           (t/extract-uber-key-value entity unique-key-record)
+                           insert-response)]
 
              live-ref? (if-not owned?
                          (r/select-one session
