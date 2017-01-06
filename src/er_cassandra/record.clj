@@ -31,8 +31,7 @@
    (s/one s/Any :where-val)])
 
 (s/defschema WhereSchema
-  [(s/one WhereClauseSchema :first-where-clause)
-   WhereClauseSchema])
+  [WhereClauseSchema])
 
 (s/defschema ColumnsSchema
   [(s/one s/Keyword :first-col) s/Keyword])
@@ -42,8 +41,7 @@
    (s/one (s/enum :asc :desc) :order-by-dir)])
 
 (s/defschema OrderBySchema
-  [(s/one OrderByClauseSchema :first-order-by-clause)
-   OrderByClauseSchema])
+  [OrderByClauseSchema])
 
 (s/defschema LimitSchema s/Int)
 
