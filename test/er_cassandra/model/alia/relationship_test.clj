@@ -5,6 +5,7 @@
    [schema.test :as st]
    [clj-uuid :as uuid]
    [er-cassandra.record :as r]
+   [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.alia.relationship :as rel]))
 
@@ -24,7 +25,7 @@
                  {:primary-table {:name :simple_relationship_test_target
                                   :key [:id]}
                   :secondary-tables [{:name :simple_relationship_test_target_by_parent_id
-                                      :key [:parent_id]}]})
+                                      :key [:parent_id :id]}]})
          source (t/create-entity
                  {:primary-table {:name :simple_relationship_test
                                   :key [:id]}
@@ -41,7 +42,7 @@
         _ (insert-record :simple_relationship_test sr)
         _ (upsert-instance t {:id tid :parent_id sid :nick "bar"})
 
-        resp @(rel/denormalize tu/*model-session* s sr :upsert {})
+        resp @(rel/denormalize tu/*model-session* s sr :upsert (ts/default-timestamp-opt))
         potr (fetch-record :simple_relationship_test_target [:id] [tid])
         potri (fetch-record :simple_relationship_test_target_by_parent_id
                             [:parent_id] [sid])
@@ -58,7 +59,7 @@
         _ (upsert-instance t {:id tida :parent_id sid :nick "bar"})
         _ (upsert-instance t {:id tidb :parent_id sid :nick "bar"})
 
-        resp @(rel/denormalize tu/*model-session* s sr :upsert {})
+        resp @(rel/denormalize tu/*model-session* s sr :upsert (ts/default-timestamp-opt))
         potra (fetch-record :simple_relationship_test_target [:id] [tida])
         potrai (fetch-record :simple_relationship_test_target_by_parent_id
                              [:parent_id :id] [sid tida])
@@ -81,7 +82,7 @@
           _ (upsert-instance t {:id tida :parent_id sid :nick "foo"})
           _ (upsert-instance t {:id tidb :parent_id sid :nick "foo"})
 
-          resp @(rel/denormalize tu/*model-session* s sr :delete {})
+          resp @(rel/denormalize tu/*model-session* s sr :delete (ts/default-timestamp-opt))
           potra (fetch-record :simple_relationship_test_target [:id] [tida])
           potrai (fetch-record :simple_relationship_test_target_by_parent_id
                                [:parent_id :id] [sid tida])
@@ -101,7 +102,7 @@
           _ (upsert-instance t {:id tida :parent_id sid :nick "foo"})
           _ (upsert-instance t {:id tidb :parent_id sid :nick "foo"})
 
-          resp @(rel/denormalize tu/*model-session* s sr :delete {})
+          resp @(rel/denormalize tu/*model-session* s sr :delete (ts/default-timestamp-opt))
           potra (fetch-record :simple_relationship_test_target [:id] [tida])
           potrai (fetch-record :simple_relationship_test_target_by_parent_id
                                [:parent_id :id] [sid tida])
@@ -121,7 +122,7 @@
           _ (upsert-instance t {:id tida :parent_id sid :nick "foo"})
           _ (upsert-instance t {:id tidb :parent_id sid :nick "foo"})
 
-          resp @(rel/denormalize tu/*model-session* s sr :delete {})
+          resp @(rel/denormalize tu/*model-session* s sr :delete (ts/default-timestamp-opt))
           potra (fetch-record :simple_relationship_test_target [:id] [tida])
           potrai (fetch-record :simple_relationship_test_target_by_parent_id
                                [:parent_id :id] [sid tida])
@@ -211,7 +212,7 @@
                                            :foreign-key [:source_ida :source_idb]}}})]
     [source target-a target-b]))
 
-(deftest update-composite-key-relationship-test
+(deftest update-multi-relationship-test
   (let [[s ta tb] (create-multi-relationship)
         [sida sidb tida tidb] [(uuid/v1) (uuid/v1) (uuid/v1) (uuid/v1)]
         sr {:ida sida :idb sidb :nick "foo" :nock "foofoo"}

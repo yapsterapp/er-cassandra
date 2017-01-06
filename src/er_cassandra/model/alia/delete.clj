@@ -3,9 +3,12 @@
    [cats.core :as m :refer [mlet return]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
+   [schema.core :as s]
 
+   [er-cassandra.record :as r]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
+   [er-cassandra.model.alia.fn-schema :as fns]
    [er-cassandra.model.alia.unique-key :as alia-unique-key]
    [er-cassandra.model.alia.upsert :as alia-upsert]
    [er-cassandra.model.alia.select :as alia-select])
@@ -22,8 +25,12 @@
        (map (fn [k] [k nil]))
        (into {})))
 
-(defn ^:private delete-with-primary
-  [^Session session ^Entity entity key record opts]
+(s/defn ^:private delete-with-primary
+  [session :- Session
+   entity :- Entity
+   key :- t/PrimaryKeySchema
+   record :- t/RecordSchema
+   opts :- fns/DeleteOptsWithTimestampSchema]
   (with-context deferred-context
     (mlet [primary-response (alia-upsert/delete-record
                              session
@@ -31,33 +38,41 @@
                              (:primary-table entity)
                              (t/extract-uber-key-value
                               entity
-                              record))
+                              record)
+                             opts)
 
            unique-responses (alia-unique-key/release-stale-unique-keys
                              session
                              entity
                              record
-                             (nil-values record))
+                             (nil-values record)
+                             opts)
 
            secondary-responses (alia-upsert/delete-stale-secondaries
                                 session
                                 entity
                                 record
-                                (nil-values record))
+                                (nil-values record)
+                                opts)
 
            lookup-responses (alia-upsert/delete-stale-lookups
                              session
                              entity
                              record
-                             (nil-values record))]
+                             (nil-values record)
+                             opts)]
       (return
        [:ok record :deleted]))))
 
-(defn delete*
+(s/defn delete*
   "delete a single instance, removing primary, secondary unique-key and
    lookup records "
 
-  ([^Session session ^Entity entity key record-or-key-value opts]
+  ([session :- Session
+    entity :- Entity
+    key :- t/PrimaryKeySchema
+    record-or-key-value :- r/RecordOrKeyValueSchema
+    opts :- r/DeleteOptsSchema]
 
    (with-context deferred-context
      (mlet [[record & _] (alia-select/select* session

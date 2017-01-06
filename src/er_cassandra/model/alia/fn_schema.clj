@@ -55,3 +55,18 @@
 (defn opts-remove-timestamp
   [opts]
   (update-in opts [:using] (fn [u] (dissoc u :timestamp))))
+
+(s/defschema DenormalizeOptsSchema
+  (merge
+   UpsertUsingOnlyOptsWithTimestampSchema
+   {(s/optional-key :buffer-size) s/Int}))
+
+(s/defn denormalize-opts->upsert-opts :- UpsertOptsSchema
+  [opts :- DenormalizeOptsSchema]
+  (dissoc opts :buffer-size))
+
+(s/defn denormalize-opts->delete-opts :- r/DeleteOptsSchema
+  [opts :- DenormalizeOptsSchema]
+  (-> opts
+      denormalize-opts->upsert-opts
+      upsert-opts->delete-opts))
