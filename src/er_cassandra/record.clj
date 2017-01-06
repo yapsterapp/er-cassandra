@@ -10,7 +10,8 @@
    [er-cassandra.key :refer [flatten-key extract-key-equality-clause]]
    [er-cassandra.session :as session])
   (:import
-   [er_cassandra.session Session]))
+   [er_cassandra.session Session]
+   [qbits.hayt.cql CQLRaw]))
 
 ;; low-level record-based cassandra statement generation and execution
 ;;
@@ -33,8 +34,19 @@
 (s/defschema WhereSchema
   [WhereClauseSchema])
 
-(s/defschema ColumnsSchema
-  [(s/one s/Keyword :first-col) s/Keyword])
+(s/defschema UpdateColumnSchema
+  s/Keyword)
+
+(s/defschema UpdateColumnsSchema
+  [(s/one UpdateColumnSchema :first-col) UpdateColumnSchema])
+
+(s/defschema SelectColumnSchema
+  (s/conditional
+   keyword? s/Keyword
+   :else CQLRaw))
+
+(s/defschema SelectColumnsSchema
+  [(s/one SelectColumnSchema :first-col) SelectColumnSchema])
 
 (s/defschema OrderByClauseSchema
   [(s/one s/Keyword :order-by-col)
@@ -46,7 +58,7 @@
 (s/defschema LimitSchema s/Int)
 
 (s/defschema FullTableSelectOptsSchema
-  {(s/optional-key :columns) ColumnsSchema
+  {(s/optional-key :columns) SelectColumnsSchema
    (s/optional-key :limit) LimitSchema})
 
 (s/defschema SelectOptsSchema
@@ -239,7 +251,7 @@
    (s/optional-key :if-exists) s/Bool
    (s/optional-key :if-not-exists) s/Bool
    (s/optional-key :using) UpsertUsingSchema
-   (s/optional-key :set-columns) ColumnsSchema})
+   (s/optional-key :set-columns) UpdateColumnsSchema})
 
 (s/defn update-statement
   "returns a Hayt update statement"
