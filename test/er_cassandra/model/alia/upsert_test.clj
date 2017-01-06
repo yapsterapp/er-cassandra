@@ -5,6 +5,7 @@
    [schema.test :as st]
    [clj-uuid :as uuid]
    [er-cassandra.record :as r]
+   [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.alia.upsert :as u]))
 
@@ -143,7 +144,11 @@
         _ @(r/insert tu/*model-session* :simple_upsert_test {:id id :nick "foo"})
         [status
          detail
-         reason] @(u/delete-record tu/*model-session* m (:primary-table m) [id])]
+         reason] @(u/delete-record tu/*model-session*
+                                   m
+                                   (:primary-table m)
+                                   [id]
+                                   (ts/default-timestamp-opt))]
     (is (= :ok status))
     (is (= {:table :simple_upsert_test
             :key [:id]
@@ -151,13 +156,17 @@
     (is (= :deleted reason))
     (is (= nil (fetch-record :simple_upsert_test :id id)))))
 
-(deftest insert-record-test
+(deftest update-record-test
   (let [m (create-simple-entity)
         id (uuid/v1)
         r {:id id :nick "foo"}
         [status
          record
-         reason] @(u/insert-record tu/*model-session* m (:primary-table m) r)]
+         reason] @(u/update-record tu/*model-session*
+                                   m
+                                   (:primary-table m)
+                                   r
+                                   (ts/default-timestamp-opt))]
     (is (= :ok status))
     (is (= r record))
     (is (= :upserted reason))
@@ -197,7 +206,8 @@
                    tu/*model-session*
                    m
                    old-r
-                   {:org_id org-id :id id :nick "bar"})]
+                   {:org_id org-id :id id :nick "bar"}
+                   (ts/default-timestamp-opt))]
     (is (= r old-r))
     (is (= nil (fetch-record :secondary_upsert_test_by_nick [:org_id :nick] [org-id "foo"])))))
 
@@ -210,7 +220,8 @@
          reason] @(u/upsert-secondaries
                    tu/*model-session*
                    m
-                   r)]
+                   r
+                   (ts/default-timestamp-opt))]
     (is (= r (fetch-record :secondary_upsert_test_by_nick [:org_id :nick] [org-id "bar"])))))
 
 (deftest stale-lookup-key-values-test
@@ -292,7 +303,8 @@
                    {:org_id org-id :id id
                     :nick "bar"
                     :email #{"foo@bar.com" "blah@wah.com"}
-                    :phone ["123" "789"]})]
+                    :phone ["123" "789"]}
+                   (ts/default-timestamp-opt))]
 
     (is (= nil (fetch-record :upsert_mixed_lookup_test_by_nick
                              [:org_id :nick] [org-id "foo"])))
@@ -378,7 +390,8 @@
                    {:org_id org-id :id id
                     :nick "foo"
                     :email #{"foo@bar.com" "foo@baz.com"}
-                    :phone ["123" "456"]})]
+                    :phone ["123" "456"]}
+                   (ts/default-timestamp-opt))]
 
     (is (= {:org_id org-id :id id :nick "foo"}
            (fetch-record :upsert_mixed_lookup_test_by_nick
@@ -452,7 +465,8 @@
                 tu/*model-session*
                 m
                 nil
-                record)]
+                record
+                (ts/default-timestamp-opt))]
         (is (= {:org_id org-id :id id :nick "foo"}
                (fetch-record :upsert_lookup_and_secondaries_test_by_nick
                              [:org_id :nick] [org-id "foo"])))
@@ -491,7 +505,7 @@
                 :tag #{"quick" "slow"}
                 :dept ["hr" "dev"]}
 
-        _ @(u/upsert* tu/*model-session* m record {})]
+        _ @(u/upsert* tu/*model-session* m record (ts/default-timestamp-opt))]
 
     (is (= record (fetch-record :upsert_unique_lookup_secondaries_test
                                 [:org_id :id] [org-id id])))))

@@ -5,6 +5,7 @@
    [schema.test :as st]
    [clj-uuid :as uuid]
    [er-cassandra.record :as r]
+   [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.alia.unique-key :as uk]))
 
@@ -97,7 +98,8 @@
                                      m
                                      (-> m :unique-key-tables first)
                                      [ida]
-                                     ["foo"])]
+                                     ["foo"]
+                                     (ts/default-timestamp-opt))]
         (is (= :ok status))
         (is (= {:uber-key (t/uber-key m)
                 :uber-key-value [ida]
@@ -111,7 +113,8 @@
                                        m
                                        (-> m :unique-key-tables first)
                                        [ida]
-                                       ["foo"])]
+                                       ["foo"]
+                                       (ts/default-timestamp-opt))]
         (is (= :ok status))
         (is (= {:uber-key (t/uber-key m)
                 :uber-key-value [ida]
@@ -128,7 +131,8 @@
                                        m
                                        (-> m :unique-key-tables first)
                                        [idb]
-                                       ["foo"])]
+                                       ["foo"]
+                                       (ts/default-timestamp-opt))]
         (is (= :ok status))
         (is (= {:uber-key (t/uber-key m)
                 :uber-key-value [idb]
@@ -142,7 +146,8 @@
                                        m
                                        (-> m :unique-key-tables first)
                                        [ida]
-                                       ["foo"])]
+                                       ["foo"]
+                                       (ts/default-timestamp-opt))]
         (is (= :fail status))
         (is (= {:uber-key (t/uber-key m)
                 :uber-key-value [ida]
@@ -173,7 +178,8 @@
                                        m
                                        (-> m :unique-key-tables first)
                                        [ida]
-                                       ["foo"])]
+                                       ["foo"]
+                                       (ts/default-timestamp-opt))]
         (is (= :ok status))
         (is (= {:uber-key (t/uber-key m)
                 :uber-key-value [ida]
@@ -187,7 +193,8 @@
                                        m
                                        (-> m :unique-key-tables first)
                                        [ida]
-                                       ["foo"])]
+                                       ["foo"]
+                                       (ts/default-timestamp-opt))]
         (is (= :ok status))
         (is (= {:uber-key (t/uber-key m)
                 :uber-key-value [ida]
@@ -205,7 +212,8 @@
                                        m
                                        (-> m :unique-key-tables first)
                                        [idb]
-                                       ["foo"])]
+                                       ["foo"]
+                                       (ts/default-timestamp-opt))]
 
         (is (= :ok status))
         (is (= {:uber-key (t/uber-key m)
@@ -266,7 +274,8 @@
                                            tu/*model-session*
                                            sm
                                            {:id ida :nick "foo"}
-                                           {:id ida :nick nil})]
+                                           {:id ida :nick nil}
+                                           (ts/default-timestamp-opt))]
           (is (= :ok status))
           (is (= {:uber-key [:id] :uber-key-value [ida]
                   :key [:nick] :key-value ["foo"]} key-desc))
@@ -291,7 +300,8 @@
                   tu/*model-session*
                   cm
                   {:id ida :nick #{"foo" "bar" "baz"}}
-                  {:id ida :nick #{"foo"}})]
+                  {:id ida :nick #{"foo"}}
+                  (ts/default-timestamp-opt))]
           (is (= #{[:ok
                     {:uber-key [:id] :uber-key-value [ida]
                      :key [:nick] :key-value ["bar"]}
@@ -315,7 +325,8 @@
         (let [[[status key-desc reason]] @(uk/acquire-unique-keys
                                            tu/*model-session*
                                            sm
-                                           {:id ida :nick "foo"})]
+                                           {:id ida :nick "foo"}
+                                           (ts/default-timestamp-opt))]
           (is (= :ok status))
           (is (= {:uber-key [:id] :uber-key-value [ida]
                   :key [:nick] :key-value ["foo"]} key-desc))
@@ -325,7 +336,8 @@
         (let [[[status key-desc reason]] @(uk/acquire-unique-keys
                                            tu/*model-session*
                                            sm
-                                           {:id idb :nick "foo"})]
+                                           {:id idb :nick "foo"}
+                                           (ts/default-timestamp-opt))]
           (is (= :fail status))
           (is (= {:uber-key [:id] :uber-key-value [idb]
                   :key [:nick] :key-value ["foo"]} key-desc))
@@ -345,7 +357,8 @@
         (let [r @(uk/acquire-unique-keys
                   tu/*model-session*
                   cm
-                  {:id ida :nick #{"foo" "bar"}})]
+                  {:id ida :nick #{"foo" "bar"}}
+                  (ts/default-timestamp-opt))]
           (is (= #{[:ok
                     {:uber-key [:id] :uber-key-value [ida]
                      :key [:nick] :key-value ["foo"]}
@@ -510,7 +523,7 @@
                 tu/*model-session*
                 m
                 {:id id :nick "foo" :a "ana" :b "anb"}
-                {})]
+                (ts/default-timestamp-opt))]
         (is (= [{:id id :nick nil :a "ana" :b "anb"} nil] r))))
 
     (testing "update existing record"
@@ -522,7 +535,7 @@
                 tu/*model-session*
                 m
                 {:id id :nick "foo" :a "newa"}
-                {})]
+                (ts/default-timestamp-opt))]
         (is (= [{:id id :nick "blah" :a "newa" :b "oldb"} nil] r))))
 
     (testing "with if-not-exists"
@@ -533,7 +546,8 @@
                     tu/*model-session*
                     m
                     {:id id :nick "foo" :a "ana" :b "anb"}
-                    {:if-not-exists true})]
+                    (ts/default-timestamp-opt
+                     {:if-not-exists true}))]
             (is (= [{:id id :a "ana" :b "anb"} nil] r))))
 
         (testing "if it does already exist"
@@ -541,7 +555,8 @@
                     tu/*model-session*
                     m
                     {:id id :nick "foo" :a "ana" :b "anb"}
-                    {:if-not-exists true})]
+                    (ts/default-timestamp-opt
+                     {:if-not-exists true}))]
             (is (= [nil [[:upsert/primary-record-upsert-error
                           {:record
                            {:id id,
@@ -564,7 +579,8 @@
                   tu/*model-session*
                   m
                   {:id id :nick "foo" :a "newa" :b "newb"}
-                  {:only-if [[:= :nick "blah"]]})]
+                  (ts/default-timestamp-opt
+                   {:only-if [[:= :nick "blah"]]}))]
           (is (= [{:id id :nick "blah" :a "newa" :b "newb"} nil]
                  r))))
 
@@ -574,7 +590,8 @@
                   tu/*model-session*
                   m
                   {:id id :nick "foo" :a "newa" :b "newb"}
-                  {:only-if [[:= :nick "blah"]]})]
+                  (ts/default-timestamp-opt
+                   {:only-if [[:= :nick "blah"]]}))]
           (is (= [nil
                   [[:upsert/primary-record-upsert-error
                     {:record
@@ -609,7 +626,8 @@
                                    tu/*model-session*
                                    m
                                    {:org_id org-id :id ida}
-                                   updated-a)]
+                                   updated-a
+                                   (ts/default-timestamp-opt))]
           (is (= updated-a record))
           (is (empty? acquire-failures))
 
@@ -641,7 +659,8 @@
                                     :stuff "boo"
                                     :nick "foo"
                                     :email #{"foo@bar.com" "bar@baz.com" "blah@bloo.com"}
-                                    :phone ["123456" "09876" "777777"]})
+                                    :phone ["123456" "09876" "777777"]}
+                                   (ts/default-timestamp-opt))
               updated-b {:org_id org-id
                          :id idb
                          :stuff "boo"
@@ -714,7 +733,8 @@
                                    tu/*model-session*
                                    m
                                    old-r
-                                   updated-b)]
+                                   updated-b
+                                   (ts/default-timestamp-opt))]
 
           (is (= updated-b
                  record))
@@ -754,7 +774,8 @@
              acquire-failures] @(uk/upsert-primary-record-and-update-unique-keys
                                  tu/*model-session*
                                  m
-                                 updated-a)]
+                                 updated-a
+                                 (ts/default-timestamp-opt))]
         (is (= updated-a record))
         (is (empty? acquire-failures))
         (is (= updated-a (fetch-record :mixed_unique_key_test
@@ -773,7 +794,8 @@
                                  tu/*model-session*
                                  m
                                  updated-a
-                                 {:if-not-exists true})]
+                                 (ts/default-timestamp-opt
+                                  {:if-not-exists true}))]
         (is (= nil record))
         (is (= [[:upsert/primary-record-upsert-error
                  {:record updated-a,
@@ -799,7 +821,8 @@
                                  tu/*model-session*
                                  m
                                  updated-a
-                                 {:only-if [[:= :nick "bar"]]})]
+                                 (ts/default-timestamp-opt
+                                  {:only-if [[:= :nick "bar"]]}))]
         (is (= nil record))
         (is (= [[:upsert/primary-record-upsert-error
                  {:record updated-a,

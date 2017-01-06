@@ -9,6 +9,7 @@
    [er-cassandra.session :as s]
    [er-cassandra.model :as m]
    [er-cassandra.model.model-session :as ms]
+   [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.alia.model-session :as ams]))
 
 (def ^:dynamic *model-session* nil)
@@ -53,9 +54,13 @@
   @(r/select-one *model-session* table key key-value))
 
 (defn insert-record
-  [table record]
-  @(r/insert *model-session* table record))
+  "insert records with a timestamp 1ms in the past by default"
+  ([table record] (insert-record table record nil))
+  ([table record opts]
+   @(r/insert *model-session* table record (ts/past-timestamp-opt opts))))
 
 (defn upsert-instance
-  [entity record]
-  @(m/upsert *model-session* entity record))
+  "upsert instances with a timestamp 1ms in the past by default"
+  ([entity record] (upsert-instance entity record nil))
+  ([entity record opts]
+   @(m/upsert *model-session* entity record (ts/past-timestamp-opt opts))))

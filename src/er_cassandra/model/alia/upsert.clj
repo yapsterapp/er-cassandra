@@ -13,45 +13,44 @@
    [er-cassandra.model.model-session :as ms]
    [er-cassandra.model.util :as util
     :refer [combine-responses create-lookup-record]]
+   [er-cassandra.model.util.timestamp :as ts]
+   [er-cassandra.model.alia.fn-schema :as fns]
    [er-cassandra.model.alia.unique-key :as unique-key])
   (:import
    [er_cassandra.session Session]
    [er_cassandra.model.types Entity]))
 
 (s/defn delete-record
-  ([session entity table key-value]
-   (delete-record session entity table key-value {}))
-  ([session :- Session
-    entity :- Entity
-    table :- t/TableSchema
-    key-value :- t/KeyValueSchema
-    opts :- r/DeleteOptsSchema]
-   (with-context deferred-context
-     (mlet [delete-result (r/delete session
-                                    (:name table)
-                                    (:key table)
-                                    key-value
-                                    opts)]
-       (return
-        [:ok {:table (:name table)
-              :key (:key table)
-              :key-value key-value} :deleted])))))
+  [session :- Session
+   entity :- Entity
+   table :- t/TableSchema
+   key-value :- t/KeyValueSchema
+   opts :- fns/DeleteOptsWithTimestampSchema]
+  (with-context deferred-context
+    (mlet [delete-result (r/delete session
+                                   (:name table)
+                                   (:key table)
+                                   key-value
+                                   opts)]
+      (return
+       [:ok {:table (:name table)
+             :key (:key table)
+             :key-value key-value} :deleted]))))
 
-(s/defn insert-record
-  ([session entity table record]
-   (insert-record session entity table record {}))
-  ([session :- Session
-    entity :- Entity
-    table :- t/TableSchema
-    record :- t/RecordSchema
-    opts :- r/InsertOptsSchema]
-   (with-context deferred-context
-     (mlet [insert-result (r/insert session
-                                    (:name table)
-                                    record
-                                    opts)]
-       (return
-        [:ok record :upserted])))))
+(s/defn update-record
+  [session :- Session
+   entity :- Entity
+   table :- t/TableSchema
+   record :- t/RecordSchema
+   opts :- fns/UpsertOptsWithTimestampSchema]
+  (with-context deferred-context
+    (mlet [upsert-result (r/update session
+                                   (:name table)
+                                   (:key table)
+                                   record
+                                   opts)]
+      (return
+       [:ok record :upserted]))))
 
 (s/defn stale-secondary-key-value
   [entity :- Entity
@@ -70,7 +69,8 @@
   [session :- Session
    entity :- Entity
    old-record :- t/MaybeRecordSchema
-   new-record :- t/MaybeRecordSchema]
+   new-record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsWithTimestampSchema]
   (combine-responses
    (filter
     identity
@@ -84,20 +84,22 @@
           (delete-record session
                          entity
                          t
-                         stale-key-value)
+                         stale-key-value
+                         (fns/upsert-opts->delete-opts opts))
           (return [:ok nil :no-stale-secondary])))))))
 
 (s/defn upsert-secondaries
   [session :- Session
    entity :- Entity
-   record :- t/MaybeRecordSchema]
+   record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsWithTimestampSchema]
   (combine-responses
    (for [t (t/mutable-secondary-tables entity)]
      (let [k (:key t)]
        (when (and
               (k/has-key? k record)
               (k/extract-key-value k record))
-         (insert-record session entity t record))))))
+         (update-record session entity t record opts))))))
 
 (s/defn stale-lookup-key-values
   [entity :- Entity
@@ -116,14 +118,19 @@
   [session :- Session
    entity :- Entity
    old-record :- t/MaybeRecordSchema
-   new-record :- t/MaybeRecordSchema]
+   new-record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsWithTimestampSchema]
   (combine-responses
    (mapcat
     identity
     (for [t (t/mutable-lookup-tables entity)]
       (let [stale-kvs (stale-lookup-key-values entity old-record new-record t)]
         (for [kv stale-kvs]
-          (delete-record session entity t kv)))))))
+          (delete-record session
+                         entity
+                         t
+                         kv
+                         (fns/upsert-opts->delete-opts opts))))))))
 
 (s/defn lookup-record-seq
   "returns a seq of tuples [table lookup-record]"
@@ -162,10 +169,11 @@
   [session :- Session
    entity :- Entity
    old-record :- t/MaybeRecordSchema
-   record :- t/MaybeRecordSchema]
+   record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsWithTimestampSchema]
   (combine-responses
    (for [[t r] (lookup-record-seq entity old-record record)]
-     (insert-record session entity t r))))
+     (update-record session entity t r opts))))
 
 (s/defn copy-unique-keys
   [entity :- Entity
@@ -190,41 +198,37 @@
   [session :- Session
    entity :- Entity
    old-record :- t/MaybeRecordSchema
-   updated-record-with-keys :- t/MaybeRecordSchema]
+   updated-record-with-keys :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsWithTimestampSchema]
   (with-context deferred-context
     (mlet [stale-secondary-responses (delete-stale-secondaries
                                       session
                                       entity
                                       old-record
-                                      updated-record-with-keys)
+                                      updated-record-with-keys
+                                      opts)
 
            stale-lookup-responses (delete-stale-lookups
                                    session
                                    entity
                                    old-record
-                                   updated-record-with-keys)
+                                   updated-record-with-keys
+                                   opts)
 
            secondary-reponses (upsert-secondaries
                                session
                                entity
-                               updated-record-with-keys)
+                               updated-record-with-keys
+                               opts)
 
            lookup-responses (upsert-lookups
                              session
                              entity
                              old-record
-                             updated-record-with-keys)]
+                             updated-record-with-keys
+                             opts)]
 
       (return updated-record-with-keys))))
-
-(s/defschema UpsertOptsSchema
-  (s/maybe
-   {(s/optional-key :if-not-exists) s/Bool
-    (s/optional-key :only-if) [s/Any]
-    (s/optional-key :columns) [(s/one s/Keyword :column) s/Keyword]
-    (s/optional-key :where) [s/Any]
-    (s/optional-key :using) {(s/optional-key :timestamp) s/Int
-                             (s/optional-key :ttl) s/Int}}))
 
 (s/defn upsert*
   "upsert a single instance, upserting primary, secondary, unique-key and
@@ -238,9 +242,10 @@
   [session :- Session
    entity :- Entity
    record :- t/MaybeRecordSchema
-   opts :- UpsertOptsSchema]
+   opts :- fns/UpsertOptsSchema]
    (with-context deferred-context
-     (mlet [:let [[record] (t/run-callbacks entity :before-save [record])]
+     (mlet [:let [[record] (t/run-callbacks entity :before-save [record])
+                  opts (ts/default-timestamp-opt opts)]
 
             ;; don't need the old record if there are no lookups
             old-record (if (has-lookups? entity)
@@ -263,7 +268,8 @@
                 (update-secondaries-and-lookups session
                                                 entity
                                                 old-record
-                                                updated-record-with-keys)
+                                                updated-record-with-keys
+                                                opts)
                 (return nil))
 
             ;; re-select the record for nice empty-collections etc
