@@ -14,6 +14,7 @@
    [er-cassandra.model :as m]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.error :as e]
+   [er-cassandra.model.alia.fn-schema :as fns]
    [er-cassandra.model.util :refer [combine-responses create-lookup-record]])
   (:import
    [er_cassandra.model.types Entity]
@@ -50,7 +51,8 @@
    source-record :- t/RecordSchema
    denorm-rel :- t/DenormalizationRelationshipSchema
    target-record :- t/RecordSchema
-   denorm-op :- DenormalizeOp]
+   denorm-op :- DenormalizeOp
+   opts :- fns/DenormalizeOptsSchema]
   (let [[fk fk-val :as fk-vals] (foreign-key-val source-entity source-record denorm-rel)
         fk-map (into {} (map vector fk fk-val))
         denorm-vals (->> (:denormalize denorm-rel)
@@ -65,7 +67,8 @@
             new-target-record (merge target-record all-denorm-vals)]
         (m/upsert session
                   target-entity
-                  new-target-record))
+                  new-target-record
+                  (fns/denormalize-opts->upsert-opts opts)))
 
       :delete
       (let [cascade (:cascade denorm-rel)]
@@ -80,13 +83,15 @@
                                       (into {}))]
             (m/upsert session
                       target-entity
-                      (merge target-record null-denorm-vals)))
+                      (merge target-record null-denorm-vals)
+                      (fns/denormalize-opts->upsert-opts opts)))
 
           :delete
           (m/delete session
                     target-entity
                     (-> target-entity :primary-table :key)
-                    target-record))))))
+                    target-record
+                    (fns/denormalize-opts->delete-opts opts)))))))
 
 (s/defn target-record-stream
   "returns a Deferred<Stream<record>> of target records"
@@ -122,7 +127,7 @@
    denorm-rel-kw :- s/Keyword
    denorm-rel :- t/DenormalizationRelationshipSchema
    denorm-op :- DenormalizeOp
-   opts :- {(s/optional-key :buffer-size) s/Int}]
+   opts :- fns/DenormalizeOptsSchema]
   (with-context deferred-context
     (mlet [trs (target-record-stream session
                                      source-entity
@@ -139,7 +144,8 @@
                                        source-record
                                        denorm-rel
                                        %
-                                       denorm-op))
+                                       denorm-op
+                                       opts))
                              (st/buffer (or (:buffer-size opts) 25))
                              (st/map only-error)
                              (st/filter identity))]
@@ -160,7 +166,7 @@
    source-entity :- Entity
    source-record :- t/RecordSchema
    denorm-op :- DenormalizeOp
-   opts :- {(s/optional-key :buffer-size) s/Int}]
+   opts :- fns/DenormalizeOptsSchema]
   (let [targets (:denorm-targets source-entity)
 
         mfs (->> targets
