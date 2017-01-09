@@ -1,5 +1,6 @@
 (ns er-cassandra.model.alia.upsert
   (:require
+   [taoensso.timbre :refer [trace debug info warn error]]
    [clojure.set :as set]
    [schema.core :as s]
    [manifold.deferred :as d]
@@ -20,12 +21,14 @@
    [er_cassandra.session Session]
    [er_cassandra.model.types Entity]))
 
-(s/defn delete-record
+(s/defn delete-index-record
+  "delete an index record - doesn't support LWTs, :where etc
+   which should only apply to the primary record"
   [session :- Session
    entity :- Entity
    table :- t/TableSchema
    key-value :- t/KeyValueSchema
-   opts :- fns/DeleteOptsWithTimestampSchema]
+   opts :- fns/DeleteUsingOnlyOptsWithTimestampSchema]
   (with-context deferred-context
     (mlet [delete-result (r/delete session
                                    (:name table)
@@ -37,16 +40,26 @@
              :key (:key table)
              :key-value key-value} :deleted]))))
 
-(s/defn update-record
+(s/defn insert-index-record
+  "insert an index record - doesn't support LWTs, :where etc
+   which only apply to the primary record
+
+   weirdly, if a record which was created with update is
+   later updated with all null non-pk cols then that record will be
+   deleted
+
+   https://ajayaa.github.io/cassandra-difference-between-insert-update/
+
+   since this is undesirable for secondary tables, we use insert instead,
+   and since we don't want any :where or LWTs they are forbidden by schema"
   [session :- Session
    entity :- Entity
    table :- t/TableSchema
    record :- t/RecordSchema
-   opts :- fns/UpsertOptsWithTimestampSchema]
+   opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema]
   (with-context deferred-context
-    (mlet [upsert-result (r/update session
+    (mlet [insert-result (r/insert session
                                    (:name table)
-                                   (:key table)
                                    record
                                    opts)]
       (return
@@ -70,7 +83,7 @@
    entity :- Entity
    old-record :- t/MaybeRecordSchema
    new-record :- t/MaybeRecordSchema
-   opts :- fns/UpsertOptsWithTimestampSchema]
+   opts :- fns/DeleteUsingOnlyOptsWithTimestampSchema]
   (combine-responses
    (filter
     identity
@@ -80,26 +93,27 @@
                              old-record
                              new-record
                              t)]
+        ;; (prn "delete-stale-secondaries: " t old-record new-record)
         (if stale-key-value
-          (delete-record session
-                         entity
-                         t
-                         stale-key-value
-                         (fns/upsert-opts->delete-opts opts))
+          (delete-index-record session
+                               entity
+                               t
+                               stale-key-value
+                               (fns/upsert-opts->delete-opts opts))
           (return [:ok nil :no-stale-secondary])))))))
 
 (s/defn upsert-secondaries
   [session :- Session
    entity :- Entity
    record :- t/MaybeRecordSchema
-   opts :- fns/UpsertOptsWithTimestampSchema]
+   opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema]
   (combine-responses
-   (for [t (t/mutable-secondary-tables entity)]
-     (let [k (:key t)]
-       (when (and
-              (k/has-key? k record)
-              (k/extract-key-value k record))
-         (update-record session entity t record opts))))))
+   (for [{k :key
+          :as t} (t/mutable-secondary-tables entity)]
+     (when (and
+            (k/has-key? k record)
+            (k/extract-key-value k record))
+       (insert-index-record session entity t record opts)))))
 
 (s/defn stale-lookup-key-values
   [entity :- Entity
@@ -119,14 +133,14 @@
    entity :- Entity
    old-record :- t/MaybeRecordSchema
    new-record :- t/MaybeRecordSchema
-   opts :- fns/UpsertOptsWithTimestampSchema]
+   opts :- fns/DeleteUsingOnlyOptsWithTimestampSchema]
   (combine-responses
    (mapcat
     identity
     (for [t (t/mutable-lookup-tables entity)]
       (let [stale-kvs (stale-lookup-key-values entity old-record new-record t)]
         (for [kv stale-kvs]
-          (delete-record session
+          (delete-index-record session
                          entity
                          t
                          kv
@@ -170,10 +184,10 @@
    entity :- Entity
    old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema
-   opts :- fns/UpsertOptsWithTimestampSchema]
+   opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema]
   (combine-responses
    (for [[t r] (lookup-record-seq entity old-record record)]
-     (update-record session entity t r opts))))
+     (insert-index-record session entity t r opts))))
 
 (s/defn copy-unique-keys
   [entity :- Entity
@@ -201,32 +215,38 @@
    updated-record-with-keys :- t/MaybeRecordSchema
    opts :- fns/UpsertOptsWithTimestampSchema]
   (with-context deferred-context
-    (mlet [stale-secondary-responses (delete-stale-secondaries
+    (mlet [:let [index-delete-opts (-> opts
+                                       fns/upsert-opts->using-only
+                                       fns/upsert-opts->delete-opts)
+                 index-insert-opts (-> opts
+                                       fns/upsert-opts->using-only)]
+
+           stale-secondary-responses (delete-stale-secondaries
                                       session
                                       entity
                                       old-record
                                       updated-record-with-keys
-                                      opts)
+                                      index-delete-opts)
 
            stale-lookup-responses (delete-stale-lookups
                                    session
                                    entity
                                    old-record
                                    updated-record-with-keys
-                                   opts)
+                                   index-delete-opts)
 
            secondary-reponses (upsert-secondaries
                                session
                                entity
                                updated-record-with-keys
-                               opts)
+                               index-insert-opts)
 
            lookup-responses (upsert-lookups
                              session
                              entity
                              old-record
                              updated-record-with-keys
-                             opts)]
+                             index-insert-opts)]
 
       (return updated-record-with-keys))))
 

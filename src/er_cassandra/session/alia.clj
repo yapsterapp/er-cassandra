@@ -29,12 +29,12 @@
   [alia-session statement opts]
   (aliam/execute
    alia-session
-   (do
+   (let [str-statement (if (string? statement)
+                         statement
+                         (h/->raw statement))]
      (when *trace*
-       (debug statement))
-     (if (string? statement)
-       statement
-       (h/->raw statement)))
+       (debug str-statement))
+     str-statement)
    opts))
 
 (defn- execute-buffered*
@@ -44,12 +44,12 @@
    deferred-context
    (aliam/execute-buffered
     alia-session
-    (do
+    (let [str-statement (if (string? statement)
+                          statement
+                          (h/->raw statement))]
       (when *trace*
-        (debug statement))
-      (if (string? statement)
-        statement
-        (h/->raw statement)))
+        (debug str-statement))
+      str-statement)
     opts)))
 
 (defn shutdown-session-and-cluster

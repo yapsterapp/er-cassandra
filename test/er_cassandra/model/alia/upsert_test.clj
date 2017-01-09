@@ -1,9 +1,10 @@
 (ns er-cassandra.model.alia.upsert-test
   (:require
-   [er-cassandra.model.util.test :as tu :refer [fetch-record insert-record]]
+   [er-cassandra.model.util.test :as tu :refer [fetch-record insert-record upsert-instance]]
    [clojure.test :as test :refer [deftest is are testing use-fixtures]]
    [schema.test :as st]
    [clj-uuid :as uuid]
+   [er-cassandra.session.alia :as als]
    [er-cassandra.record :as r]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
@@ -138,17 +139,17 @@
                          :collections {:dept :list}}]}))
 
 
-(deftest delete-record-test
+(deftest delete-index-record-test
   (let [m (create-simple-entity)
         id (uuid/v1)
         _ @(r/insert tu/*model-session* :simple_upsert_test {:id id :nick "foo"})
         [status
          detail
-         reason] @(u/delete-record tu/*model-session*
-                                   m
-                                   (:primary-table m)
-                                   [id]
-                                   (ts/default-timestamp-opt))]
+         reason] @(u/delete-index-record tu/*model-session*
+                                         m
+                                         (:primary-table m)
+                                         [id]
+                                         (ts/default-timestamp-opt))]
     (is (= :ok status))
     (is (= {:table :simple_upsert_test
             :key [:id]
@@ -156,17 +157,17 @@
     (is (= :deleted reason))
     (is (= nil (fetch-record :simple_upsert_test :id id)))))
 
-(deftest update-record-test
+(deftest insert-index-record-test
   (let [m (create-simple-entity)
         id (uuid/v1)
         r {:id id :nick "foo"}
         [status
          record
-         reason] @(u/update-record tu/*model-session*
-                                   m
-                                   (:primary-table m)
-                                   r
-                                   (ts/default-timestamp-opt))]
+         reason] @(u/insert-index-record tu/*model-session*
+                                         m
+                                         (:primary-table m)
+                                         r
+                                         (ts/default-timestamp-opt))]
     (is (= :ok status))
     (is (= r record))
     (is (= :upserted reason))
@@ -194,6 +195,19 @@
               {:id :a :bar nil}
               (-> m :secondary-tables first)))))))
 
+(deftest stale-secondary-key-value-with-null-non-key-cols-test
+  (let [m (t/create-entity
+           {:primary-table {:name :secondary_with_nil_non_key_cols_test :key [:id]}
+            :secondary-tables [{:name :secondary_with_nil_non_key_cols_test_by_other_id
+                                :key [:other_id :id]}]})
+        [id other-id] [:an-id :an-other-id]]
+    (is (= nil
+           (u/stale-secondary-key-value
+            m
+            {:id id :other_id other-id :nick "foo"}
+            {:id id :other_id other-id :nick nil}
+            (-> m :secondary-tables first))))))
+
 (deftest delete-stale-secondaries-test
   (let [m (create-secondary-entity)
         [org-id id] [(uuid/v1) (uuid/v1)]
@@ -210,6 +224,46 @@
                    (ts/default-timestamp-opt))]
     (is (= r old-r))
     (is (= nil (fetch-record :secondary_upsert_test_by_nick [:org_id :nick] [org-id "foo"])))))
+
+(defn create-secondary-entity-for-nil-non-key-cols
+  []
+  (tu/create-table :secondary_with_nil_non_key_cols_test
+                   "(id uuid primary key, other_id uuid, nick text)")
+  (tu/create-table :secondary_with_nil_non_key_cols_test_by_other_id
+                   "(id timeuuid, other_id uuid, nick text, primary key (other_id, id))")
+  (t/create-entity
+   {:primary-table {:name :secondary_with_nil_non_key_cols_test :key [:id]}
+    :secondary-tables [{:name :secondary_with_nil_non_key_cols_test_by_other_id
+                        :key [:other_id :id]}]}))
+
+;; unit test for a problem observed with relationship {:cascade :null}
+;; it seems that if a record originally created with update is later
+;; updated to have all nil non-pk cols then the record gets deleted
+;; https://ajayaa.github.io/cassandra-difference-between-insert-update/
+;; since this is undesirable for secondary tables, insert should be
+;; used instead - this test ensures that insert is used
+(deftest dont-delete-secondaries-with-nil-non-key-cols-test
+  (als/with-debug
+    (let [m (create-secondary-entity-for-nil-non-key-cols)
+          [id other-id] [(uuid/v1) (uuid/v1)]
+          r {:id id :other_id other-id :nick "foo"}
+
+          i1 (upsert-instance m r)
+          f1 (fetch-record :secondary_with_nil_non_key_cols_test [:id] [id])
+          fi1 (fetch-record :secondary_with_nil_non_key_cols_test_by_other_id
+                            [:other_id :id] [other-id id])
+
+          nnr (assoc r :nick nil)
+          i2 (upsert-instance m nnr)
+
+          f2 (fetch-record :secondary_with_nil_non_key_cols_test [:id] [id])
+          fi2 (fetch-record :secondary_with_nil_non_key_cols_test_by_other_id
+                            [:other_id :id] [other-id id])]
+      (is (= r f1))
+      (is (= r fi1))
+
+      (is (= nnr f2))
+      (is (= nnr fi2)))))
 
 (deftest upsert-secondaries-test
   (let [m (create-secondary-entity)

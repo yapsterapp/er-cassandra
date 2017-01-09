@@ -16,6 +16,24 @@
    [er_cassandra.model.types Entity]
    [er_cassandra.session Session]))
 
+(s/defn delete-primary-record
+  "a delete which permits LWTs etc"
+  [session :- Session
+   entity :- Entity
+   table :- t/TableSchema
+   key-value :- t/KeyValueSchema
+   opts :- fns/DeleteOptsWithTimestampSchema]
+  (with-context deferred-context
+    (mlet [delete-result (r/delete session
+                                   (:name table)
+                                   (:key table)
+                                   key-value
+                                   opts)]
+      (return
+       [:ok {:table (:name table)
+             :key (:key table)
+             :key-value key-value} :deleted]))))
+
 (defn nil-values
   "return a record with the same keys as m but nil values... used to
    force all secondary/lookup keys to be considered for stale deletion"
@@ -32,7 +50,7 @@
    record :- t/RecordSchema
    opts :- fns/DeleteOptsWithTimestampSchema]
   (with-context deferred-context
-    (mlet [primary-response (alia-upsert/delete-record
+    (mlet [primary-response (delete-primary-record
                              session
                              entity
                              (:primary-table entity)
