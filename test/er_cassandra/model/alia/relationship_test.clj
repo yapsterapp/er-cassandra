@@ -74,26 +74,7 @@
     (is (= "foo" (:nick potrbi)))))
 
 (deftest cascade-simple-relationship-multiple-records-test
-  (testing "cascading none"
-    (let [[s t] (create-simple-relationship :none)
-          [sid tida tidb] [(uuid/v1) (uuid/v1) (uuid/v1)]
-          sr {:id sid :nick "foo"}
-          _ (insert-record :simple_relationship_test sr)
-          _ (upsert-instance t {:id tida :parent_id sid :nick "foo"})
-          _ (upsert-instance t {:id tidb :parent_id sid :nick "foo"})
 
-          resp @(rel/denormalize tu/*model-session* s sr :delete (ts/default-timestamp-opt))
-          potra (fetch-record :simple_relationship_test_target [:id] [tida])
-          potrai (fetch-record :simple_relationship_test_target_by_parent_id
-                               [:parent_id :id] [sid tida])
-          potrb (fetch-record :simple_relationship_test_target [:id] [tidb])
-          potrbi (fetch-record :simple_relationship_test_target_by_parent_id
-                               [:parent_id :id] [sid tidb])]
-      (is (= [[:test [:ok]]] resp))
-      (is (= {:id tida :parent_id sid :nick "foo"} potra))
-      (is (= {:id tida :parent_id sid :nick "foo"} potrai))
-      (is (= {:id tidb :parent_id sid :nick "foo"} potrb))
-      (is (= {:id tidb :parent_id sid :nick "foo"} potrbi))))
   (testing "cascading null"
     (let [[s t] (create-simple-relationship :null)
           [sid tida tidb] [(uuid/v1) (uuid/v1) (uuid/v1)]
@@ -114,6 +95,29 @@
       (is (= {:id tida :parent_id sid :nick nil} potrai))
       (is (= {:id tidb :parent_id sid :nick nil} potrb))
       (is (= {:id tidb :parent_id sid :nick nil} potrbi))))
+
+  (testing "cascading none"
+    (let [[s t] (create-simple-relationship :none)
+          [sid tida tidb] [(uuid/v1) (uuid/v1) (uuid/v1)]
+          sr {:id sid :nick "foo"}
+          _ (insert-record :simple_relationship_test sr)
+
+          _ (upsert-instance t {:id tida :parent_id sid :nick "foo"})
+          _ (upsert-instance t {:id tidb :parent_id sid :nick "foo"})
+
+          resp @(rel/denormalize tu/*model-session* s sr :delete (ts/default-timestamp-opt))
+          potra (fetch-record :simple_relationship_test_target [:id] [tida])
+          potrai (fetch-record :simple_relationship_test_target_by_parent_id
+                               [:parent_id :id] [sid tida])
+          potrb (fetch-record :simple_relationship_test_target [:id] [tidb])
+          potrbi (fetch-record :simple_relationship_test_target_by_parent_id
+                               [:parent_id :id] [sid tidb])]
+      (is (= [[:test [:ok]]] resp))
+      (is (= {:id tida :parent_id sid :nick "foo"} potra))
+      (is (= {:id tida :parent_id sid :nick "foo"} potrai))
+      (is (= {:id tidb :parent_id sid :nick "foo"} potrb))
+      (is (= {:id tidb :parent_id sid :nick "foo"} potrbi))))
+
   (testing "cascade delete"
     (let [[s t] (create-simple-relationship :delete)
           [sid tida tidb] [(uuid/v1) (uuid/v1) (uuid/v1)]
@@ -166,7 +170,7 @@
         _ (upsert-instance t {:id tid :source_ida sida :source_idb sidb
                               :target_nick "bar" :target_nock "barbar"})
 
-        resp @(rel/denormalize tu/*model-session* s ckr :upsert {})
+        resp @(rel/denormalize tu/*model-session* s ckr :upsert (ts/default-timestamp-opt))
         potr (fetch-record :ck_relationship_test_target [:id] [tid])
         potri (fetch-record :ck_relationship_test_target_by_source_ids
                             [:source_ida :source_idb] [sida sidb])
@@ -222,7 +226,7 @@
         _ (upsert-instance tb {:tidb tidb :source_ida sida :source_idb sidb
                                :target_nock "bar"})
 
-        resp @(rel/denormalize tu/*model-session* s sr :upsert {})
+        resp @(rel/denormalize tu/*model-session* s sr :upsert (ts/default-timestamp-opt))
         potra (fetch-record :multi_relationship_test_target_a [:tida] [tida])
         potrai (fetch-record :multi_relationship_test_target_a_by_source_ids
                              [:source_ida :source_idb] [sida sidb])

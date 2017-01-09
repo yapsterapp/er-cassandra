@@ -2,6 +2,7 @@
   (:refer-clojure :exclude [update])
   (:require
    [plumbing.core :refer :all]
+   [taoensso.timbre :refer [trace debug info warn error]]
    [schema.core :as s]
    [clojure.set :as set]
    [manifold.deferred :as d]
@@ -271,14 +272,16 @@
    (let [key-clause (extract-key-equality-clause key record opts)
          set-cols (if (not-empty set-columns)
                     (select-keys record set-columns)
-                    (apply dissoc record (flatten-key key)))]
-     (h/update table
-               (h/set-columns set-cols)
-               (h/where key-clause)
-               (when only-if (h/only-if only-if))
-               (when if-exists (h/if-exists true))
-               (when if-not-exists (h/if-exists false))
-               (when (not-empty using) (apply h/using (flatten (seq using))))))))
+                    (apply dissoc record (flatten-key key)))
+
+         stmt (h/update table
+                        (h/set-columns set-cols)
+                        (h/where key-clause)
+                        (when only-if (h/only-if only-if))
+                        (when if-exists (h/if-exists true))
+                        (when if-not-exists (h/if-exists false))
+                        (when (not-empty using) (apply h/using (flatten (seq using)))))]
+     stmt)))
 
 (defn update
   "update a single record"

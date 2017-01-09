@@ -21,7 +21,7 @@
    (assoc :using UpsertUsingWithTimestampSchema)))
 
 (s/defschema UpsertUsingOnlyOptsWithTimestampSchema
-  {(s/optional-key :using) UpsertUsingWithTimestampSchema})
+  {:using UpsertUsingWithTimestampSchema})
 
 (s/defschema DeleteUsingWithTimestampSchema
   {:timestamp s/Int})
@@ -30,6 +30,9 @@
   (-> r/DeleteOptsSchema
       (dissoc (s/optional-key :using))
       (assoc :using DeleteUsingWithTimestampSchema)))
+
+(s/defschema DeleteUsingOnlyOptsWithTimestampSchema
+  {:using DeleteUsingWithTimestampSchema})
 
 (s/defn upsert-opts->delete-opts :- r/DeleteOptsSchema
   "remove irrelevant parts of upsert opts to match delete opts"
