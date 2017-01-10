@@ -58,8 +58,7 @@
         denorm-vals (->> (:denormalize denorm-rel)
                          (map (fn [[scol tcol]]
                                 [tcol (get source-record scol)]))
-                         (into {}))
-        ]
+                         (into {}))]
     (case denorm-op
 
       :upsert
@@ -115,8 +114,7 @@
   "given a Deferred keep only errors, otherwise returning Deferred<nil>"
   [dv]
   (-> dv
-      (d/chain (constantly nil))
-      (d/catch (fn [e] e))))
+      (d/chain (fn [v] (when (instance? Throwable v) v)))))
 
 (s/defn denormalize-rel
   "denormalizes a single relationship"
@@ -147,10 +145,11 @@
                                        denorm-op
                                        opts))
                              (st/buffer (or (:buffer-size opts) 25))
-                             (st/map only-error)
-                             (st/filter identity))]
+                             (st/map only-error))]
 
-           maybe-err (st/take! trerrs)]
+           ;; consumes the whole stream, returns the first error
+           ;; or nil if no errors
+           maybe-err (st/reduce (fn [v i] (or v i)) nil trerrs)]
 
       ;; if there are errors, return the first as an exemplar
       (if (nil? maybe-err)
