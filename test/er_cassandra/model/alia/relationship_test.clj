@@ -92,11 +92,12 @@
                     "(idb uuid primary key, value int)")
 
    (tu/create-table :tpr_target
-                    (str "(idt uuid primary key, "
+                    (str "(idt uuid, "
                          " source_a_id uuid, "
                          " source_b_id uuid, "
                          " factor int, "
-                         " value int)"))
+                         " value int, "
+                         " primary key ((source_a_id, source_b_id, idt)))"))
 
    (tu/create-table :tpr_target_by_source_a_id
                     (str "(idt timeuuid, "
@@ -117,7 +118,7 @@
 
    (let [target (t/create-entity
                  {:primary-table {:name :tpr_target
-                                  :key [:idt]}
+                                  :key [[:source_a_id :source_b_id :idt]]}
                   :secondary-tables [{:name :tpr_target_by_source_a_id
                                       :key [:source_a_id :idt]}
                                      {:name :tpr_target_by_source_b_id
@@ -143,13 +144,13 @@
 (deftest update-two-sources-many-records-test
   (let [[sa sb t] (create-two-source-relationship :none)
 
-        acnt 10
+        acnt 1
         ;; all source-a records start out with :factor 1
         saids (repeatedly acnt uuid/v1)
         sars (for [said saids] {:ida said :factor 1})
 
 
-        bcnt 100
+        bcnt 10
         ;; initial source-b record :values are drawn from 1..bcnt
         sbids (repeatedly bcnt uuid/v1)
         sbrs (map (fn [sbid v] {:idb sbid :value v}) sbids (iterate inc 1))
