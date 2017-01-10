@@ -144,13 +144,13 @@
 (deftest update-two-sources-many-records-test
   (let [[sa sb t] (create-two-source-relationship :none)
 
-        acnt 1
+        acnt 10
         ;; all source-a records start out with :factor 1
         saids (repeatedly acnt uuid/v1)
         sars (for [said saids] {:ida said :factor 1})
 
 
-        bcnt 10
+        bcnt 1000
         ;; initial source-b record :values are drawn from 1..bcnt
         sbids (repeatedly bcnt uuid/v1)
         sbrs (map (fn [sbid v] {:idb sbid :value v}) sbids (iterate inc 1))
