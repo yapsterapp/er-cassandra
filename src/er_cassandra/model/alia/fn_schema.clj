@@ -62,11 +62,12 @@
 (s/defschema DenormalizeOptsSchema
   (merge
    UpsertUsingOnlyOptsWithTimestampSchema
-   {(s/optional-key :buffer-size) s/Int}))
+   {(s/optional-key :fetch-size) s/Int
+    (s/optional-key :buffer-size) s/Int}))
 
 (s/defn denormalize-opts->upsert-opts :- UpsertOptsSchema
   [opts :- DenormalizeOptsSchema]
-  (dissoc opts :buffer-size))
+  (dissoc opts :fetch-size :buffer-size))
 
 (s/defn denormalize-opts->delete-opts :- r/DeleteOptsSchema
   [opts :- DenormalizeOptsSchema]
