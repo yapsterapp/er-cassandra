@@ -114,7 +114,8 @@
    source-entity :- Entity
    target-entity :- Entity
    source-record :- t/RecordSchema
-   denorm-rel :- t/DenormalizationRelationshipSchema]
+   denorm-rel :- t/DenormalizationRelationshipSchema
+   opts :- r/SelectBufferedOptsSchema]
   (with-context deferred-context
     (mlet [:let [[fk fk-val] (foreign-key-val source-entity source-record denorm-rel)]
 
@@ -122,7 +123,8 @@
                session
                target-entity
                fk
-               fk-val)]
+               fk-val
+               opts)]
 
       (return deferred-context trs))))
 
@@ -147,7 +149,8 @@
                                      source-entity
                                      target-entity
                                      source-record
-                                     denorm-rel)
+                                     denorm-rel
+                                     (select-keys opts [:fetch-size]))
 
            ;; a (hopefully empty) stream of any errors from denormalization
            :let [trerrs (->> trs
