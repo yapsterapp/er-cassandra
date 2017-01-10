@@ -5,6 +5,7 @@
    [deferst :refer [defsystem]]
    [deferst.system :as sys]
    [slf4j-timbre.configure :as logconf]
+   [manifold.stream :as stream]
    [er-cassandra.record :as r]
    [er-cassandra.session :as s]
    [er-cassandra.model :as m]
@@ -17,7 +18,8 @@
 (def alia-test-model-session-config
   {:timbre {:level :warn}
    :config {:alia-session
-            {:keyspace "er_cassandra_test"}}})
+            {:keyspace "er_cassandra_test"
+             :truncate-on-close false}}})
 
 (def alia-test-model-session-system-def
   [[:logging logconf/configure-timbre [:timbre]]
@@ -64,3 +66,24 @@
   ([entity record] (upsert-instance entity record nil))
   ([entity record opts]
    @(m/upsert *model-session* entity record (ts/past-timestamp-opt opts))))
+
+(defn record-stream
+  ([table-name] (record-stream table-name {}))
+  ([table-name opts]
+   @(r/select-buffered *model-session* table-name opts)))
+
+(defn instance-stream
+  ([entity] (instance-stream entity {}))
+  ([entity opts]
+   @(m/select-buffered *model-session* entity opts)))
+
+(defn upsert-instance-stream
+  ([entity instance-stream]
+   (upsert-instance-stream entity instance-stream {}))
+  ([entity instance-stream opts]
+   @(m/upsert-buffered *model-session* entity instance-stream opts)))
+
+(defn sync-consume-stream
+  "synchronously consume a stream"
+  [stream]
+  @(stream/reduce (fn [_ _]) nil stream))
