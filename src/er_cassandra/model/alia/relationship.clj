@@ -53,17 +53,29 @@
    target-record :- t/RecordSchema
    denorm-op :- DenormalizeOp
    opts :- fns/DenormalizeOptsSchema]
-  (let [[fk fk-val :as fk-vals] (foreign-key-val source-entity source-record denorm-rel)
+  (let [target-uberkey (-> target-entity :primary-table :key)
+        target-uberkey-value (t/extract-uber-key-value
+                              target-entity
+                              target-record)
+        target-uberkey-map (into {} (map vector
+                                         target-uberkey
+                                         target-uberkey-value))
+
+        [fk fk-val :as fk-vals] (foreign-key-val source-entity source-record denorm-rel)
         fk-map (into {} (map vector fk fk-val))
+
         denorm-vals (->> (:denormalize denorm-rel)
                          (map (fn [[scol tcol]]
                                 [tcol (get source-record scol)]))
                          (into {}))]
+
     (case denorm-op
 
+      ;; we only upsert the uberkey, fk and denormalized cols
       :upsert
-      (let [all-denorm-vals (merge denorm-vals fk-map)
-            new-target-record (merge target-record all-denorm-vals)]
+      (let [new-target-record (merge denorm-vals
+                                     fk-map
+                                     target-uberkey-map)]
         (m/upsert session
                   target-entity
                   new-target-record
@@ -76,13 +88,17 @@
           :none
           (return deferred-context true)
 
+          ;; we only upsert the uberkey, fk and denormalized cols
           :null
           (let [null-denorm-vals (->> denorm-vals
                                       (map (fn [[k v]] [k nil]))
-                                      (into {}))]
+                                      (into {}))
+                new-target-record (merge null-denorm-vals
+                                         fk-map
+                                         target-uberkey-map)]
             (m/upsert session
                       target-entity
-                      (merge target-record null-denorm-vals)
+                      new-target-record
                       (fns/denormalize-opts->upsert-opts opts)))
 
           :delete

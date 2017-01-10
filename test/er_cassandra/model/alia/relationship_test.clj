@@ -12,6 +12,7 @@
    [schema.test :as st]
    [clj-uuid :as uuid]
    [manifold.stream :as s]
+   [manifold.deferred :as d]
    [er-cassandra.record :as r]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
@@ -142,13 +143,13 @@
 (deftest update-two-sources-many-records-test
   (let [[sa sb t] (create-two-source-relationship :none)
 
-        acnt 5
+        acnt 10
         ;; all source-a records start out with :factor 1
         saids (repeatedly acnt uuid/v1)
         sars (for [said saids] {:ida said :factor 1})
 
 
-        bcnt 1000
+        bcnt 100
         ;; initial source-b record :values are drawn from 1..bcnt
         sbids (repeatedly bcnt uuid/v1)
         sbrs (map (fn [sbid v] {:idb sbid :value v}) sbids (iterate inc 1))
@@ -173,23 +174,80 @@
         (is (= (* acnt bcnt) (->> ftr (map :factor) (reduce +))))
         (is (= (* acnt (* (/ bcnt 2) (inc bcnt))) (->> ftr (map :value) (reduce +))))))
 
-    (testing "inc the factors, inc the values"
+    (testing "inc the factors"
       (let [isars (->> sars
                        (map (fn [sar]
                               (assoc sar :factor 2))))
-
-            a-denorms (doall
-                       (for [isar isars]
-                         @(rel/denormalize tu/*model-session* sa isar :upsert (ts/default-timestamp-opt))))
-            _ (prn a-denorms)
+            cassandra tu/*model-session*
+            a-denorms (->> isars
+                           (s/buffer 5)
+                           (s/map (fn [isar]
+                                    (rel/denormalize cassandra sa isar :upsert (ts/default-timestamp-opt))))
+                           (s/realize-each)
+                           (s/reduce conj [])
+                           deref)
 
             tr-str (instance-stream t {:buffer-size 10})
             ftr @(s/reduce conj [] tr-str)]
 
         (is (= (* acnt bcnt) (count ftr)))
         (is (= (* acnt bcnt 2) (->> ftr (map :factor) (reduce +))))
-        (is (= (* acnt (* (/ bcnt 2) (inc bcnt))) (->> ftr (map :value) (reduce +))))
-        ))
+        (is (= (* acnt (* (/ bcnt 2) (inc bcnt))) (->> ftr (map :value) (reduce +))))))
+
+    (testing "inc the values"
+      (let [isbrs (->> sbrs
+                       (map (fn [{value :value :as sbr}]
+                              (assoc sbr :value (inc value)))))
+            cassandra tu/*model-session*
+            b-denorms (->> isbrs
+                           (s/buffer 5)
+                           (s/map (fn [isbr]
+                                    (rel/denormalize cassandra sb isbr :upsert (ts/default-timestamp-opt))))
+                           (s/realize-each)
+                           (s/reduce conj [])
+                           deref)
+
+            tr-str (instance-stream t {:buffer-size 10})
+            ftr @(s/reduce conj [] tr-str)]
+
+        (is (= (* acnt bcnt) (count ftr)))
+        (is (= (* 2 acnt bcnt) (->> ftr (map :factor) (reduce +))))
+        (is (= (* acnt (- (* (/ (inc bcnt) 2) (+ 2 bcnt)) 1)) (->> ftr (map :value) (reduce +))))))
+
+    (testing "inc the factors and the values together"
+      (let [isars (->> sars
+                       (map (fn [sar]
+                              (assoc sar :factor 3))))
+            isbrs (->> sbrs
+                       (map (fn [{value :value :as sbr}]
+                              (assoc sbr :value (+ 2 value)))))
+            cassandra tu/*model-session*
+
+            ;; do both denormalizations together
+            a-denorms-d (->> isars
+                             (s/buffer 5)
+                             (s/map (fn [isar]
+                                      (rel/denormalize cassandra sa isar :upsert (ts/default-timestamp-opt))))
+                             (s/realize-each)
+                             (s/reduce conj []))
+            b-denorms-d (->> isbrs
+                             (s/buffer 5)
+                             (s/map (fn [isbr]
+                                      (rel/denormalize cassandra sb isbr :upsert (ts/default-timestamp-opt))))
+                             (s/realize-each)
+                             (s/reduce conj []))
+
+            ;; sync before retrieval
+            _ @(d/zip a-denorms-d b-denorms-d)
+
+
+            tr-str (instance-stream t {:buffer-size 10})
+            ftr @(s/reduce conj [] tr-str)]
+
+
+        (is (= (* acnt bcnt) (count ftr)))
+        (is (= (* 3 acnt bcnt) (->> ftr (map :factor) (reduce +))))
+        (is (= (* acnt (- (* (/ (+ 2 bcnt) 2) (+ 3 bcnt)) 3)) (->> ftr (map :value) (reduce +))))))
 
     ))
 
