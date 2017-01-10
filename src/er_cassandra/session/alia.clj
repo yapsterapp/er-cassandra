@@ -199,7 +199,7 @@
 ;; a test-session is just a spy-session which will initialise it's keyspace
 ;; if necesary and will truncate any used tables when closed
 (defnk create-test-session
-  [{contact-points nil} {port nil} {datacenter nil} keyspace :as args]
+  [{contact-points nil} {port nil} {datacenter nil} {truncate-on-close nil} keyspace :as args]
   (create-spy-session
    (merge
     args
@@ -216,4 +216,4 @@
            "   'replication_factor': '1'} "
            " AND durable_writes = true;")]
 
-     :truncate-on-close true})))
+     :truncate-on-close (when (nil? truncate-on-close) true)})))
