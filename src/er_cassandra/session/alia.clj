@@ -216,4 +216,6 @@
            "   'replication_factor': '1'} "
            " AND durable_writes = true;")]
 
-     :truncate-on-close (when (nil? truncate-on-close) true)})))
+     :truncate-on-close (if (nil? truncate-on-close)
+                          true
+                          truncate-on-close)})))
