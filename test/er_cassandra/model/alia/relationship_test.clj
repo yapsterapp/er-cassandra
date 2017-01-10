@@ -1,9 +1,17 @@
 (ns er-cassandra.model.alia.relationship-test
   (:require
-   [er-cassandra.model.util.test :as tu :refer [fetch-record insert-record upsert-instance]]
+   [er-cassandra.model.util.test :as tu
+    :refer [fetch-record
+            insert-record
+            upsert-instance
+            record-stream
+            instance-stream
+            upsert-instance-stream
+            sync-consume-stream]]
    [clojure.test :as test :refer [deftest is are testing use-fixtures]]
    [schema.test :as st]
    [clj-uuid :as uuid]
+   [manifold.stream :as s]
    [er-cassandra.record :as r]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
@@ -72,6 +80,120 @@
     (is (= "foo" (:nick potrai)))
     (is (= "foo" (:nick potrb)))
     (is (= "foo" (:nick potrbi)))))
+
+(defn create-two-source-relationship
+  "creates two source entities denormalizing to the same target entity"
+  ([cascade-op]
+   (tu/create-table :tpr_source_a
+                    "(ida uuid primary key, factor int)")
+
+   (tu/create-table :tpr_source_b
+                    "(idb uuid primary key, value int)")
+
+   (tu/create-table :tpr_target
+                    (str "(idt uuid primary key, "
+                         " source_a_id uuid, "
+                         " source_b_id uuid, "
+                         " factor int, "
+                         " value int)"))
+
+   (tu/create-table :tpr_target_by_source_a_id
+                    (str "(idt timeuuid, "
+                         " source_a_id uuid, "
+                         " source_b_id uuid, "
+                         " factor int, "
+                         " value int, "
+                         " primary key (source_a_id, idt))"))
+
+   (tu/create-table :tpr_target_by_source_b_id
+                    (str "(idt timeuuid, "
+                         "source_a_id uuid, "
+                         "source_b_id uuid, "
+                         "factor int, "
+                         "value int, "
+                         "primary key (source_b_id, idt))"))
+
+
+   (let [target (t/create-entity
+                 {:primary-table {:name :tpr_target
+                                  :key [:idt]}
+                  :secondary-tables [{:name :tpr_target_by_source_a_id
+                                      :key [:source_a_id :idt]}
+                                     {:name :tpr_target_by_source_b_id
+                                      :key [:source_b_id :idt]}]})
+         source_a (t/create-entity
+                   {:primary-table {:name :tpr_source_a
+                                    :key [:ida]}
+                    :denorm-targets {:test {:target target
+                                            :denormalize {:factor :factor}
+                                            :cascade (or cascade-op :none)
+                                            :foreign-key [:source_a_id]}}})
+
+         source_b (t/create-entity
+                   {:primary-table {:name :tpr_source_b
+                                    :key [:idb]}
+                    :denorm-targets {:test {:target target
+                                            :denormalize {:value :value}
+                                            :cascade (or cascade-op :none)
+                                            :foreign-key [:source_b_id]}}})]
+     [source_a source_b target])))
+
+
+(deftest update-two-sources-many-records-test
+  (let [[sa sb t] (create-two-source-relationship :none)
+
+        acnt 5
+        ;; all source-a records start out with :factor 1
+        saids (repeatedly acnt uuid/v1)
+        sars (for [said saids] {:ida said :factor 1})
+
+
+        bcnt 1000
+        ;; initial source-b record :values are drawn from 1..bcnt
+        sbids (repeatedly bcnt uuid/v1)
+        sbrs (map (fn [sbid v] {:idb sbid :value v}) sbids (iterate inc 1))
+        pstep (+ (quot bcnt acnt) (if (> (mod bcnt acnt) 0) 1 0))
+        ;; bcnt records divided into acnt partitions
+        sbrs-parts (partition pstep pstep nil sbrs)]
+
+    (testing "write initial records"
+      (let [trs (flatten
+                 (for [{ida :ida factor :factor :as sar} sars]
+                   (for [sbrs sbrs-parts]
+                     (for [{idb :idb value :value :as sbr} sbrs]
+                       {:idt (uuid/v1) :source_a_id ida :source_b_id idb :factor factor :value value}))))
+
+            ;; write initial records
+            _ (sync-consume-stream (upsert-instance-stream t trs))
+
+            tr-str (instance-stream t {:buffer-size 10})
+            ftr @(s/reduce conj [] tr-str)]
+
+        (is (= (* acnt bcnt) (count ftr)))
+        (is (= (* acnt bcnt) (->> ftr (map :factor) (reduce +))))
+        (is (= (* acnt (* (/ bcnt 2) (inc bcnt))) (->> ftr (map :value) (reduce +))))))
+
+    (testing "inc the factors, inc the values"
+      (let [isars (->> sars
+                       (map (fn [sar]
+                              (assoc sar :factor 2))))
+
+            a-denorms (doall
+                       (for [isar isars]
+                         @(rel/denormalize tu/*model-session* sa isar :upsert (ts/default-timestamp-opt))))
+            _ (prn a-denorms)
+
+            tr-str (instance-stream t {:buffer-size 10})
+            ftr @(s/reduce conj [] tr-str)]
+
+        (is (= (* acnt bcnt) (count ftr)))
+        (is (= (* acnt bcnt 2) (->> ftr (map :factor) (reduce +))))
+        (is (= (* acnt (* (/ bcnt 2) (inc bcnt))) (->> ftr (map :value) (reduce +))))
+        ))
+
+    ))
+
+
 
 (deftest cascade-simple-relationship-multiple-records-test
 
