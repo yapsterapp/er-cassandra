@@ -68,6 +68,12 @@
    {(s/optional-key :where) WhereSchema
     (s/optional-key :order-by) OrderBySchema}))
 
+(s/defschema SelectBufferedOptsSchema
+  (merge
+   SelectOptsSchema
+   {(s/optional-key :fetch-size) s/Int
+    (s/optional-key :buffer-size) s/Int}))
+
 (s/defschema PartitionKeySchema
   (s/conditional
    keyword?
