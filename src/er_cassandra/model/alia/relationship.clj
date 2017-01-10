@@ -53,7 +53,7 @@
    target-record :- t/RecordSchema
    denorm-op :- DenormalizeOp
    opts :- fns/DenormalizeOptsSchema]
-  (let [target-uberkey (-> target-entity :primary-table :key)
+  (let [target-uberkey (-> target-entity :primary-table :key flatten)
         target-uberkey-value (t/extract-uber-key-value
                               target-entity
                               target-record)
