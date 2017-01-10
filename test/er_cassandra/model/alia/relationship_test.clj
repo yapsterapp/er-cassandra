@@ -156,7 +156,10 @@
         sbrs (map (fn [sbid v] {:idb sbid :value v}) sbids (iterate inc 1))
         pstep (+ (quot bcnt acnt) (if (> (mod bcnt acnt) 0) 1 0))
         ;; bcnt records divided into acnt partitions
-        sbrs-parts (partition pstep pstep nil sbrs)]
+        sbrs-parts (partition pstep pstep nil sbrs)
+
+        ;; make sure we page
+        fetch-size (max 1 (quot bcnt 10))]
 
     (testing "write initial records"
       (let [trs (flatten
@@ -183,7 +186,12 @@
             a-denorms (->> isars
                            (s/buffer 5)
                            (s/map (fn [isar]
-                                    (rel/denormalize cassandra sa isar :upsert (ts/default-timestamp-opt))))
+                                    (rel/denormalize cassandra
+                                                     sa
+                                                     isar
+                                                     :upsert
+                                                     (ts/default-timestamp-opt
+                                                      {:fetch-size fetch-size}))))
                            (s/realize-each)
                            (s/reduce conj [])
                            deref)
@@ -203,7 +211,12 @@
             b-denorms (->> isbrs
                            (s/buffer 5)
                            (s/map (fn [isbr]
-                                    (rel/denormalize cassandra sb isbr :upsert (ts/default-timestamp-opt))))
+                                    (rel/denormalize cassandra
+                                                     sb
+                                                     isbr
+                                                     :upsert
+                                                     (ts/default-timestamp-opt
+                                                      {:fetch-size fetch-size}))))
                            (s/realize-each)
                            (s/reduce conj [])
                            deref)
@@ -228,13 +241,23 @@
             a-denorms-d (->> isars
                              (s/buffer 5)
                              (s/map (fn [isar]
-                                      (rel/denormalize cassandra sa isar :upsert (ts/default-timestamp-opt))))
+                                      (rel/denormalize cassandra
+                                                       sa
+                                                       isar
+                                                       :upsert
+                                                       (ts/default-timestamp-opt
+                                                        {:fetch-size fetch-size}))))
                              (s/realize-each)
                              (s/reduce conj []))
             b-denorms-d (->> isbrs
                              (s/buffer 5)
                              (s/map (fn [isbr]
-                                      (rel/denormalize cassandra sb isbr :upsert (ts/default-timestamp-opt))))
+                                      (rel/denormalize cassandra
+                                                       sb
+                                                       isbr
+                                                       :upsert
+                                                       (ts/default-timestamp-opt
+                                                        {:fetch-size fetch-size}))))
                              (s/realize-each)
                              (s/reduce conj []))
 
@@ -248,9 +271,7 @@
 
         (is (= (* acnt bcnt) (count ftr)))
         (is (= (* 3 acnt bcnt) (->> ftr (map :factor) (reduce +))))
-        (is (= (* acnt (- (* (/ (+ 2 bcnt) 2) (+ 3 bcnt)) 3)) (->> ftr (map :value) (reduce +))))))
-
-    ))
+        (is (= (* acnt (- (* (/ (+ 2 bcnt) 2) (+ 3 bcnt)) 3)) (->> ftr (map :value) (reduce +))))))))
 
 
 
