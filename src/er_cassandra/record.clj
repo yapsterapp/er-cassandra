@@ -12,7 +12,7 @@
    [er-cassandra.session :as session])
   (:import
    [er_cassandra.session Session]
-   [qbits.hayt.cql CQLRaw]))
+   [qbits.hayt.cql CQLRaw CQLFn]))
 
 ;; low-level record-based cassandra statement generation and execution
 ;;
@@ -44,7 +44,8 @@
 (s/defschema SelectColumnSchema
   (s/conditional
    keyword? s/Keyword
-   :else CQLRaw))
+   #(instance? CQLRaw %) CQLRaw
+   #(instance? CQLFn %) CQLFn))
 
 (s/defschema SelectColumnsSchema
   [(s/one SelectColumnSchema :first-col) SelectColumnSchema])
