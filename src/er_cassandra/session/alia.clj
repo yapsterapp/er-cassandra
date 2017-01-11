@@ -135,7 +135,9 @@
    then reset the spy-log"
   [spy-session]
   (let [ks (s/keyspace spy-session)
-        mts (mutated-tables spy-session)]
+        mts (mutated-tables spy-session)
+        mts (filterv #(not= "schema_migrations" (some-> % name)) mts)]
+
     (when-not (str/ends-with? (name ks) "_test")
       (throw (ex-info "truncate-spy-tables is only for *_test keyspaces"
                       {:keyspace ks
@@ -161,7 +163,6 @@
   (execute [this statement]
     (s/execute this statement {}))
   (execute [_ statement opts]
-    (info "spying" statement opts)
     (swap! spy-log-atom conj statement)
     (execute* alia-session statement opts))
   (execute-buffered [this statement]
