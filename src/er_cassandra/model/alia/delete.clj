@@ -97,7 +97,8 @@
                                               entity
                                               key
                                               record-or-key-value
-                                              nil)]
+                                              nil)
+            opts (ts/default-timestamp-opt opts)]
        (if record
          (delete-with-primary session entity key record opts)
          (return
