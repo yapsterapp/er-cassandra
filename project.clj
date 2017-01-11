@@ -64,5 +64,5 @@
 
              :cassandra-unit
              {:dependencies
-              [[org.cassandraunit/cassandra-unit "3.0.0.1"]]}
+              [[org.cassandraunit/cassandra-unit "3.1.1.0"]]}
              })
