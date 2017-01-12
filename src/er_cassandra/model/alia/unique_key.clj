@@ -328,6 +328,7 @@
     entity :- Entity
     record :- t/MaybeRecordSchema
     {:keys [if-not-exists
+            if-exists
             only-if] :as opts} :- fns/UpsertOptsWithTimestampSchema]
    (with-context deferred-context
      (mlet [primary-table-name (get-in entity [:primary-table :name])
