@@ -62,6 +62,12 @@
   ([table record opts]
    @(r/insert *model-session* table record (ts/past-timestamp-opt opts))))
 
+(defn delete-record
+  "delete a record with a timestamp 1ms in the past by default"
+  ([table key key-value] (delete-record table key key-value {}))
+  ([table key key-value opts]
+   @(r/delete *model-session* table key key-value opts)))
+
 (defn upsert-instance
   "upsert instances with a timestamp 1ms in the past by default"
   ([entity record] (upsert-instance entity record nil))
