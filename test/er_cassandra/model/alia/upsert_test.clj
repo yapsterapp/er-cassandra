@@ -1,6 +1,7 @@
 (ns er-cassandra.model.alia.upsert-test
   (:require
-   [er-cassandra.model.util.test :as tu :refer [fetch-record insert-record upsert-instance]]
+   [er-cassandra.model.util.test :as tu
+    :refer [fetch-record insert-record delete-record upsert-instance]]
    [clojure.test :as test :refer [deftest is are testing use-fixtures]]
    [schema.test :as st]
    [clj-uuid :as uuid]
@@ -563,3 +564,95 @@
 
     (is (= record (fetch-record :upsert_unique_lookup_secondaries_test
                                 [:org_id :id] [org-id id])))))
+
+(deftest upsert*-if-not-exists-test
+  (let [m (create-simple-entity)
+        id (uuid/v1)
+
+        record-foo {:id id :nick "foo"}
+        record-bar {:id id :nick "bar"}]
+
+    (testing "insert record-foo if-not-exists"
+      (let [[r e] @(u/upsert*
+                    tu/*model-session*
+                    m
+                    record-foo
+                    (ts/default-timestamp-opt
+                     {:if-not-exists true}))]
+        (is (= record-foo r))))
+
+    (testing "doesn't insert record-bar if-not-exists"
+      (let [[r e] @(u/upsert*
+                    tu/*model-session*
+                    m
+                    record-bar
+                    (ts/default-timestamp-opt
+                     {:if-not-exists true}))
+
+            fr (fetch-record :simple_upsert_test :id id)]
+        (is (= nil r))
+        (is (= record-foo fr))))))
+
+(deftest upsert*-if-exists-test
+  (let [m (create-simple-entity)
+        id (uuid/v1)
+
+        record-foo {:id id :nick "foo"}
+        record-bar {:id id :nick "bar"}
+
+        _ (insert-record :simple_upsert_test record-bar)]
+
+    (testing "upsert record-foo if-exists and it does exist"
+      (let [[r e] @(u/upsert*
+                    tu/*model-session*
+                    m
+                    record-foo
+                    (ts/default-timestamp-opt
+                     {:if-exists true}))
+            fr (fetch-record :simple_upsert_test :id id)]
+        (is (= record-foo fr))))
+
+    (testing "doesn't insert record-bar if-exists and it doesn't exist"
+      (let [_ (delete-record :simple_upsert_test :id id)
+
+            [r e] @(u/upsert*
+                    tu/*model-session*
+                    m
+                    record-bar
+                    (ts/default-timestamp-opt
+                     {:if-exists true}))
+
+            fr (fetch-record :simple_upsert_test :id id)]
+        (is (= nil r))
+        (is (= record-bar fr))))))
+
+(deftest upsert*-only-if-test
+  (let [m (create-simple-entity)
+        id (uuid/v1)
+
+        record-foo {:id id :nick "foo"}
+        record-bar {:id id :nick "bar"}
+
+        _ (insert-record :simple_upsert_test record-bar)]
+
+    (testing "upsert record-foo if condition holds"
+      (let [[r e] @(u/upsert*
+                    tu/*model-session*
+                    m
+                    record-foo
+                    (ts/default-timestamp-opt
+                     {:only-if [[:= :nick "bar"]]}))
+            fr (fetch-record :simple_upsert_test :id id)]
+        (is (= record-foo fr))))
+
+    (testing "doesn't insert record-bar if condition fails"
+      (let [[r e] @(u/upsert*
+                    tu/*model-session*
+                    m
+                    record-bar
+                    (ts/default-timestamp-opt
+                     {:only-if [[:= :nick "bar"]]}))
+
+            fr (fetch-record :simple_upsert_test :id id)]
+        (is (= nil r))
+        (is (= record-foo fr))))))
