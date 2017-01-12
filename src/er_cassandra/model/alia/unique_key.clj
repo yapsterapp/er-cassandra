@@ -343,7 +343,7 @@
                                         nok-record
                                         {:if-not-exists true})
 
-                              (not only-if)
+                              (and (not if-exists) (not only-if))
                               (r/insert session
                                         primary-table-name
                                         nok-record)
@@ -355,18 +355,20 @@
                               if-not-exists
                               (applied? insert-response)
 
-                              (not only-if) true
+                              (and (not if-exists) (not only-if)) true
 
                               :else false)]
 
             update-response (if (and (not inserted?)
-                                     only-if)
+                                     (or if-exists only-if))
                               (r/update
                                session
                                primary-table-name
                                primary-table-key
                                nok-record
-                               {:only-if only-if})
+                               (if only-if
+                                 {:only-if only-if}
+                                 {:if-exists true}))
                               (return nil))
 
             :let [updated? (applied? update-response)]
@@ -409,7 +411,7 @@
    entity :- Entity
    old-key-record :- t/MaybeRecordSchema ;; record with old unique keys
    new-record :- t/MaybeRecordSchema
-   opts :- fns/UpsertOptsWithTimestampSchema] ;; record with updated unique keys
+   opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema] ;; record with updated unique keys
   (with-context deferred-context
     (mlet [release-key-responses (release-stale-unique-keys
                                   session
@@ -462,6 +464,7 @@
                                                  entity
                                                  rec-old-keys
                                                  new-record
-                                                 opts)
+                                                 (fns/upsert-opts->using-only
+                                                  opts))
         (return
          [nil upsert-errors])))))

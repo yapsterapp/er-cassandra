@@ -59,6 +59,7 @@
   [opts]
   (update-in opts [:using] (fn [u] (dissoc u :timestamp))))
 
+
 (s/defschema DenormalizeOptsSchema
   (merge
    UpsertUsingOnlyOptsWithTimestampSchema

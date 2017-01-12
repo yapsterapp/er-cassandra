@@ -624,7 +624,7 @@
 
             fr (fetch-record :simple_upsert_test :id id)]
         (is (= nil r))
-        (is (= record-bar fr))))))
+        (is (= nil fr))))))
 
 (deftest upsert*-only-if-test
   (let [m (create-simple-entity)
