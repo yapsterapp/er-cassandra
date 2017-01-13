@@ -11,6 +11,7 @@
    [er-cassandra.session]
    [er-cassandra.key :as k]
    [er-cassandra.record :as r]
+   [er-cassandra.util.stream :as stu]
    [er-cassandra.model :as m]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.error :as e]
@@ -153,22 +154,21 @@
                                      (select-keys opts [:fetch-size]))
 
            ;; a (hopefully empty) stream of any errors from denormalization
-           :let [trerrs (->> trs
-                             (st/map #(denormalize-to-target-record
-                                       session
-                                       source-entity
-                                       target-entity
-                                       source-record
-                                       denorm-rel
-                                       %
-                                       denorm-op
-                                       opts))
-                             (st/buffer (or (:buffer-size opts) 25))
-                             (st/map only-error))]
+           :let [denorms (->> trs
+                              (st/map #(denormalize-to-target-record
+                                        session
+                                        source-entity
+                                        target-entity
+                                        source-record
+                                        denorm-rel
+                                        %
+                                        denorm-op
+                                        opts))
+                              (st/buffer (or (:buffer-size opts) 25)))]
 
            ;; consumes the whole stream, returns the first error
            ;; or nil if no errors
-           maybe-err (st/reduce (fn [v i] (or v i)) nil trerrs)]
+           maybe-err (stu/keep-stream-error denorms)]
 
       ;; if there are errors, return the first as an exemplar
       (if (nil? maybe-err)
