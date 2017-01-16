@@ -88,7 +88,7 @@
 
   ([session :- Session
     entity :- Entity
-    key :- t/PrimaryKeySchema
+    key :- r/KeySchema
     record-or-key-value :- r/RecordOrKeyValueSchema
     opts :- r/DeleteOptsSchema]
 
@@ -100,6 +100,11 @@
                                               nil)
             opts (ts/default-timestamp-opt opts)]
        (if record
-         (delete-with-primary session entity key record opts)
+         (delete-with-primary
+          session
+          entity
+          (-> entity :primary-table :key)
+          record
+          opts)
          (return
           [:ok nil :no-primary-record]))))))
