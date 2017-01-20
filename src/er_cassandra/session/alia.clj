@@ -204,7 +204,13 @@
   (create-spy-session
    (merge
     args
-    {:contact-points (or contact-points ["localhost"])
+    {:contact-points (or (some->
+                          (env :cassandra-contact-points)
+                          (str/split #","))
+                         (some->
+                          (env :cassandra-host)
+                          (str/split #","))
+                         ["localhost"])
      :port (or port
                (some-> (env :cassandra-port) Integer/parseInt)
                9042)
