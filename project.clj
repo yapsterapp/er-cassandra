@@ -4,7 +4,7 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
 
-  :plugins [[lein-modules-bpk/lein-modules "0.3.13.bpk-SNAPSHOT"]]
+  :plugins [[lein-modules-bpk/lein-modules "0.3.13.bpk-20160816.002513-1"]]
 
   :pedantic? :abort
 
