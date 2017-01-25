@@ -1,10 +1,8 @@
-(defproject employeerepublic/er-cassandra "_"
+(defproject employeerepublic/er-cassandra "0.11"
   :description "a simple cassandra conector"
   :url "https://github.com/employeerepublic/er-cassandra"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-
-  :plugins [[lein-modules-bpk/lein-modules "0.3.13.bpk-20160816.002513-1"]]
 
   :pedantic? :abort
 
@@ -12,33 +10,18 @@
                org.clojure/tools.reader
                org.clojure/tools.logging]
 
-  :dependencies [[org.clojure/clojure "_"]
+  :dependencies [[org.clojure/clojure "1.8.0"]
 
                  [org.clojure/tools.reader "1.0.0-beta3"]
                  [org.clojure/tools.logging "0.3.1"]
 
                  ;; wow, such logging
-                 [com.taoensso/timbre "4.7.4"]
+                 [ch.qos.logback/logback-classic "1.1.7"]
                  [org.slf4j/slf4j-api "1.7.21"]
-
-                 ;; JAR-HELL WARNING: slf4j-timbre has (needs) :aot :all
-                 ;; which includes compiled version of a bunch of
-                 ;; taoensso projects which will conflict
-                 ;; with uncompiled versions required elsewhere
-                 ;; unless slf4j-timbre is kept up to date
-                 ;;
-                 ;; org.clojure/clojure
-                 ;; org.clojure/tools.reader
-                 ;; org.slf4j/slf4j-api
-                 ;; com.taoensso/timbre,
-                 ;; com.taoensso/encore,
-                 ;; com.taoensso/truss
-                 ;; io.aviso/pretty
-                  [employeerepublic/slf4j-timbre "0.4.2"]
-
                  [org.slf4j/jcl-over-slf4j "1.7.21"]
                  [org.slf4j/log4j-over-slf4j "1.7.21"]
                  [org.slf4j/jul-to-slf4j "1.7.21"]
+                 [com.taoensso/timbre "4.7.4"]
 
                  [org.clojure/tools.cli "0.3.5"]
                  [org.clojure/core.match "0.3.0-alpha4"]
@@ -60,9 +43,4 @@
 
   :profiles {:repl {:pedantic? :ranges}
 
-             :test {:resource-paths ["test-resources" "resources"]}
-
-             :cassandra-unit
-             {:dependencies
-              [[org.cassandraunit/cassandra-unit "3.1.1.0"]]}
-             })
+             :test {:resource-paths ["test-resources" "resources"]}})

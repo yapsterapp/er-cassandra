@@ -4,7 +4,6 @@
    [taoensso.timbre :refer [trace debug info warn error]]
    [deferst :refer [defsystem]]
    [deferst.system :as sys]
-   [slf4j-timbre.configure :as logconf]
    [er-cassandra.session :as s]
    [er-cassandra.session.alia :as alia-session]))
 
@@ -16,8 +15,7 @@
             {:keyspace "er_cassandra_test"}}})
 
 (def alia-test-session-system-def
-  [[:logging logconf/configure-timbre [:timbre]]
-   [:cassandra
+  [[:cassandra
     alia-session/create-test-session
     [:config :alia-session]]])
 

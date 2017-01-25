@@ -4,7 +4,6 @@
    [taoensso.timbre :refer [trace debug info warn error]]
    [deferst :refer [defsystem]]
    [deferst.system :as sys]
-   [slf4j-timbre.configure :as logconf]
    [manifold.stream :as stream]
    [er-cassandra.record :as r]
    [er-cassandra.session :as s]
@@ -23,8 +22,7 @@
              :truncate-on-close true}}})
 
 (def alia-test-model-session-system-def
-  [[:logging logconf/configure-timbre [:timbre]]
-   [:cassandra ams/create-test-session [:config :alia-session]]])
+  [[:cassandra ams/create-test-session [:config :alia-session]]])
 
 (defn with-model-session-fixture
   []
