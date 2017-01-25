@@ -1,7 +1,8 @@
 (ns er-cassandra.model.util.test
   (:require
    [clojure.test :as t]
-   [taoensso.timbre :refer [trace debug info warn error]]
+   [taoensso.timbre :as timbre
+    :refer [trace debug info warn error]]
    [deferst :refer [defsystem]]
    [deferst.system :as sys]
    [manifold.stream :as stream]
@@ -21,8 +22,15 @@
              ;; set to false to preserve db contents after tests
              :truncate-on-close true}}})
 
+(defn configure-timbre
+  [_]
+  (timbre/set-config!
+   (assoc timbre/example-config
+          :level :warn)))
+
 (def alia-test-model-session-system-def
-  [[:cassandra ams/create-test-session [:config :alia-session]]])
+  [[:logging configure-timbre {}]
+   [:cassandra ams/create-test-session [:config :alia-session]]])
 
 (defn with-model-session-fixture
   []

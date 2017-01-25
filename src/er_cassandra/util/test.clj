@@ -1,7 +1,8 @@
 (ns er-cassandra.util.test
   (:require
    [clojure.test :as t]
-   [taoensso.timbre :refer [trace debug info warn error]]
+   [taoensso.timbre :as timbre
+    :refer [trace debug info warn error]]
    [deferst :refer [defsystem]]
    [deferst.system :as sys]
    [er-cassandra.session :as s]
@@ -14,8 +15,15 @@
    :config {:alia-session
             {:keyspace "er_cassandra_test"}}})
 
+(defn configure-timbre
+  [_]
+  (timbre/set-config!
+   (assoc timbre/example-config
+          :level :warn)))
+
 (def alia-test-session-system-def
-  [[:cassandra
+  [[:logging configure-timbre {}]
+   [:cassandra
     alia-session/create-test-session
     [:config :alia-session]]])
 
