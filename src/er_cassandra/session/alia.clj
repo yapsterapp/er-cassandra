@@ -1,7 +1,7 @@
 (ns er-cassandra.session.alia
   (:require
    [plumbing.core :refer :all]
-   [taoensso.timbre :refer [trace debug info warn error]]
+   [taoensso.timbre :refer [log trace debug info warn error]]
    [environ.core :refer [env]]
    [clojure.string :as str]
    [qbits.alia :as alia]
@@ -18,28 +18,29 @@
     SpySession
     KeyspaceProvider]))
 
-(def ^:dynamic *trace* nil)
-
-(defmacro with-debug
-  [& forms]
-  `(binding [*trace* true]
-     ~@forms))
-
 (defn- execute*
-  [alia-session statement opts]
+  [alia-session
+   statement
+   {trace? :trace?
+    :as  opts}]
   (aliam/execute
    alia-session
    (let [str-statement (if (string? statement)
                          statement
                          (h/->raw statement))]
-     (when *trace*
-       (debug str-statement))
+     (when trace?
+       (if (true? trace?)
+         (debug str-statement)
+         (log trace? str-statement)))
      str-statement)
-   opts))
+   (dissoc opts :trace?)))
 
 (defn- execute-buffered*
   "execute a statement returning a Deferred<Stream<record>>"
-  [alia-session statement opts]
+  [alia-session
+   statement
+   {trace? :trace?
+    :as  opts}]
   (return
    deferred-context
    (aliam/execute-buffered
@@ -47,10 +48,12 @@
     (let [str-statement (if (string? statement)
                           statement
                           (h/->raw statement))]
-      (when *trace*
-        (debug str-statement))
+      (when trace?
+        (if (true? trace?)
+          (debug str-statement)
+          (log trace? str-statement)))
       str-statement)
-    opts)))
+    (dissoc opts :trace?))))
 
 (defn shutdown-session-and-cluster
   [session]
@@ -91,26 +94,29 @@
              _ (alia/execute alia-session (str "USE " keyspace ";"))]
         (return alia-session)))))
 
-(defrecord AliaSession [keyspace alia-session]
+(defrecord AliaSession [keyspace alia-session trace?]
   Session
   (execute [_ statement]
     (execute* alia-session statement {}))
   (execute [_ statement opts]
-    (execute* alia-session statement opts))
+    (execute* alia-session statement (assoc opts :trace? trace?)))
   (execute-buffered [_ statement]
     (execute-buffered* alia-session statement {}))
   (execute-buffered [_ statement opts]
-    (execute-buffered* alia-session statement opts))
+    (execute-buffered* alia-session statement (opts :trace? trace?)))
   (close [_]
     (shutdown-session-and-cluster alia-session)))
 
 (defnk create-session
-  [contact-points datacenter keyspace :as args]
+  [contact-points datacenter keyspace {trace? false}:as args]
   (with-context deferred-context
-    (mlet [datastax-session (create-alia-session* args)
-           :let [alia-session (->AliaSession
-                               keyspace
-                               datastax-session)]]
+    (mlet
+      [datastax-session (create-alia-session*
+                         (dissoc args :trace?))
+       :let [alia-session (map->AliaSession
+                           {:keyspace keyspace
+                            :alia-session datastax-session
+                            :trace? trace?})]]
       (return
        [alia-session
         (fn [] (s/close alia-session))]))))
@@ -158,18 +164,22 @@
         (s/reset-spy-log spy-session)
         (return true)))))
 
-(defrecord AliaSpySession [keyspace alia-session spy-log-atom truncate-on-close]
+(defrecord AliaSpySession [keyspace
+                           alia-session
+                           spy-log-atom
+                           truncate-on-close
+                           trace?]
   Session
   (execute [this statement]
     (s/execute this statement {}))
   (execute [_ statement opts]
     (swap! spy-log-atom conj statement)
-    (execute* alia-session statement opts))
+    (execute* alia-session statement (assoc opts :trace? trace?)))
   (execute-buffered [this statement]
     (s/execute-buffered this statement {}))
   (execute-buffered [_ statement opts]
     (swap! spy-log-atom conj statement)
-    (execute-buffered* alia-session statement opts))
+    (execute-buffered* alia-session statement (assoc opts :trace? trace?)))
   (close [self]
     (with-context deferred-context
       (mlet [_ (if truncate-on-close
@@ -185,14 +195,23 @@
   (reset-spy-log [_] (reset! spy-log-atom [])))
 
 (defnk create-spy-session
-  [contact-points datacenter keyspace {truncate-on-close nil} :as args]
+  [contact-points
+   datacenter
+   keyspace
+   {truncate-on-close nil}
+   {trace? nil}
+   :as args]
   (with-context deferred-context
-    (mlet [datastax-session (create-alia-session* (dissoc args :truncate-on-close))
-           :let [spy-session (->AliaSpySession
-                              keyspace
-                              datastax-session
-                              (atom [])
-                              truncate-on-close)]]
+    (mlet [datastax-session (create-alia-session*
+                             (dissoc args
+                                     :truncate-on-close
+                                     :trace?))
+           :let [spy-session (map->AliaSpySession
+                              {:keyspace keyspace
+                               :alia-session datastax-session
+                               :spy-log-atom (atom [])
+                               :truncate-on-close truncate-on-close
+                               :trace? trace?})]]
       (return
        [spy-session
         (fn [] (s/close spy-session))]))))
@@ -200,7 +219,13 @@
 ;; a test-session is just a spy-session which will initialise it's keyspace
 ;; if necesary and will truncate any used tables when closed
 (defnk create-test-session
-  [{contact-points nil} {port nil} {datacenter nil} {truncate-on-close nil} keyspace :as args]
+  [{contact-points nil}
+   {port nil}
+   {datacenter nil}
+   {truncate-on-close nil}
+   keyspace
+   {trace? nil}
+   :as args]
   (create-spy-session
    (merge
     args
@@ -225,4 +250,5 @@
 
      :truncate-on-close (if (nil? truncate-on-close)
                           true
-                          truncate-on-close)})))
+                          truncate-on-close)
+     :trace? trace?})))
