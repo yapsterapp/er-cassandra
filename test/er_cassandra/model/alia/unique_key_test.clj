@@ -90,7 +90,7 @@
 
         [ida idb] [(uuid/v1) (uuid/v1)]
 
-        _ (r/insert tu/*model-session* :unique_key_test {:id ida :nick "foo"})]
+        _ (tu/insert-record :unique_key_test {:id ida :nick "foo"})]
 
     (testing "acquire an uncontended unique-key"
       (let [[status report reason] @(uk/acquire-unique-key
@@ -124,8 +124,8 @@
 
     (testing "acquiring a stale ref"
       (let [;; remove the owning record so the ref is stale
-            _ (r/delete tu/*model-session* :unique_key_test :id ida)
-            _ (r/insert tu/*model-session* :unique_key_test {:id idb :nick "foo"})
+            _ (tu/delete-record :unique_key_test :id ida)
+            _ (tu/insert-record :unique_key_test {:id idb :nick "foo"})
             [status key-desc reason] @(uk/acquire-unique-key
                                        tu/*model-session*
                                        m
@@ -166,12 +166,8 @@
 
         [ida idb] [(uuid/v1) (uuid/v1)]
 
-        _ (r/insert tu/*model-session*
-                    :unique_key_test
-                    {:id ida :nick "foo"})
-        _ (r/insert tu/*model-session*
-                    :unique_key_test_by_nick
-                    {:nick "foo" :id ida})]
+        _ (tu/insert-record :unique_key_test {:id ida :nick "foo"})
+        _ (tu/insert-record :unique_key_test_by_nick {:nick "foo" :id ida})]
     (testing "release an owned key"
       (let [[status key-desc reason] @(uk/release-unique-key
                                        tu/*model-session*
@@ -179,13 +175,16 @@
                                        (-> m :unique-key-tables first)
                                        [ida]
                                        ["foo"]
-                                       (ts/default-timestamp-opt))]
+                                       (ts/default-timestamp-opt))
+            _ (Thread/sleep 1000)
+            dr (fetch-record :unique_key_test_by_nick :nick "foo")]
         (is (= :ok status))
         (is (= {:uber-key (t/uber-key m)
                 :uber-key-value [ida]
                 :key [:nick]
                 :key-value ["foo"]}))
-        (is (= :deleted reason))))
+        (is (= :deleted reason))
+        (is (= nil dr))))
 
     (testing "releasing a non-existing key"
       (let [[status key-desc reason] @(uk/release-unique-key
@@ -204,9 +203,7 @@
 
     (testing "attempting to release someone else's key"
       (let [;; first give the key back to ida
-            _ (r/insert tu/*model-session*
-                        :unique_key_test_by_nick
-                        {:nick "foo" :id ida})
+            _ (tu/insert-record :unique_key_test_by_nick {:nick "foo" :id ida})
             [status key-desc reason] @(uk/release-unique-key
                                        tu/*model-session*
                                        m
@@ -262,12 +259,9 @@
     (let [sm (create-singular-unique-key-entity)
           [ida idb] [(uuid/v1) (uuid/v1)]
 
-          _ @(r/insert tu/*model-session*
-                       :singular_unique_key_test
-                       {:id ida :nick "foo"})
-          _ @(r/insert tu/*model-session*
-                       :singular_unique_key_test_by_nick
-                       {:nick "foo" :id ida})]
+          _ (tu/insert-record :singular_unique_key_test {:id ida :nick "foo"})
+          _ (tu/insert-record :singular_unique_key_test_by_nick
+                              {:nick "foo" :id ida})]
 
       (testing "release singular stale unique key"
         (let [[[status key-desc reason]] @(uk/release-stale-unique-keys
@@ -285,15 +279,12 @@
     (let [cm (create-set-unique-key-entity)
 
           [ida idb] [(uuid/v1) (uuid/v1)]
-         _ @(r/insert tu/*model-session*
-                       :set_unique_key_test
-                       {:id ida :nick #{"foo" "bar" "baz"}})
-          _ @(r/insert tu/*model-session*
-                       :set_unique_key_test_by_nick
-                       {:nick "foo" :id ida})
-          _ @(r/insert tu/*model-session*
-                       :set_unique_key_test_by_nick
-                       {:nick "bar" :id ida})]
+          _ (tu/insert-record :set_unique_key_test
+                              {:id ida :nick #{"foo" "bar" "baz"}})
+          _ (tu/insert-record :set_unique_key_test_by_nick
+                              {:nick "foo" :id ida})
+          _ (tu/insert-record :set_unique_key_test_by_nick
+                              {:nick "bar" :id ida})]
 
       (testing "release set stale unique key values"
         (let [r @(uk/release-stale-unique-keys
@@ -317,9 +308,8 @@
     (let [sm (create-singular-unique-key-entity)
           [ida idb] [(uuid/v1) (uuid/v1)]
 
-          _ @(r/insert tu/*model-session*
-                       :singular_unique_key_test
-                       {:id ida :nick "foo"})]
+          _ (tu/insert-record :singular_unique_key_test
+                              {:id ida :nick "foo"})]
 
       (testing "acquire a singular unique key"
         (let [[[status key-desc reason]] @(uk/acquire-unique-keys
@@ -347,12 +337,10 @@
     (let [cm (create-set-unique-key-entity)
           [ida idb] [(uuid/v1) (uuid/v1)]
 
-          _ @(r/insert tu/*model-session*
-                       :set_unique_key_test
-                       {:id ida :nick #{"foo" "bar"}})
-          _ @(r/insert tu/*model-session*
-                       :set_unique_key_test_by_nick
-                       {:nick "foo" :id ida})]
+          _ (tu/insert-record :set_unique_key_test
+                              {:id ida :nick #{"foo" "bar"}})
+          _ (tu/insert-record :set_unique_key_test_by_nick
+                              {:nick "foo" :id ida})]
       (testing "acquire values from a set of unique keys"
         (let [r @(uk/acquire-unique-keys
                   tu/*model-session*
@@ -528,9 +516,8 @@
 
     (testing "update existing record"
       (let [id (uuid/v1)
-            _ @(r/insert tu/*model-session*
-                         :upsert_primary_without_unique_keys_test
-                         {:id id :nick "blah" :a "olda" :b "oldb"})
+            _ (tu/insert-record :upsert_primary_without_unique_keys_test
+                                {:id id :nick "blah" :a "olda" :b "oldb"})
             r @(uk/upsert-primary-record-without-unique-keys
                 tu/*model-session*
                 m
@@ -540,7 +527,7 @@
 
     (testing "with if-not-exists"
 
-      (let [id (uuid/v1)]
+      (let [[id id-b] [(uuid/v1) (uuid/v1)]]
         (testing "if it doesn't already exist"
           (let [r @(uk/upsert-primary-record-without-unique-keys
                     tu/*model-session*
@@ -572,16 +559,15 @@
     (testing "with only-if"
       (testing "if it already exists"
         (let [id (uuid/v1)
-              _ @(r/insert tu/*model-session*
-                           :upsert_primary_without_unique_keys_test
-                           {:id id :nick "blah" :a "olda" :b "oldb"})
+              _ (tu/insert-record :upsert_primary_without_unique_keys_test
+                                  {:id id :nick "bloogh" :a "olda" :b "oldb"})
               r @(uk/upsert-primary-record-without-unique-keys
                   tu/*model-session*
                   m
-                  {:id id :nick "foo" :a "newa" :b "newb"}
+                  {:id id :nick "bloogh" :a "newa" :b "newb"}
                   (ts/default-timestamp-opt
-                   {:only-if [[:= :nick "blah"]]}))]
-          (is (= [{:id id :nick "blah" :a "newa" :b "newb"} nil]
+                   {:only-if [[:= :nick "bloogh"]]}))]
+          (is (= [{:id id :nick "bloogh" :a "newa" :b "newb"} nil]
                  r))))
 
       (testing "if it doesn't already exist"
@@ -589,14 +575,14 @@
               r @(uk/upsert-primary-record-without-unique-keys
                   tu/*model-session*
                   m
-                  {:id id :nick "foo" :a "newa" :b "newb"}
+                  {:id id :nick "foogle" :a "newa" :b "newb"}
                   (ts/default-timestamp-opt
                    {:only-if [[:= :nick "blah"]]}))]
           (is (= [nil
                   [[:upsert/primary-record-upsert-error
                     {:record
                      {:id id,
-                      :nick "foo",
+                      :nick "foogle",
                       :a "newa",
                       :b "newb"},
                      :if-not-exists nil,
@@ -611,10 +597,9 @@
     (let [m (create-mixed-unique-key-entity)
           [org-id ida idb] [(uuid/v1) (uuid/v1) (uuid/v1)]]
       (testing "acquire some keys"
-        (let [_ @(r/insert tu/*model-session*
-                           :mixed_unique_key_test
-                           {:org_id org-id
-                            :id ida})
+        (let [_ (tu/insert-record :mixed_unique_key_test
+                                  {:org_id org-id
+                                   :id ida})
               updated-a {:org_id org-id
                          :id ida
                          :stuff "blah"
@@ -644,10 +629,9 @@
                                :phone "123456")))))
 
       (testing "mixed acquire / failure"
-        (let [_ @(r/insert tu/*model-session*
-                           :mixed_unique_key_test
-                           {:org_id org-id
-                            :id idb})
+        (let [_ (tu/insert-record :mixed_unique_key_test
+                                  {:org_id org-id
+                                   :id idb})
 
               [record
                acquire-failures] @(uk/update-unique-keys-after-primary-upsert
