@@ -143,7 +143,7 @@
 (deftest delete-index-record-test
   (let [m (create-simple-entity)
         id (uuid/v1)
-        _ @(r/insert tu/*model-session* :simple_upsert_test {:id id :nick "foo"})
+        _ (tu/insert-record :simple_upsert_test {:id id :nick "foo"})
         [status
          detail
          reason] @(u/delete-index-record tu/*model-session*
@@ -213,7 +213,7 @@
   (let [m (create-secondary-entity)
         [org-id id] [(uuid/v1) (uuid/v1)]
         r {:org_id org-id :id id :nick "foo"}
-        _ @(r/insert tu/*model-session* :secondary_upsert_test_by_nick r)
+        _ (tu/insert-record :secondary_upsert_test_by_nick r)
         old-r (fetch-record :secondary_upsert_test_by_nick [:org_id :nick] [org-id "foo"])
         [status
          record
