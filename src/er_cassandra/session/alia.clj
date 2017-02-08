@@ -22,7 +22,7 @@
   [alia-session
    statement
    {trace? :trace?
-    :as  opts}]
+    :as opts}]
   (aliam/execute
    alia-session
    (let [str-statement (if (string? statement)
@@ -33,7 +33,8 @@
          (debug str-statement)
          (log trace? str-statement)))
      str-statement)
-   (dissoc opts :trace?)))
+   (-> opts
+       (dissoc :trace?))))
 
 (defn- execute-buffered*
   "execute a statement returning a Deferred<Stream<record>>"
@@ -53,7 +54,8 @@
           (debug str-statement)
           (log trace? str-statement)))
       str-statement)
-    (dissoc opts :trace?))))
+    (-> opts
+        (dissoc :trace?)))))
 
 (defn shutdown-session-and-cluster
   [session]
@@ -112,7 +114,7 @@
   (with-context deferred-context
     (mlet
       [datastax-session (create-alia-session*
-                         (dissoc args :trace?))
+                         (dissoc args :trace? :consistency))
        :let [alia-session (map->AliaSession
                            {:keyspace keyspace
                             :alia-session datastax-session
@@ -205,7 +207,8 @@
     (mlet [datastax-session (create-alia-session*
                              (dissoc args
                                      :truncate-on-close
-                                     :trace?))
+                                     :trace?
+                                     :consistency))
            :let [spy-session (map->AliaSpySession
                               {:keyspace keyspace
                                :alia-session datastax-session
