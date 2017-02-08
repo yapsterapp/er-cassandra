@@ -244,27 +244,26 @@
 ;; since this is undesirable for secondary tables, insert should be
 ;; used instead - this test ensures that insert is used
 (deftest dont-delete-secondaries-with-nil-non-key-cols-test
-  (als/with-debug
-    (let [m (create-secondary-entity-for-nil-non-key-cols)
-          [id other-id] [(uuid/v1) (uuid/v1)]
-          r {:id id :other_id other-id :nick "foo"}
+  (let [m (create-secondary-entity-for-nil-non-key-cols)
+        [id other-id] [(uuid/v1) (uuid/v1)]
+        r {:id id :other_id other-id :nick "foo"}
 
-          i1 (upsert-instance m r)
-          f1 (fetch-record :secondary_with_nil_non_key_cols_test [:id] [id])
-          fi1 (fetch-record :secondary_with_nil_non_key_cols_test_by_other_id
-                            [:other_id :id] [other-id id])
+        i1 (upsert-instance m r)
+        f1 (fetch-record :secondary_with_nil_non_key_cols_test [:id] [id])
+        fi1 (fetch-record :secondary_with_nil_non_key_cols_test_by_other_id
+                          [:other_id :id] [other-id id])
 
-          nnr (assoc r :nick nil)
-          i2 (upsert-instance m nnr)
+        nnr (assoc r :nick nil)
+        i2 (upsert-instance m nnr)
 
-          f2 (fetch-record :secondary_with_nil_non_key_cols_test [:id] [id])
-          fi2 (fetch-record :secondary_with_nil_non_key_cols_test_by_other_id
-                            [:other_id :id] [other-id id])]
-      (is (= r f1))
-      (is (= r fi1))
+        f2 (fetch-record :secondary_with_nil_non_key_cols_test [:id] [id])
+        fi2 (fetch-record :secondary_with_nil_non_key_cols_test_by_other_id
+                          [:other_id :id] [other-id id])]
+    (is (= r f1))
+    (is (= r fi1))
 
-      (is (= nnr f2))
-      (is (= nnr fi2)))))
+    (is (= nnr f2))
+    (is (= nnr fi2))))
 
 (deftest upsert-secondaries-test
   (let [m (create-secondary-entity)
