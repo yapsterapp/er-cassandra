@@ -387,6 +387,11 @@
 
             :let [updated? (applied? update-response)]
 
+            ;; TODO - removing the reselect - it's
+            ;; ok for an upsert to return just what was upserted...
+            ;; but there are some upstream things to work through
+            ;; to make it work properly
+
             upserted-record (cond
                               ;; definitely a first insert
                               (and inserted? if-not-exists)
@@ -402,11 +407,13 @@
 
                               ;; failure
                               :else
-                              (return nil))]
+                              (return nil))
+            ]
 
        (return
-        (if upserted-record
-          [upserted-record nil]
+        (if (or inserted? updated?)
+          [upserted-record
+           nil]
 
           [nil [(e/general-error-log-entry
                  {:error-tag :upsert/primary-record-upsert-error
