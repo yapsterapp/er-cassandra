@@ -550,6 +550,34 @@
                 (ts/default-timestamp-opt))]
         (is (= [{:id id :nick "blah" :a "newa" :b "oldb"} nil] r))))
 
+    (testing "update existing record with a timestamp & ttl"
+      (let [id (uuid/v1)
+            _ (tu/insert-record :upsert_primary_without_unique_keys_test
+                                {:id id :nick "blah" :a "olda" :b "oldb"}
+                                {:using {:ttl 10
+                                         :timestamp 1000}})
+            r @(uk/upsert-primary-record-without-unique-keys
+                tu/*model-session*
+                m
+                {:id id :nick "foo" :a "newa"}
+                {:using {:ttl 10
+                         :timestamp 1001}})
+            fr @(r/select-one
+                 tu/*model-session*
+                 :upsert_primary_without_unique_keys_test
+                 [:id]
+                 [id]
+                 {:columns [:id :nick :a :b
+                            (h/as (h/cql-fn :ttl :a) :a_ttl)
+                            (h/as (h/cql-fn :writetime :a) :a_writetime)]})]
+        (is (= [{:id id :nick "blah" :a "newa" :b "oldb"} nil] r))
+        (is (= {:id id :nick "blah" :a "newa" :b "oldb"}
+               (select-keys fr [:id :nick :a :b])))
+        (is (some? (:a_ttl fr)))
+        (is (= (> (:a_ttl fr) 5)))
+        (is (some? (:a_writetime fr)))
+        (is (= (> (:a_writetime fr) 5)))))
+
     (testing "with if-not-exists"
 
       (let [[id id-b] [(uuid/v1) (uuid/v1)]]
@@ -615,6 +643,30 @@
           (is (= [{:id id :nick "bloogh" :a "newa" :b "newb"} nil]
                  r))))
 
+      (testing "if it already exists with a TTL"
+        (let [id (uuid/v1)
+              _ (tu/insert-record :upsert_primary_without_unique_keys_test
+                                  {:id id :nick "bloogh" :a "olda" :b "oldb"})
+              r @(uk/upsert-primary-record-without-unique-keys
+                  tu/*model-session*
+                  m
+                  {:id id :nick "bloogh" :a "newa" :b "newb"}
+                  (ts/default-timestamp-opt
+                   {:only-if [[:= :nick "bloogh"]]
+                    :using {:ttl 10}}))
+              fr @(r/select-one
+                   tu/*model-session*
+                   :upsert_primary_without_unique_keys_test
+                   [:id]
+                   [id]
+                   {:columns [:id :nick :a :b (h/as (h/cql-fn :ttl :a) :a_ttl)]})]
+          (is (= [{:id id :nick "bloogh" :a "newa" :b "newb"} nil]
+                 r))
+          (is (= {:id id :nick "bloogh" :a "newa" :b "newb"}
+                 (select-keys fr [:id :nick :a :b])))
+          (is (some? (:a_ttl fr)))
+          (is (= (> (:a_ttl fr) 5)))))
+
       (testing "if it doesn't already exist"
         (let [id (uuid/v1)
               r @(uk/upsert-primary-record-without-unique-keys
@@ -634,8 +686,7 @@
                      :only-if [[:= :nick "blah"]],
                      :tag :upsert/primary-record-upsert-error,
                      :message "couldn't upsert primary record"}]]]
-                 r)))
-        ))))
+                 r)))))))
 
 (deftest update-unique-keys-after-primary-upsert-test
   (testing "with mixed unique keys"
