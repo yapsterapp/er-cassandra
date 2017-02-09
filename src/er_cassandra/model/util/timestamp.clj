@@ -19,7 +19,7 @@
                     (current-time-micros))))))
 
 (defn past-timestamp-opt
-  "generates a USING TIMESTAMP at least 1 ms ago, useful for unit test fixtures"
+  "generates a USING TIMESTAMP at least 10 ms ago, useful for unit test fixtures"
   ([] (past-timestamp-opt nil))
   ([opts]
    (update-in opts
@@ -28,4 +28,4 @@
                 (or v
                     (-
                      (current-time-micros)
-                     1000))))))
+                     10000))))))
