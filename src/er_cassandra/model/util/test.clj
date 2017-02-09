@@ -21,7 +21,7 @@
             {:keyspace "er_cassandra_test"
              ;; set to false to preserve db contents after tests
              :truncate-on-close true
-             ;; :trace? :warn
+             :trace? :warn
              ;; :consistency :all
              }}})
 
@@ -29,16 +29,22 @@
   [[:logging logconf/configure-timbre [:timbre]]
    [:cassandra ams/create-test-session [:config :alia-session]]])
 
+(defn with-system
+  [sys f]
+  (let [system @(sys/system-map sys)]
+    (binding [*model-session* (:cassandra system)]
+      (f))))
+
 (defn with-model-session-fixture
+  "a clojure.test fixture which sets up logging and
+   a :cassandra session"
   []
   (fn [f]
 
     (let [sb (sys/system-builder alia-test-model-session-system-def)
           sys (sys/start-system! sb alia-test-model-session-config)]
       (try
-        (let [system @(sys/system-map sys)]
-          (binding [*model-session* (:cassandra system)]
-            (f)))
+        (with-system sys)
         (finally
           (try
             @(sys/stop-system! sys)
