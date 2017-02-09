@@ -91,7 +91,10 @@
   ([entity instance-stream]
    (upsert-instance-stream entity instance-stream {}))
   ([entity instance-stream opts]
-   @(m/upsert-buffered *model-session* entity instance-stream opts)))
+   @(m/upsert-buffered *model-session*
+                       entity
+                       instance-stream
+                       (ts/past-timestamp-opt opts))))
 
 (defn sync-consume-stream
   "synchronously consume a stream"
