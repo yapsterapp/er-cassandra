@@ -1,5 +1,6 @@
 (ns er-cassandra.model.alia.unique-key
   (:require
+   [taoensso.timbre :refer [trace debug info warn error]]
    [clojure.set :as set]
    [cats.core :refer [mlet return]]
    [cats.context :refer [with-context]]
@@ -469,12 +470,20 @@
                             acquire-key-responses))
 
            ;; only update the cols relating to the unique keys
-           :let [ukcols (all-unique-key-cols entity)
-                 update-cols (into
-                              ukcols
-                              (flatten (t/uber-key entity)))]
+           :let [all-uk-cols (all-unique-key-cols entity)
+                 uberkey-cols (-> entity t/uber-key flatten set)
 
-           upsert-response (if-not (empty? ukcols)
+                 ;; we will set these if they are provided
+                 set-cols (set/difference all-uk-cols uberkey-cols)
+
+                 ;; only proceed if we have some col vals to set
+                 set-vals (select-keys updated-record set-cols)
+
+                 update-cols (into
+                              all-uk-cols
+                              uberkey-cols)]
+
+           upsert-response (if-not (empty? set-vals)
                              (r/update
                               session
                               (get-in entity [:primary-table :name])
