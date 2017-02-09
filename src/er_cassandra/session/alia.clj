@@ -105,7 +105,7 @@
   (execute-buffered [_ statement]
     (execute-buffered* alia-session statement {}))
   (execute-buffered [_ statement opts]
-    (execute-buffered* alia-session statement (opts :trace? trace?)))
+    (execute-buffered* alia-session statement (assoc opts :trace? trace?)))
   (close [_]
     (shutdown-session-and-cluster alia-session)))
 
