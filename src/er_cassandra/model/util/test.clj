@@ -4,6 +4,7 @@
    [taoensso.timbre :refer [trace debug info warn error]]
    [deferst :refer [defsystem]]
    [deferst.system :as sys]
+   [deferst]
    [slf4j-timbre.configure :as logconf]
    [manifold.stream :as stream]
    [er-cassandra.record :as r]
@@ -21,7 +22,7 @@
             {:keyspace "er_cassandra_test"
              ;; set to false to preserve db contents after tests
              :truncate-on-close true
-             :trace? :warn
+             ;; :trace? :warn
              ;; :consistency :all
              }}})
 
@@ -29,11 +30,17 @@
   [[:logging logconf/configure-timbre [:timbre]]
    [:cassandra ams/create-test-session [:config :alia-session]]])
 
-(defn with-system
+(defn with-system*
   [sys f]
-  (let [system @(sys/system-map sys)]
-    (binding [*model-session* (:cassandra system)]
-      (f))))
+  (try
+    (let [system @(deferst/start! sys)]
+      (binding [*model-session* (:cassandra system)]
+        (f)))
+    (finally
+      (try
+        @(deferst/stop! sys)
+        (catch Exception e
+          (error e "error during test stop-system!"))))))
 
 (defn with-model-session-fixture
   "a clojure.test fixture which sets up logging and
@@ -42,14 +49,10 @@
   (fn [f]
 
     (let [sb (sys/system-builder alia-test-model-session-system-def)
-          sys (sys/start-system! sb alia-test-model-session-config)]
-      (try
-        (with-system sys)
-        (finally
-          (try
-            @(sys/stop-system! sys)
-            (catch Exception e
-              (error e "error during test stop-system!"))))))))
+          sys (deferst/create-system
+                sb
+                alia-test-model-session-config)]
+      (with-system* sys f))))
 
 (defn create-table
   "creates a table for test - drops any existing version of the table first"
