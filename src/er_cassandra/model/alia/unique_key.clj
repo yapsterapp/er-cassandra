@@ -335,7 +335,10 @@
      (mlet [:let [primary-table-name (get-in entity [:primary-table :name])
                   primary-table-key (get-in entity [:primary-table :key])
 
-                  nok-record (without-unique-keys entity record)]
+                  nok-record (without-unique-keys entity record)
+
+                  insert? (or if-not-exists
+                              (and (not if-exists) (not only-if)))]
 
             insert-response (cond
                               if-not-exists
@@ -361,17 +364,26 @@
 
                               :else false)]
 
-            update-response (if (and (not inserted?)
-                                     (or if-exists only-if))
+            update-response (cond
+
+                              (and (not insert?)
+                                   (or if-exists only-if))
                               (r/update
                                session
                                primary-table-name
                                primary-table-key
                                nok-record
-                               (if only-if
-                                 {:only-if only-if}
-                                 {:if-exists true}))
-                              (return nil))
+                               (fns/opts-remove-timestamp opts))
+
+                              insert?
+                              (return nil)
+
+                              :else
+                              (throw (ex-info
+                                      "internal error"
+                                      {:entity entity
+                                       :record record
+                                       :opts opts})))
 
             :let [updated? (applied? update-response)]
 
