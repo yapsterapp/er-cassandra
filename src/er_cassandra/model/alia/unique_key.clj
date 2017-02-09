@@ -329,24 +329,26 @@
     record :- t/MaybeRecordSchema
     {:keys [if-not-exists
             if-exists
-            only-if] :as opts} :- fns/UpsertOptsWithTimestampSchema]
+            only-if
+            using] :as opts} :- fns/UpsertOptsWithTimestampSchema]
    (with-context deferred-context
-     (mlet [primary-table-name (get-in entity [:primary-table :name])
-            primary-table-key (get-in entity [:primary-table :key])
+     (mlet [:let [primary-table-name (get-in entity [:primary-table :name])
+                  primary-table-key (get-in entity [:primary-table :key])
 
-            nok-record (without-unique-keys entity record)
+                  nok-record (without-unique-keys entity record)]
 
             insert-response (cond
                               if-not-exists
                               (r/insert session
                                         primary-table-name
                                         nok-record
-                                        {:if-not-exists true})
+                                        (fns/opts-remove-timestamp opts))
 
                               (and (not if-exists) (not only-if))
                               (r/insert session
                                         primary-table-name
-                                        nok-record)
+                                        nok-record
+                                        opts)
 
                               :else ;; only-if
                               (return nil))
@@ -376,7 +378,7 @@
             upserted-record (cond
                               ;; definitely a first insert
                               (and inserted? if-not-exists)
-                              nok-record
+                              (return nok-record)
 
                               ;; insert or update - must retrieve
                               (or inserted? updated?)
