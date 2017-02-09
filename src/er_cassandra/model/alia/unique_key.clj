@@ -308,16 +308,27 @@
           new-record
           (:unique-key-tables entity)))
 
+(s/defn all-unique-key-cols
+  "return a set of the union of all unique-key columns in the entity,
+   which will be used to update only the unique-key columsn after key
+   acquisition"
+  [entity :- Entity]
+  (let [unique-key-tables (:unique-key-tables entity)]
+    (reduce (fn [cols t]
+              (into cols (flatten (:key t))))
+            #{}
+            unique-key-tables)))
+
 (s/defn without-unique-keys
   "remove (the final part of) unique key columns from a record"
   [entity :- Entity
    record :- t/MaybeRecordSchema]
-  (let [unique-key-tabless (:unique-key-tables entity)]
+  (let [unique-key-tables (:unique-key-tables entity)]
     (reduce (fn [r t]
               (let [key-col (last (:key t))]
                 (dissoc r key-col)))
             record
-            unique-key-tabless)))
+            unique-key-tables)))
 
 (s/defn upsert-primary-record-without-unique-keys
   "attempts to upsert a primary record minus it's unique keys,
@@ -456,12 +467,22 @@
                             old-key-record
                             new-record
                             acquire-key-responses))
-           upsert-response (r/update
-                            session
-                            (get-in entity [:primary-table :name])
-                            (get-in entity [:primary-table :key])
-                            updated-record
-                            opts)]
+
+           ;; only update the cols relating to the unique keys
+           :let [ukcols (all-unique-key-cols entity)
+                 update-cols (into
+                              ukcols
+                              (flatten (t/uber-key entity)))]
+
+           upsert-response (if-not (empty? ukcols)
+                             (r/update
+                              session
+                              (get-in entity [:primary-table :name])
+                              (get-in entity [:primary-table :key])
+                              (select-keys updated-record
+                                           update-cols)
+                              opts)
+                             (return nil))]
       (return [updated-record
                acquire-failures]))))
 

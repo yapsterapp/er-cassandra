@@ -695,7 +695,8 @@
       (testing "acquire some keys"
         (let [_ (tu/insert-record :mixed_unique_key_test
                                   {:org_id org-id
-                                   :id ida})
+                                   :id ida
+                                   :stuff "blah"})
               updated-a {:org_id org-id
                          :id ida
                          :stuff "blah"
@@ -707,9 +708,11 @@
                                    tu/*model-session*
                                    m
                                    {:org_id org-id :id ida}
-                                   updated-a
+                                   (assoc updated-a :stuff "wrong stuff")
                                    (ts/default-timestamp-opt))]
-          (is (= updated-a record))
+          ;; only unique key cols should get written
+          (is (= (dissoc updated-a :stuff)
+                 (dissoc record :stuff)))
           (is (empty? acquire-failures))
 
           (is (= updated-a
@@ -727,7 +730,8 @@
       (testing "mixed acquire / failure"
         (let [_ (tu/insert-record :mixed_unique_key_test
                                   {:org_id org-id
-                                   :id idb})
+                                   :id idb
+                                   :stuff "boo"})
 
               [record
                acquire-failures] @(uk/update-unique-keys-after-primary-upsert
@@ -736,7 +740,7 @@
                                    {:org_id org-id :id idb}
                                    {:org_id org-id
                                     :id idb
-                                    :stuff "boo"
+                                    :stuff "wrong stuff" ;; should not get written
                                     :nick "foo"
                                     :email #{"foo@bar.com" "bar@baz.com" "blah@bloo.com"}
                                     :phone ["123456" "09876" "777777"]}
@@ -747,7 +751,8 @@
                          :nick nil
                          :email #{"bar@baz.com" "blah@bloo.com"}
                          :phone ["09876" "777777"]}]
-          (is (= updated-b record))
+          (is (= (dissoc updated-b :stuff)
+                 (dissoc record :stuff)))
           (is (= #{[:key/notunique
                     {:tag :key/notunique,
                      :message ":phone is not unique: 123456",
@@ -800,7 +805,7 @@
       (testing "updates and removals"
         (let [updated-b {:org_id org-id
                          :id idb
-                         :stuff "fooo"
+                         :stuff "boo"
                          :nick "bar"
                          :email #{"bar@baz.com" "woo@woo.com"}
                          :phone ["777777" "111111"]}
@@ -813,11 +818,12 @@
                                    tu/*model-session*
                                    m
                                    old-r
-                                   updated-b
+                                   (assoc updated-b :stuff "more wrong stuff")
                                    (ts/default-timestamp-opt))]
 
-          (is (= updated-b
-                 record))
+          ;; only unique key cols should get written
+          (is (= (dissoc updated-b :stuff)
+                 (dissoc record :stuff)))
           (is (empty? acquire-failures))
 
           (is (= updated-b
