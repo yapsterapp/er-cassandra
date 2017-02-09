@@ -7,7 +7,8 @@
    [er-cassandra.record :as r]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
-   [er-cassandra.model.alia.unique-key :as uk]))
+   [er-cassandra.model.alia.unique-key :as uk]
+   [qbits.hayt :as h]))
 
 (use-fixtures :once st/validate-schemas)
 (use-fixtures :each (tu/with-model-session-fixture))
@@ -514,6 +515,30 @@
                 (ts/default-timestamp-opt))]
         (is (= [{:id id :nick nil :a "ana" :b "anb"} nil] r))))
 
+    (testing "simple insert with a timestamp & ttl"
+      (let [id (uuid/v1)
+            r @(uk/upsert-primary-record-without-unique-keys
+                tu/*model-session*
+                m
+                {:id id :nick "foo" :a "ana" :b "anb"}
+                {:using {:ttl 10
+                         :timestamp 1000}})
+            fr @(r/select-one
+                 tu/*model-session*
+                 :upsert_primary_without_unique_keys_test
+                 [:id]
+                 [id]
+                 {:columns [:id :nick :a :b
+                            (h/as (h/cql-fn :ttl :a) :a_ttl)
+                            (h/as (h/cql-fn :writetime :a) :a_writetime)]})]
+        (is (= [{:id id :nick nil :a "ana" :b "anb"} nil] r))
+        (is (= {:id id :nick nil :a "ana" :b "anb"}
+               (select-keys fr [:id :nick :a :b])))
+        (is (some? (:a_ttl fr)))
+        (is (= (> (:a_ttl fr) 5)))
+        (is (some? (:a_writetime fr)))
+        (is (= (> (:a_writetime fr) 5)))))
+
     (testing "update existing record"
       (let [id (uuid/v1)
             _ (tu/insert-record :upsert_primary_without_unique_keys_test
@@ -536,6 +561,26 @@
                     (ts/default-timestamp-opt
                      {:if-not-exists true}))]
             (is (= [{:id id :a "ana" :b "anb"} nil] r))))
+
+        (testing "with a TTL"
+          (let [r @(uk/upsert-primary-record-without-unique-keys
+                    tu/*model-session*
+                    m
+                    {:id id-b :nick "foo" :a "ana" :b "anb"}
+                    (ts/default-timestamp-opt
+                     {:if-not-exists true
+                      :using {:ttl 10}}))
+                fr @(r/select-one
+                     tu/*model-session*
+                     :upsert_primary_without_unique_keys_test
+                     [:id]
+                     [id-b]
+                     {:columns [:id :nick :a :b (h/as (h/cql-fn :ttl :a) :a_ttl)]})]
+            (is (= [{:id id-b :a "ana" :b "anb"} nil] r))
+            (is (= {:id id-b :nick nil :a "ana" :b "anb"}
+                   (select-keys fr [:id :nick :a :b])))
+            (is (some? (:a_ttl fr)))
+            (is (= (> (:a_ttl fr) 5)))))
 
         (testing "if it does already exist"
           (let [r @(uk/upsert-primary-record-without-unique-keys
