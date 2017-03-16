@@ -138,33 +138,40 @@
          sort
          vec)))
 
+(defn truncate-test-tables
+  "given a session truncate the tables given. only works in _test
+   keyspaces"
+  [session & tables]
+  (let [ks (s/keyspace session)
+        tables (filterv #(not= "schema_migrations" (some-> % name)) tables)]
+
+    (when-not (str/ends-with? (name ks) "_test")
+      (throw (ex-info "truncate-test-tables is only for *_test keyspaces"
+                      {:keyspace ks
+                       :tables tables})))
+
+    (info "truncating test tables:" tables)
+
+    (with-context deferred-context
+      (mlet [:let [tfns (for [t tables]
+                          (fn [_]
+                            (s/execute session (h/truncate t))
+                            (return deferred-context true)))]]
+        (if (not-empty tfns)
+          (apply >>= (return true) tfns)
+          (return true))))))
+
 (defn truncate-spy-tables
   "given a spy session, truncate all tables which have been accessed,
    then reset the spy-log"
   [spy-session]
-  (let [ks (s/keyspace spy-session)
-        mts (mutated-tables spy-session)
-        mts (filterv #(not= "schema_migrations" (some-> % name)) mts)]
+  (with-context deferred-context
+    (mlet [:let [mts (mutated-tables spy-session)]
 
-    (when-not (str/ends-with? (name ks) "_test")
-      (throw (ex-info "truncate-spy-tables is only for *_test keyspaces"
-                      {:keyspace ks
-                       :mutated-tables mts})))
+           _ (apply truncate-test-tables spy-session mts)]
 
-    (info "truncating spy tables:" mts)
-
-    (with-context deferred-context
-      (mlet [:let [tfns (for [mt mts]
-                          (fn [_]
-                            (s/execute spy-session (h/truncate mt))
-                            (return deferred-context true)))]
-
-             _ (if (not-empty tfns)
-                 (apply >>= (return true) tfns)
-                 (return true))]
-
-        (s/reset-spy-log spy-session)
-        (return true)))))
+      (s/reset-spy-log spy-session)
+      (return true))))
 
 (defrecord AliaSpySession [keyspace
                            alia-session
