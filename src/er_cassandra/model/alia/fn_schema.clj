@@ -1,27 +1,63 @@
 (ns er-cassandra.model.alia.fn-schema
   (:require
+   [clojure.set :as set]
    [schema.core :as s]
    [er-cassandra.record :as r]))
 
+(s/defschema UpsertWhereSchema
+  {(s/optional-key :where) r/WhereSchema})
+
+(s/defschema UpsertUsingSchema
+  {(s/optional-key :using) r/UpsertUsingSchema})
+
+(s/defschema UpsertInsertSchema
+  {(s/optional-key :if-not-exists) s/Bool})
+
+(s/defschema UpsertUpdateSchema
+  {(s/optional-key :only-if) r/WhereSchema
+   (s/optional-key :if-exists) s/Bool})
+
+(defn has-some-key?
+  "returns an fn which tests whether its argument
+   is a map with one or more keys from key-seq"
+  [& key-seq]
+  (let [ks (set key-seq)]
+    (fn [m]
+      (and (map? m)
+           (not-empty
+            (set/intersection
+             ks
+             (set (keys m))))))))
+
+(defn conditional-upsert-schema
+  "applies rules about INSERT and UPDATE LWT statements -
+   they can't exist together"
+  [common-schema]
+  (s/conditional
+   :if-not-exists
+   (merge common-schema UpsertInsertSchema)
+
+   (has-some-key? :if-exists :only-if)
+   (merge common-schema UpsertUpdateSchema)
+
+   :else
+   common-schema))
+
 (s/defschema UpsertOptsSchema
-  {(s/optional-key :where) r/WhereSchema
-   (s/optional-key :only-if) r/WhereSchema
-   (s/optional-key :if-exists) s/Bool
-   (s/optional-key :if-not-exists) s/Bool
-   (s/optional-key :using) r/UpsertUsingSchema})
+  (conditional-upsert-schema
+   (merge UpsertWhereSchema UpsertUsingSchema)))
 
 (s/defschema UpsertUsingWithTimestampSchema
   {(s/optional-key :ttl) s/Int
    :timestamp s/Int})
 
-(s/defschema UpsertOptsWithTimestampSchema
-  (->
-   UpsertOptsSchema
-   (dissoc (s/optional-key :using))
-   (assoc :using UpsertUsingWithTimestampSchema)))
-
 (s/defschema UpsertUsingOnlyOptsWithTimestampSchema
   {:using UpsertUsingWithTimestampSchema})
+
+(s/defschema UpsertOptsWithTimestampSchema
+  (conditional-upsert-schema
+   (merge UpsertWhereSchema
+          UpsertUsingOnlyOptsWithTimestampSchema)))
 
 (s/defschema DeleteUsingWithTimestampSchema
   {:timestamp s/Int})
