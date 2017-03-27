@@ -97,6 +97,8 @@
         (return alia-session)))))
 
 (defrecord AliaSession [keyspace alia-session trace?]
+  KeyspaceProvider
+  (keyspace [_] keyspace)
   Session
   (execute [_ statement]
     (execute* alia-session statement {}))
