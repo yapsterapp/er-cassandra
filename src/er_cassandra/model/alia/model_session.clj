@@ -39,6 +39,9 @@
   (-close [_]
     (s/close alia-session))
 
+  s/KeyspaceProvider
+  (keyspace [_] (s/keyspace alia-session))
+
   s/Session
   (execute [_ statement]
     (s/execute alia-session statement))
