@@ -32,9 +32,9 @@
 
   ([key record-or-key-value {:keys [key-value]}]
    (let [key (flatten-key key)
-         key-value (or (flatten-key key-value)
+         key-value (or (v/coerce key-value)
                        (if-not (map? record-or-key-value)
-                         (flatten-key record-or-key-value)
+                         (v/coerce record-or-key-value)
                          (repeat (count key) nil)))
          record (when (map? record-or-key-value)
                   record-or-key-value)
