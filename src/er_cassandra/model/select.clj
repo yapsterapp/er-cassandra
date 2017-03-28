@@ -14,6 +14,9 @@
    [er_cassandra.model.model_session ModelSession]))
 
 (defn select
+  ([^ModelSession session ^Entity entity record-or-key-value]
+   (select session entity (t/uber-key entity) record-or-key-value {}))
+
   ([^ModelSession session ^Entity entity key record-or-key-value]
    (select session entity key record-or-key-value {}))
 
@@ -42,6 +45,9 @@
                        mi)))
             return))))
 
+  ;; can't provide an arity which auto-selects the uber-key, because it's
+  ;; already used for a full-table select
+
   ([^ModelSession session ^Entity entity key record-or-key-value]
    (select-buffered session entity key record-or-key-value {}))
 
@@ -62,6 +68,9 @@
 (defn select-one
   "select a single record, using an index table if necessary"
 
+  ([^ModelSession session ^Entity entity record-or-key-value]
+   (select-one session entity (t/uber-key entity) record-or-key-value {}))
+
   ([^ModelSession session ^Entity entity key record-or-key-value]
    (select-one session entity key record-or-key-value {}))
 
@@ -77,6 +86,9 @@
 (defn select-one-instance
   "select a single record, unless the record is already a record retrieved
    from the db, in which case return it"
+  ([^ModelSession session ^Entity entity record-or-key-value]
+   (select-one-instance session entity (t/uber-key entity) record-or-key-value {}))
+
   ([^ModelSession session ^Entity entity key record-or-key-value]
    (select-one-instance session entity key record-or-key-value {}))
 
@@ -88,6 +100,9 @@
 
 (defn ensure-one
   "select a single record erroring the response if there is no record"
+  ([^ModelSession session ^Entity entity record-or-key-value]
+   (ensure-one session entity (t/uber-key entity) record-or-key-value {}))
+
   ([^ModelSession session ^Entity entity key record-or-key-value]
    (ensure-one session entity key record-or-key-value {}))
 
@@ -110,6 +125,9 @@
 
 (defn ensure-one-instance
   "select-one-instance but errors if there is no record"
+  ([^ModelSession session ^Entity entity record-or-key-value]
+   (ensure-one-instance session entity (t/uber-key entity) record-or-key-value {}))
+
   ([^ModelSession session ^Entity entity key record-or-key-value]
    (ensure-one-instance session entity key record-or-key-value {}))
 
@@ -122,9 +140,12 @@
 (defn select-many
   "issue one select-one query for each record-or-key-value and combine
    the responses"
+  ([^ModelSession session ^Entity entity record-or-key-values]
+   (select-many session entity (t/uber-key entity) record-or-key-values {}))
 
   ([^ModelSession session ^Entity entity key record-or-key-values]
    (select-many session entity key record-or-key-values {}))
+
   ([^ModelSession session ^Entity entity key record-or-key-values opts]
    (->> record-or-key-values
         (map (fn [record-or-key-value]
@@ -135,8 +156,12 @@
   "select-many records, unless the record-or-key-values were already
   retrives from the db, in which case return them directly (but still
   select any which were not already retrieved from the db)"
+  ([^ModelSession session ^Entity entity record-or-key-values]
+   (select-many-instances session entity (t/uber-key entity) record-or-key-values {}))
+
   ([^ModelSession session ^Entity entity key record-or-key-values]
    (select-many-instances session entity key record-or-key-values {}))
+
   ([^ModelSession session ^Entity entity key record-or-key-values opts]
    (->> record-or-key-values
         (map (fn [record-or-key-value]
@@ -146,8 +171,12 @@
 (defn select-many-cat
   "issue one select query for each record-or-key-value and concatenates
    the responses"
+  ([^ModelSession session ^Entity entity record-or-key-values]
+   (select-many-cat session entity (t/uber-key entity) record-or-key-values {}))
+
   ([^ModelSession session ^Entity entity key record-or-key-values]
    (select-many-cat session entity key record-or-key-values {}))
+
   ([^ModelSession session ^Entity entity key record-or-key-values opts]
    (->> record-or-key-values
         (map (fn [record-or-key-value]
