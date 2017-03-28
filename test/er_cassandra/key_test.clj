@@ -56,6 +56,8 @@
   (is (= [[:= :foo 10] [:= :bar 20]]
          (k/key-equality-clause [:foo :bar] [10 20])))
   (is (= [[:= :foo 10] [:in :bar ["one" "two"]]]
+         (k/key-equality-clause [:foo :bar] [10 ["one" "two"]])))
+  (is (= [[:= :foo 10] [:in :bar ["one" "two"]]]
          (k/key-equality-clause [:foo :bar] [10 ["one" "two"]]))))
 
 (deftest extract-key-equality-clause-test
