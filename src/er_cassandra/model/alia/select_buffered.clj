@@ -27,12 +27,11 @@
      (r/select-buffered session (:name table) opts)))
 
   ([^Session session ^Entity entity table key record-or-key-value opts]
-   (let [kv (k/extract-key-value key record-or-key-value opts)
-         opts (-> opts
+   (let [opts (-> opts
                   (dissoc :key-value)
                   (assoc :row-generator (ms/->EntityInstanceRowGenerator)))]
 
-     (r/select-buffered session (:name table) key kv opts))))
+     (r/select-buffered session (:name table) key record-or-key-value opts))))
 
 (defn select-buffered-from-lookup-table
   "two fetches - use the lookup-key to get a stream of uber-keys, then
