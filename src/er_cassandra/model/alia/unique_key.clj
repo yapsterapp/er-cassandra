@@ -349,6 +349,9 @@
 
                   nok-record (without-unique-keys entity record)
 
+                  ;; prefer insert - because if a new record is updated
+                  ;; into existence, all it's cols being nulled will cause
+                  ;; its automatic deletion
                   insert? (or if-not-exists
                               (and (not if-exists) (not only-if)))]
 
