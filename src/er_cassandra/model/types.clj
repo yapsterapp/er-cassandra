@@ -1,6 +1,6 @@
 (ns er-cassandra.model.types
   (:require
-   [cats.core :refer [mlet return]]
+   [cats.core :refer [mlet return >>=]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
    [schema.core :as s]
@@ -14,9 +14,20 @@
 (s/defschema CallbackFnSchema
   (s/make-fn-schema s/Any [[{s/Keyword s/Any}]]))
 
+(defprotocol ICallback
+  (run-callback [_ entity record]
+    "run a callback on a record of an entity returning
+     updated-record or Deferred<updated-record>"))
+
+(s/defschema CallbackSchema
+  (s/conditional
+    fn? CallbackFnSchema
+    #(satisfies? ICallback %) (s/protocol ICallback)))
+
 (s/defschema CallbacksSchema
-  {(s/optional-key :after-load) [CallbackFnSchema]
-   (s/optional-key :before-save) [CallbackFnSchema]})
+  {(s/optional-key :after-load) [CallbackSchema]
+   (s/optional-key :before-save) [CallbackSchema]
+   (s/optional-key :after-save) [CallbackSchema]})
 
 ;; a primary key for a cassandra table
 ;; the first entry may itself be a vector, representing
@@ -173,16 +184,16 @@
 (s/defn ^:always-validate create-entity :- Entity
   "create an entity record from a spec"
   [entity-spec]
-  (let [spec (conform-all-tables entity-spec)]
+  (let [spec (conform-all-tables entity-spec)
+        spec (merge {:unique-key-tables []
+                     :secondary-tables []
+                     :lookup-key-tables []
+                     :callbacks {}
+                     :denorm-targets {}
+                     :denorm-sources {}}
+                    spec)]
     (s/validate EntitySchema spec)
-    (strict-map->Entity
-     (merge {:unique-key-tables []
-             :secondary-tables []
-             :lookup-key-tables []
-             :callbacks {}
-             :denorm-targets {}
-             :denorm-sources {}}
-            spec))))
+    (strict-map->Entity spec)))
 
 (defmacro defentity
   [name entity-spec]
@@ -285,52 +296,33 @@
    record))
 
 (defn run-callbacks
-  ([^Entity entity callback-key records]
-   (run-callbacks entity callback-key records {}))
-  ([^Entity entity callback-key records opts]
-   (let [callbacks (concat (get-in entity [:callbacks callback-key])
-                           (get-in opts [callback-key]))]
-     (try
-       (reduce (fn [r callback]
-                 (mapv callback r))
-               records
-               callbacks)
-       (catch Exception ex
-         (throw (ex-info (format "Failed to run callbacks '%s' on record of entity for '%s'"
-                                 callback-key
-                                 (get-in entity [:primary-table :name]))
-                         {:callback-key callback-key
-                          :entity entity}
-                         ex)))))))
-
-(defn run-callbacks-single
+  "callbacks implement ICallback and may return a modified record
+   or a Deferred thereof"
   ([^Entity entity callback-key record]
-   (run-callbacks-single entity callback-key record {}))
+   (run-callbacks entity callback-key record {}))
   ([^Entity entity callback-key record opts]
-   (let [callbacks (concat (get-in entity [:callbacks callback-key])
-                           (get-in opts [callback-key]))]
-     (reduce (fn [r callback]
-               (callback r))
-             record
-             callbacks))))
+   (let [all-callbacks (concat (get-in entity [:callbacks callback-key])
+                               (get-in opts [callback-key]))
+         callback-mfs (for [cb all-callbacks]
+                        (fn [record]
+                          (cond
+                            (fn? cb)
+                            (cb record)
 
-(defn run-deferred-callbacks
-  ([^Entity entity callback-key deferred-records]
-   (run-deferred-callbacks entity callback-key deferred-records {}))
-  ([^Entity entity callback-key deferred-records opts]
-   (with-context deferred-context
-     (mlet [records deferred-records]
-       (return
-        (run-callbacks entity callback-key records opts))))))
+                            (satisfies? ICallback cb)
+                            (run-callback cb entity record)
 
-(defn run-deferred-callbacks-single
-  ([^Entity entity callback-key deferred-record]
-   (run-deferred-callbacks-single entity callback-key deferred-record {}))
-  ([^Entity entity callback-key deferred-record opts]
-   (with-context deferred-context
-     (mlet [record deferred-record]
-       (return
-        (run-callbacks-single entity callback-key record opts))))))
+                            :else
+                            (throw
+                             (ex-info
+                              "neither an fn or an ICallback"
+                              {:entity entity
+                               :callback-key callback-key
+                               :callback cb})))))]
+     (with-context deferred-context
+       (if (not-empty callback-mfs)
+         (apply >>= (return record) callback-mfs)
+         (return record))))))
 
 (defn create-protect-columns-callback
   "create a callback which will remove cols from a record

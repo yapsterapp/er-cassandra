@@ -264,8 +264,9 @@
    record :- t/MaybeRecordSchema
    opts :- fns/UpsertOptsSchema]
    (with-context deferred-context
-     (mlet [:let [[record] (t/run-callbacks entity :before-save [record])
-                  opts (ts/default-timestamp-opt opts)]
+     (mlet [:let [opts (ts/default-timestamp-opt opts)]
+
+            record (t/run-callbacks entity :before-save record opts)
 
             ;; don't need the old record if there are no lookups
             old-record (if (has-lookups? entity)
@@ -302,7 +303,7 @@
                               (return nil))
 
             ;; gotta make the re-selected record presentable!
-            final-record (t/run-callbacks-single
+            final-record (t/run-callbacks
                           entity
                           :after-load
                           reselected-record)]
