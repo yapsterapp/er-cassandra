@@ -2,7 +2,7 @@
   (:require
    [clojure.test :as t]
    [taoensso.timbre :refer [trace debug info warn error]]
-   [deferst :refer [defsystem]]
+   [deferst.core :refer [defsystem]]
    [deferst.system :as sys]
    [slf4j-timbre.configure :as logconf]
    [er-cassandra.session :as s]
