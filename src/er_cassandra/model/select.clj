@@ -13,21 +13,9 @@
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
 
-(defn select
-  ([^ModelSession session ^Entity entity record-or-key-value]
-   (select session entity (t/uber-key entity) record-or-key-value {}))
-
-  ([^ModelSession session ^Entity entity key record-or-key-value]
-   (select session entity key record-or-key-value {}))
-
-  ([^ModelSession session ^Entity entity key record-or-key-value opts]
-   (t/run-deferred-callbacks
-    entity
-    :after-load
-    (ms/-select session entity key record-or-key-value opts)
-    opts)))
-
 (defn select-buffered
+  "select-buffered is now the fundamental select operation - this enables
+   running callbacks on the results stream sensibly"
   ([^ModelSession session ^Entity entity]
    (select-buffered session entity {}))
 
@@ -37,12 +25,13 @@
        (->> strm
             (s/map (fn [mi]
                      (if (ms/entity-instance? mi)
-                       (t/run-callbacks-single
+                       (t/run-callbacks
                         entity
                         :after-load
                         mi
                         opts)
                        mi)))
+            s/realize-each
             return))))
 
   ;; can't provide an arity which auto-selects the uber-key, because it's
@@ -57,13 +46,26 @@
        (->> strm
             (s/map (fn [mi]
                      (if (ms/entity-instance? mi)
-                       (t/run-callbacks-single
+                       (t/run-callbacks
                         entity
                         :after-load
                         mi
                         opts)
                        mi)))
+            s/realize-each
             return)))))
+
+(defn select
+  ([^ModelSession session ^Entity entity record-or-key-value]
+   (select session entity (t/uber-key entity) record-or-key-value {}))
+
+  ([^ModelSession session ^Entity entity key record-or-key-value]
+   (select session entity key record-or-key-value {}))
+
+  ([^ModelSession session ^Entity entity key record-or-key-value opts]
+   (with-context deferred-context
+     (mlet [select-s (select-buffered session entity key record-or-key-value opts)]
+       (s/stream->seq select-s)))))
 
 (defn select-one
   "select a single record, using an index table if necessary"
@@ -76,12 +78,12 @@
 
   ([^ModelSession session ^Entity entity key record-or-key-value opts]
    (with-context deferred-context
-     (mlet [records (select session
+     (mlet [[record] (select session
                             entity
                             key
                             record-or-key-value
                             (merge opts {:limit 1}))]
-       (return (first records))))))
+       (return record)))))
 
 (defn select-one-instance
   "select a single record, unless the record is already a record retrieved
