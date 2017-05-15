@@ -78,11 +78,13 @@
 
   ([^ModelSession session ^Entity entity key record-or-key-value opts]
    (with-context deferred-context
-     (mlet [[record] (select session
-                            entity
-                            key
-                            record-or-key-value
-                            (merge opts {:limit 1}))]
+     (mlet [select-s (select-buffered
+                      session
+                      entity
+                      key
+                      record-or-key-value
+                      (merge opts {:limit 1}))
+            record (s/take! select-s)]
        (return record)))))
 
 (defn select-one-instance
@@ -110,12 +112,12 @@
 
   ([^ModelSession session ^Entity entity key record-or-key-value opts]
    (with-context deferred-context
-     (mlet [records (select session
-                            entity
-                            key
-                            record-or-key-value
-                            (merge opts {:limit 1}))]
-       (if (empty? records)
+     (mlet [select-s (select-buffered session
+                                      entity
+                                      key
+                                      record-or-key-value
+                                      (merge opts {:limit 1}))]
+       (if (s/drained? select-s)
          (d/error-deferred (ex-info
                             "no record"
                             {:reason [:fail
@@ -123,7 +125,7 @@
                                        :key key
                                        :record-or-key-value record-or-key-value}
                                       :no-matching-record]}))
-         (return (first records)))))))
+         (s/take! select-s))))))
 
 (defn ensure-one-instance
   "select-one-instance but errors if there is no record"
