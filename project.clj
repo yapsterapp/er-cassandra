@@ -53,7 +53,7 @@
                  [cc.qbits/hayt "4.0.0"]
                  [environ "1.1.0"]
                  [drift "1.5.3"]
-                 [manifold "0.1.6"]
+                 [manifold "0.1.7-alpha3"]
                  [funcool/cats "2.1.0"]
                  [employeerepublic/deferst "0.5.0"]]
 
