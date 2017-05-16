@@ -65,8 +65,7 @@
   ([^ModelSession session ^Entity entity key record-or-key-value opts]
    (with-context deferred-context
      (mlet [select-s (select-buffered session entity key record-or-key-value opts)]
-       (return
-        (s/stream->seq select-s))))))
+       (s/reduce conj [] select-s)))))
 
 (defn select-one
   "select a single record, using an index table if necessary"
@@ -84,9 +83,8 @@
                       entity
                       key
                       record-or-key-value
-                      (merge opts {:limit 1}))
-            record (s/take! select-s)]
-       (return record)))))
+                      (merge opts {:limit 1}))]
+       (s/take! select-s)))))
 
 (defn select-one-instance
   "select a single record, unless the record is already a record retrieved
@@ -113,20 +111,20 @@
 
   ([^ModelSession session ^Entity entity key record-or-key-value opts]
    (with-context deferred-context
-     (mlet [select-s (select-buffered session
-                                      entity
-                                      key
-                                      record-or-key-value
-                                      (merge opts {:limit 1}))]
-       (if (s/drained? select-s)
+     (mlet [r (select-one session
+                          entity
+                          key
+                          record-or-key-value
+                          opts)]
+       (if r
+         (return r)
          (d/error-deferred (ex-info
                             "no record"
                             {:reason [:fail
                                       {:entity entity
                                        :key key
                                        :record-or-key-value record-or-key-value}
-                                      :no-matching-record]}))
-         (s/take! select-s))))))
+                                      :no-matching-record]})))))))
 
 (defn ensure-one-instance
   "select-one-instance but errors if there is no record"
@@ -154,9 +152,8 @@
   ([^ModelSession session ^Entity entity key record-or-key-values opts]
    (->> (or record-or-key-values '())
         (s/map (fn [record-or-key-value]
-                 (select-buffered session entity key record-or-key-value (merge opts {:limit 1}))))
+                 (select-one session entity key record-or-key-value opts)))
         (s/realize-each)
-        (s/concat)
         return)))
 
 (defn select-many
@@ -176,8 +173,25 @@
                   key
                   record-or-key-values
                   opts)]
-       (return
-        (s/stream->seq sm-s))))))
+       (s/reduce conj [] sm-s)))))
+
+(defn select-many-instances-buffered
+  "select-many records, unless the record-or-key-values were already
+  retrives from the db, in which case return them directly (but still
+  select any which were not already retrieved from the db)"
+  ([^ModelSession session ^Entity entity record-or-key-values]
+   (select-many-instances-buffered session entity (t/uber-key entity) record-or-key-values {}))
+
+  ([^ModelSession session ^Entity entity key record-or-key-values]
+   (select-many-instances-buffered session entity key record-or-key-values {}))
+
+  ([^ModelSession session ^Entity entity key record-or-key-values opts]
+   (with-context deferred-context
+     (->> record-or-key-values
+          (s/map (fn [record-or-key-value]
+                   (select-one-instance session entity key record-or-key-value opts)))
+          (s/realize-each)
+          return))))
 
 (defn select-many-instances
   "select-many records, unless the record-or-key-values were already
@@ -190,13 +204,17 @@
    (select-many-instances session entity key record-or-key-values {}))
 
   ([^ModelSession session ^Entity entity key record-or-key-values opts]
-   (->> record-or-key-values
-        (map (fn [record-or-key-value]
-               (select-one-instance session entity key record-or-key-value opts)))
-        combine-responses)))
+   (with-context deferred-context
+     (mlet [smib-s (select-many-instances-buffered
+                    session
+                    entity
+                    key
+                    record-or-key-values
+                    opts)]
+       (s/reduce conj [] smib-s)))))
 
 (defn select-many-cat-buffered
-  "issue one select query for each record-or-key-value and concatenates
+  "issue one select query for each record-or-key-value and concatenate
    the responses"
   ([^ModelSession session ^Entity entity record-or-key-values]
    (select-many-cat-buffered session entity (t/uber-key entity) record-or-key-values {}))
@@ -230,5 +248,4 @@
                    key
                    record-or-key-values
                    opts)]
-       (return
-        (s/stream->seq smb-s))))))
+       (s/reduce conj [] smb-s)))))
