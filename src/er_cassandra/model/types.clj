@@ -106,13 +106,6 @@
 (s/defschema MaterializedViewSchema
   {(s/optional-key :view?) s/Bool})
 
-;; unique-key tables are lookup tables with a unique
-;; constraint on the key, enforced with an LWT
-(s/defschema UniqueKeyTableSchema
-  (merge BaseTableSchema
-         CollectionKeysSchema
-         {:type (s/eq :uniquekey)}))
-
 ;; secondary tables contain all columns from the primary
 ;; table, with a different primary key.
 ;; secondary and lookup tables may be materialized views,
@@ -122,8 +115,32 @@
          MaterializedViewSchema
          {:type (s/eq :secondary)}))
 
+(defn- create-lookup-generator-schema
+  "add the lookup record generator related schema to a base schema"
+  [base-schema]
+  (s/conditional
+   :generator-fn
+   (merge base-schema
+          {:generator-fn (s/pred fn? "generator-fn")})
+
+   :else
+   (merge base-schema
+          {(s/optional-key :with-columns) (s/conditional
+                                           keyword? (s/eq :all)
+                                           :else [s/Keyword])})))
+
+;; unique-key tables are lookup tables with a unique
+;; constraint on the key, enforced with an LWT
+(def BaseUniqueKeyTableSchema
+  (merge BaseTableSchema
+         CollectionKeysSchema
+         {:type (s/eq :uniquekey)}))
+
+(s/defschema UniqueKeyTableSchema
+  (create-lookup-generator-schema BaseUniqueKeyTableSchema))
+
 (def BaseLookupTableSchema
-  (merge SecondaryTableSchema
+  (merge BaseTableSchema
          CollectionKeysSchema
          MaterializedViewSchema
          {:type (s/eq :lookup)}))
@@ -135,16 +152,12 @@
 ;; should return a list of lookup records. if no generator-fn
 ;; is supplied then a default is used
 (s/defschema LookupTableSchema
-  (s/conditional
-   :generator-fn
-   (merge BaseLookupTableSchema
-          {:generator-fn (s/pred fn? "generator-fn")})
+  (create-lookup-generator-schema BaseLookupTableSchema))
 
-   :else
-   (merge BaseLookupTableSchema
-          {(s/optional-key :with-columns) (s/conditional
-                                           keyword? (s/eq :all)
-                                           :else [s/Keyword])})))
+(s/defschema IndexTableSchema
+  (s/conditional
+   #(= (:type %) :uniquekey) UniqueKeyTableSchema
+   #(= (:type %) :lookup) LookupTableSchema))
 
 (s/defschema TableSchema
   (s/conditional

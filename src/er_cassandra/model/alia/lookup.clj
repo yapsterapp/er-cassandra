@@ -85,7 +85,7 @@
    - record: upserted primary-table record to generate lookups for
              (or nil for deletion)"
   [model :- Entity
-   table :- t/LookupTableSchema
+   table :- t/IndexTableSchema
    old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema]
   (if record
@@ -97,7 +97,7 @@
   "generate all the lookup records for one lookup table"
   [model :- Entity
    {generator-fn :generator-fn
-    :as table} :- t/LookupTableSchema
+    :as table} :- t/IndexTableSchema
    old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema]
   ((or generator-fn
@@ -121,7 +121,7 @@
   [entity :- Entity
    old-record :- t/MaybeRecordSchema
    new-record :- t/MaybeRecordSchema
-   lookup-key-table :- t/LookupTableSchema]
+   lookup-key-table :- t/IndexTableSchema]
   (let [key (:key lookup-key-table)
         col-colls (:collections lookup-key-table)]
 
