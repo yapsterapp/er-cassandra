@@ -398,7 +398,8 @@
                [phone-t {:org_id org-id :id id :phone "123"}]
                [phone-t {:org_id org-id :id id :phone "456"}]])
              (set rs)))))
-  (testing "with-columns option"
+
+  (testing "with-columns [cols] option"
     (let [m (t/create-entity
            {:primary-table {:name :foos :key [:id]}
             :secondary-tables [{:name :foos_by_bar :key [:bar]}
@@ -407,7 +408,7 @@
                                  :key [:x]
                                  :with-columns [:c1 :c2]}]})]
 
-    (testing "lookup-keys with a full record supplied"
+    (testing "lookup-keys with-columns [:c1 c2] with a full record supplied"
       (let [record {:id 1 :bar "bar1" :baz "baz1" :c1 :C1 :c2 :C2 :c3 :C3 :x "x-key"}
             [[t lrecord] & _ :as lookups] (u/lookup-record-seq m nil record)]
 
@@ -417,7 +418,7 @@
           :C2    (:c2 lrecord)
           false  (contains? lrecord :c3))))
 
-    (testing "lookup-keys with a partial record supplied"
+    (testing "lookup-keys with-columns [:c1 c2] with a partial record supplied"
       (let [old-record {:id 1 :bar "bar1" :baz "baz1" :x "x-key" :c1 :C1 :c2 :C2 :c3 :C3 }
             record {:id 1 :bar "bar1" :baz "baz1" :x "x-key" :c1 :C1 }
             [[t lrecord] & _ :as lookups] (u/lookup-record-seq m old-record record)]
@@ -426,7 +427,37 @@
           1      (count lookups)
           :C1    (:c1 lrecord)
           :C2    (:c2 lrecord)
-          false  (contains? lrecord :c3)))))))
+          false  (contains? lrecord :c3))))))
+
+  (testing "with-columns :all option"
+    (let [m (t/create-entity
+           {:primary-table {:name :foos :key [:id]}
+            :secondary-tables [{:name :foos_by_bar :key [:bar]}
+                               {:name :foos_by_baz :key [:baz]}]
+            :lookup-key-tables [{:name :foos_by_x
+                                 :key [:x]
+                                 :with-columns :all}]})]
+
+    (testing "lookup-keys with-columns :all with a full record supplied"
+      (let [record {:id 1 :bar "bar1" :baz "baz1" :c1 :C1 :c2 :C2 :c3 :C3 :x "x-key"}
+            [[t lrecord] & _ :as lookups] (u/lookup-record-seq m nil record)]
+
+        (are [x y] (= x y)
+          1      (count lookups)
+          :C1    (:c1 lrecord)
+          :C2    (:c2 lrecord)
+          :C3    (:c3 lrecord))))
+
+    (testing "lookup-keys with-columns :all with a partial record supplied"
+      (let [old-record {:id 1 :bar "bar1" :baz "baz1" :x "x-key" :c1 :C1 :c2 :C2 :c3 :C3 }
+            record {:id 1 :bar "bar1" :baz "baz1" :x "x-key" :c1 :C1 }
+            [[t lrecord] & _ :as lookups] (u/lookup-record-seq m old-record record)]
+
+        (are [x y] (= x y)
+          1      (count lookups)
+          :C1    (:c1 lrecord)
+          :C2    (:c2 lrecord)
+          :C3    (:c3 old-record)))))))
 
 
 (deftest upsert-lookups-test

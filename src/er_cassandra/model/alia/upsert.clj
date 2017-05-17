@@ -16,7 +16,8 @@
     :refer [combine-responses create-lookup-record]]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.alia.fn-schema :as fns]
-   [er-cassandra.model.alia.unique-key :as unique-key])
+   [er-cassandra.model.alia.unique-key :as unique-key]
+   [er-cassandra.model.error :as e])
   (:import
    [er_cassandra.session Session]
    [er_cassandra.model.types Entity]))
@@ -146,6 +147,23 @@
                          kv
                          (fns/upsert-opts->delete-opts opts))))))))
 
+(defn- choose-lookup-additional-cols
+  "we want to choose a minimum set of additional cols, over the
+   lookup-pk + uber-key...
+
+   we default with-cols values from old record
+   otherwise MVs depending on the lookup may
+   have rows removed because with-cols cols
+   weren't supplied "
+  [model with-cols old-record record]
+  (let [with-cols (if (= :all with-cols)
+                    (set/union (set (keys old-record))
+                               (set (keys record)))
+                    with-cols)]
+    (merge
+     (select-keys old-record with-cols)
+     (select-keys record with-cols))))
+
 (s/defn lookup-record-seq
   "returns a seq of tuples [table lookup-record]"
   [model :- Entity
@@ -161,21 +179,21 @@
            with-cols (:with-columns t)]
        (when (k/has-key? key record)
          (let [kvs (filter identity
-                           (set (k/extract-key-value-collection key record col-colls)))]
+                           (set (k/extract-key-value-collection
+                                 key record col-colls)))]
 
            (for [kv kvs]
-             (let [lookup-record (create-lookup-record uber-key uber-key-value key kv)
+             (let [lookup-record (create-lookup-record
+                                  uber-key uber-key-value key kv)
+
                    lookup-record (if-not with-cols
 
                                    lookup-record
 
                                    (merge
-                                    ;; we default with-cols values from old record
-                                    ;; otherwise MVs depending on the lookup may
-                                    ;; have rows removed because with-cols cols
-                                    ;; weren't supplied
-                                    (select-keys old-record with-cols)
-                                    (select-keys record with-cols)
+                                    (choose-lookup-additional-cols
+                                     model with-cols old-record record)
+
                                     lookup-record))]
                [t lookup-record]))))))))
 
