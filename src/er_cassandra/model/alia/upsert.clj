@@ -116,38 +116,7 @@
             (k/extract-key-value k record))
        (insert-index-record session entity t record opts)))))
 
-(s/defn stale-lookup-key-values
-  [entity :- Entity
-   old-record :- t/MaybeRecordSchema
-   new-record :- t/MaybeRecordSchema
-   lookup-key-table :- t/LookupTableSchema]
-  (let [key (:key lookup-key-table)
-        col-colls (:collections lookup-key-table)]
-
-    (when (k/has-key? key new-record)
-      (let [old-kvs (set (k/extract-key-value-collection key old-record col-colls))
-            new-kvs (set (k/extract-key-value-collection key new-record col-colls))]
-        (filter identity (set/difference old-kvs new-kvs))))))
-
-(s/defn delete-stale-lookups
-  [session :- Session
-   entity :- Entity
-   old-record :- t/MaybeRecordSchema
-   new-record :- t/MaybeRecordSchema
-   opts :- fns/DeleteUsingOnlyOptsWithTimestampSchema]
-  (combine-responses
-   (mapcat
-    identity
-    (for [t (t/mutable-lookup-tables entity)]
-      (let [stale-kvs (stale-lookup-key-values entity old-record new-record t)]
-        (for [kv stale-kvs]
-          (delete-index-record session
-                         entity
-                         t
-                         kv
-                         (fns/upsert-opts->delete-opts opts))))))))
-
-(defn- choose-lookup-additional-cols
+(defn choose-lookup-additional-cols
   "we want to choose a minimum set of additional cols, over the
    lookup-pk + uber-key...
 
@@ -164,38 +133,127 @@
      (select-keys old-record with-cols)
      (select-keys record with-cols))))
 
+(s/defn default-lookup-record-generator-for-key-fn
+  "generate lookup record(s) for a lookup table given
+   a specified key which may or may not be the :key of
+   the lookup-table
+   - model: the model
+   - table: the lookup table
+   - key : the key to use to generate lookups
+   - old-record: previous primary table record (or nil for new)
+   - record: upserted primary-table record to generate lookups for
+             (or nil for deletion)"
+  [model
+   table
+   key
+   old-record
+   record]
+  (let [uber-key (t/uber-key model)
+        uber-key-value (t/extract-uber-key-value model record)
+        col-colls (:collections table)
+        with-cols (:with-columns table)]
+    (when (k/has-key? key record)
+      (let [kvs (filter identity
+                        (set (k/extract-key-value-collection
+                              key record col-colls)))]
+
+        (for [kv kvs]
+          (let [lookup-record (create-lookup-record
+                               uber-key uber-key-value key kv)
+
+                lookup-record (if-not with-cols
+
+                                lookup-record
+
+                                (merge
+                                 (choose-lookup-additional-cols
+                                  model with-cols old-record record)
+
+                                 lookup-record))]
+            lookup-record))))))
+
+(s/defn default-lookup-record-generator-fn
+  "generate a sequence of zero or more lookup records for a lookup table
+   - model: the model
+   - table: the lookup table
+   - old-record: previous primary table record (or nil for new)
+   - record: upserted primary-table record to generate lookups for
+             (or nil for deletion)"
+  [model :- Entity
+   table :- t/LookupTableSchema
+   old-record :- t/MaybeRecordSchema
+   record :- t/MaybeRecordSchema]
+  (if record
+    (default-lookup-record-generator-for-key-fn
+     model table (:key table) old-record record)
+    []))
+
+(s/defn generate-lookup-records-for-table
+  "generate all the lookup records for one lookup table"
+  [model :- Entity
+   {generator-fn :generator-fn
+    :as table} :- t/LookupTableSchema
+   old-record :- t/MaybeRecordSchema
+   record :- t/MaybeRecordSchema]
+  ((or generator-fn
+       default-lookup-record-generator-fn)
+   model table old-record record))
+
 (s/defn lookup-record-seq
   "returns a seq of tuples [table lookup-record]"
   [model :- Entity
    old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema]
-  (mapcat
-   identity
+  (apply
+   concat
    (for [t (t/mutable-lookup-tables model)]
-     (let [uber-key (t/uber-key model)
-           uber-key-value (t/extract-uber-key-value model record)
-           key (:key t)
-           col-colls (:collections t)
-           with-cols (:with-columns t)]
-       (when (k/has-key? key record)
-         (let [kvs (filter identity
-                           (set (k/extract-key-value-collection
-                                 key record col-colls)))]
+     (->> (generate-lookup-records-for-table
+           model t old-record record)
+          (map (fn [lr]
+                 [t lr]))))))
 
-           (for [kv kvs]
-             (let [lookup-record (create-lookup-record
-                                  uber-key uber-key-value key kv)
+(s/defn stale-lookup-key-values
+  [entity :- Entity
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema
+   lookup-key-table :- t/LookupTableSchema]
+  (let [key (:key lookup-key-table)
+        col-colls (:collections lookup-key-table)]
 
-                   lookup-record (if-not with-cols
+    (when (k/has-key? key new-record)
+      ;; get old lookup keys which aren't present in the latest
+      ;; set of lookup records
+      (let [old-kvs (set
+                     (map #(k/extract-key-value key %)
+                          (generate-lookup-records-for-table
+                           entity lookup-key-table old-record old-record)))
+            new-kvs (set
+                     (map #(k/extract-key-value key %)
+                          (generate-lookup-records-for-table
+                           entity lookup-key-table old-record new-record)))]
+        (filter identity (set/difference old-kvs new-kvs))))))
 
-                                   lookup-record
-
-                                   (merge
-                                    (choose-lookup-additional-cols
-                                     model with-cols old-record record)
-
-                                    lookup-record))]
-               [t lookup-record]))))))))
+(s/defn delete-stale-lookups
+  [session :- Session
+   entity :- Entity
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema
+   opts :- fns/DeleteUsingOnlyOptsWithTimestampSchema]
+  (combine-responses
+   (mapcat
+    identity
+    (for [t (t/mutable-lookup-tables entity)]
+      (let [stale-lookups (stale-lookup-key-values
+                           entity
+                           old-record
+                           new-record
+                           t)]
+        (for [skv stale-lookups]
+          (delete-index-record session
+                               entity
+                               t
+                               skv
+                               (fns/upsert-opts->delete-opts opts))))))))
 
 (s/defn upsert-lookups
   [session :- Session

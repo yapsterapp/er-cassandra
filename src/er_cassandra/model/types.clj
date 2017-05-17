@@ -122,16 +122,29 @@
          MaterializedViewSchema
          {:type (s/eq :secondary)}))
 
-;; lookup tables contain columns from the uberkey and
-;; a lookup key, plus any additional with-columns
-(s/defschema LookupTableSchema
+(def BaseLookupTableSchema
   (merge SecondaryTableSchema
          CollectionKeysSchema
          MaterializedViewSchema
-         {(s/optional-key :with-columns) (s/conditional
-                                          keyword? (s/eq :all)
-                                          :else [s/Keyword])}
          {:type (s/eq :lookup)}))
+
+;; lookup tables contain columns from the uberkey and
+;; a lookup key, plus any additional with-columns
+;; a generator-fn may be supplied which will be called with
+;; (generator-fn model table old-record new-record) and
+;; should return a list of lookup records. if no generator-fn
+;; is supplied then a default is used
+(s/defschema LookupTableSchema
+  (s/conditional
+   :generator-fn
+   (merge BaseLookupTableSchema
+          {:generator-fn (s/pred fn? "generator-fn")})
+
+   :else
+   (merge BaseLookupTableSchema
+          {(s/optional-key :with-columns) (s/conditional
+                                           keyword? (s/eq :all)
+                                           :else [s/Keyword])})))
 
 (s/defschema TableSchema
   (s/conditional

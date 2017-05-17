@@ -88,9 +88,8 @@
    col - the col
    val-or-coll - the col value
    record - the record for reporting"
-  [col-colls col val-or-coll record]
-  (let [ctype (get col-colls col)]
-    (case ctype
+  [ctype col val-or-coll record]
+  (case ctype
       nil [val-or-coll] ;; wrap for cartesian product
 
       ;; TODO this makes little sense - should it be dropped
@@ -116,10 +115,10 @@
                                              :val-or-coll val-or-coll
                                              :record record})))
 
-      (throw (ex-info "unknown collection type" {:col-colls col-colls
+      (throw (ex-info "unknown collection type" {:ctype ctype
                                                  :col col
                                                  :val-or-coll val-or-coll
-                                                 :record record})))))
+                                                 :record record}))))
 
 (defn extract-key-value-collection
   "extracts a list of key-values. any column
@@ -131,7 +130,7 @@
      (let [key (flatten-key key)
            col-values (mapv (fn [k v]
                               (extract-collection-key-components
-                               col-colls
+                               (get col-colls k)
                                k
                                v
                                record))
