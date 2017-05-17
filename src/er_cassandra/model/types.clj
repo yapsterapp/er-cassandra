@@ -128,7 +128,9 @@
   (merge SecondaryTableSchema
          CollectionKeysSchema
          MaterializedViewSchema
-         {(s/optional-key :with-columns) [s/Keyword]}
+         {(s/optional-key :with-columns) (s/conditional
+                                          keyword? (s/eq :all)
+                                          :else [s/Keyword])}
          {:type (s/eq :lookup)}))
 
 (s/defschema TableSchema
@@ -278,6 +280,14 @@
   (->> entity
        :lookup-key-tables
        (filterv (comp not :view?))))
+
+(defn all-key-cols
+  "a list of all cols used in keys across all tables for the entity"
+  [^Entity entity]
+  (distinct
+   (concat (uber-key entity)
+           (mapcat :key (:secondary-tables entity))
+           (mapcat :key (:lookup-key-tables entity)))))
 
 (defn extract-uber-key-value
   [^Entity entity record]
