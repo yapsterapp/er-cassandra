@@ -56,6 +56,8 @@
   (is (= [[:= :foo 10] [:= :bar 20]]
          (k/key-equality-clause [:foo :bar] [10 20])))
   (is (= [[:= :foo 10] [:in :bar ["one" "two"]]]
+         (k/key-equality-clause [:foo :bar] [10 ["one" "two"]])))
+  (is (= [[:= :foo 10] [:in :bar ["one" "two"]]]
          (k/key-equality-clause [:foo :bar] [10 ["one" "two"]]))))
 
 (deftest extract-key-equality-clause-test
@@ -72,29 +74,29 @@
   (testing "extract list values"
     (is (= [1 2 3]
            (k/extract-collection-key-components
-            {:id :list} :id [1 2 3 nil] {})))
+            :list :id [1 2 3 nil] {})))
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo #"col is not a list"
          (k/extract-collection-key-components
-          {:id :list} :id #{1 2 3 nil} {}))))
+          :list :id #{1 2 3 nil} {}))))
 
   (testing "extract set values"
     (is (= #{1 2 3}
            (k/extract-collection-key-components
-            {:id :set} :id #{1 2 3 nil} {})))
+            :set :id #{1 2 3 nil} {})))
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo #"col is not a set"
          (k/extract-collection-key-components
-          {:id :set} :id [1 2 3 nil] {}))))
+          :set :id [1 2 3 nil] {}))))
 
   (testing "extract map values"
     (is (= [:foo :bar :baz]
            (k/extract-collection-key-components
-            {:id :map} :id {:foo 10 :bar 20 :baz 30 nil 40} {})))
+            :map :id {:foo 10 :bar 20 :baz 30 nil 40} {})))
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo #"col is not a map"
          (k/extract-collection-key-components
-          {:id :map} :id [1 2 3 nil] {})))))
+          :map :id [1 2 3 nil] {})))))
 
 (deftest extract-key-value-collection-test
   (testing "extract key collections"

@@ -1,21 +1,24 @@
 (ns er-cassandra.model.alia.unique-key
   (:require
-   [clojure.set :as set]
-   [cats.core :refer [mlet return]]
-   [cats.context :refer [with-context]]
+   [cats
+    [context :refer [with-context]]
+    [core :refer [mlet return]]]
    [cats.labs.manifold :refer [deferred-context]]
-   [schema.core :as s]
-   [er-cassandra.session]
-   [er-cassandra.key :as k]
-   [er-cassandra.record :as r]
-   [er-cassandra.model.types :as t]
-   [er-cassandra.model.alia.fn-schema :as fns]
-   [er-cassandra.model.error :as e]
-   [er-cassandra.model.util.timestamp :as ts]
-   [er-cassandra.model.util :refer [combine-responses create-lookup-record]])
+   [clojure.set :as set]
+   [er-cassandra
+    [key :as k]
+    [record :as r]]
+   [er-cassandra.model
+    [error :as e]
+    [types :as t]
+    [util :refer [combine-responses create-lookup-record]]]
+   [er-cassandra.model.alia
+    [fn-schema :as fns]
+    [lookup :as l]]
+   [schema.core :as s])
   (:import
-   [er_cassandra.model.types Entity]
-   [er_cassandra.session Session]))
+   er_cassandra.model.types.Entity
+   er_cassandra.session.Session))
 
 (defn applied?
   [lwt-response]
@@ -52,23 +55,29 @@
    entity :- Entity
    unique-key-table :- t/UniqueKeyTableSchema
    uber-key-value :- t/KeyValueSchema
-   key-value :- t/KeyValueSchema
+   unique-key-record :- t/RecordSchema
    opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema]
 
   (with-context deferred-context
       (mlet [:let [uber-key (t/uber-key entity)
                    key (:key unique-key-table)
-                   unique-key-record (create-lookup-record
-                                      uber-key uber-key-value
-                                      key key-value)
+                   key-value (k/extract-key-value key unique-key-record)
+                   ;; can't use any PK components in an ONLY IF LWT
+                   [lwt-update-key
+                    lwt-update-key-value] (k/remove-key-components
+                                           uber-key
+                                           uber-key-value
+                                           key)
                    key-desc {:uber-key uber-key :uber-key-value uber-key-value
-                             :key key :key-value key-value}]
+                             :key key
+                             :key-value key-value}]
 
              insert-response (r/insert session
                                        (:name unique-key-table)
                                        unique-key-record
                                        (merge (fns/opts-remove-timestamp opts)
                                               {:if-not-exists true}))
+
              :let [inserted? (applied? insert-response)
                    owned? (applied-or-owned?
                            entity
@@ -87,22 +96,37 @@
              ;; TODO - check that primary record has a live forward reference,
              ;;        or lookup is really stale despite primary existing
 
-             stale-update-response (if (and (not owned?)
-                                            (not live-ref?))
-                                     (r/update
-                                      session
-                                      (:name unique-key-table)
-                                      (:key unique-key-table)
-                                      unique-key-record
-                                      (merge
-                                       (fns/opts-remove-timestamp opts)
-                                       {:only-if
-                                        (t/extract-uber-key-equality-clause
-                                         entity
-                                         insert-response)}))
-                                     (return nil))
+             update-response (cond
+                               (and (not inserted?) owned?)
+                               (r/update
+                                session
+                                (:name unique-key-table)
+                                (:key unique-key-table)
+                                unique-key-record
+                                (merge
+                                 (fns/opts-remove-timestamp opts)
+                                 {:only-if
+                                  (k/extract-key-equality-clause
+                                   lwt-update-key
+                                   lwt-update-key-value)}))
 
-             updated? (return (applied? stale-update-response))]
+                               (and (not inserted?) (not owned?) (not live-ref?))
+                               (r/update
+                                session
+                                (:name unique-key-table)
+                                (:key unique-key-table)
+                                unique-key-record
+                                (merge
+                                 (fns/opts-remove-timestamp opts)
+                                 {:only-if
+                                  (k/extract-key-equality-clause
+                                   lwt-update-key
+                                   insert-response)}))
+
+                               :else
+                               (return nil))
+
+             updated? (return (applied? update-response))]
 
         (return
          (cond
@@ -158,22 +182,6 @@
            deleted? [:ok key-desc :deleted]
            :else    [:ok key-desc :stale]))))))
 
-(s/defn stale-unique-key-values :- [t/KeyValueSchema]
-  [entity :- Entity
-   old-record :- t/MaybeRecordSchema
-   new-record :- t/MaybeRecordSchema
-   unique-key-table :- t/UniqueKeyTableSchema]
-  (let [key (:key unique-key-table)
-        col-colls (:collections unique-key-table)]
-    (when (k/has-key? key new-record)
-      (let [old-kvs (set (k/extract-key-value-collection key
-                                                         old-record
-                                                         col-colls))
-            new-kvs (set (k/extract-key-value-collection key
-                                                         new-record
-                                                         col-colls))]
-        (filter identity (set/difference old-kvs new-kvs))))))
-
 (s/defn release-stale-unique-keys
   [session :- Session
    entity :- Entity
@@ -186,7 +194,12 @@
     (for [t (:unique-key-tables entity)]
       (let [uber-key (t/uber-key entity)
             uber-key-value (t/extract-uber-key-value entity old-record)
-            stale-kvs (stale-unique-key-values entity old-record new-record t)]
+
+            stale-kvs (l/stale-lookup-key-values
+                       entity
+                       old-record
+                       new-record
+                       t)]
         (for [kv stale-kvs]
           (release-unique-key session
                               entity
@@ -198,31 +211,26 @@
 (s/defn acquire-unique-keys
   [session :- Session
    entity :- Entity
+   old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema
    opts :- fns/UpsertOptsWithTimestampSchema]
   (combine-responses
-   (mapcat
-    identity
+   (apply
+    concat
     (for [t (:unique-key-tables entity)]
       (let [uber-key (t/uber-key entity)
             uber-key-value (t/extract-uber-key-value entity record)
-            key (:key t)
-            col-colls (:collections t)]
-        (when (k/has-key? key record)
-          (let [kvs (filter identity
-                            (set (k/extract-key-value-collection key
-                                                                 record
-                                                                 col-colls)))]
-            (for [kv kvs]
-              (let [lookup-record (create-lookup-record
-                                   uber-key uber-key-value
-                                   key kv)]
-                (acquire-unique-key session
-                                    entity
-                                    t
-                                    uber-key-value
-                                    kv
-                                    (fns/upsert-opts->using-only opts)))))))))))
+
+            lookup-records (l/generate-lookup-records-for-table
+                            entity t old-record record)]
+
+        (for [lr lookup-records]
+          (acquire-unique-key session
+                              entity
+                              t
+                              uber-key-value
+                              lr
+                              (fns/upsert-opts->using-only opts))))))))
 
 (s/defn update-with-acquire-responses
   "remove unique key values which couldn't be acquired
@@ -308,16 +316,27 @@
           new-record
           (:unique-key-tables entity)))
 
+(s/defn all-unique-key-cols
+  "return a set of the union of all unique-key columns in the entity,
+   which will be used to update only the unique-key columsn after key
+   acquisition"
+  [entity :- Entity]
+  (let [unique-key-tables (:unique-key-tables entity)]
+    (reduce (fn [cols t]
+              (into cols (flatten (:key t))))
+            #{}
+            unique-key-tables)))
+
 (s/defn without-unique-keys
   "remove (the final part of) unique key columns from a record"
   [entity :- Entity
    record :- t/MaybeRecordSchema]
-  (let [unique-key-tabless (:unique-key-tables entity)]
+  (let [unique-key-tables (:unique-key-tables entity)]
     (reduce (fn [r t]
               (let [key-col (last (:key t))]
                 (dissoc r key-col)))
             record
-            unique-key-tabless)))
+            unique-key-tables)))
 
 (s/defn upsert-primary-record-without-unique-keys
   "attempts to upsert a primary record minus it's unique keys,
@@ -329,24 +348,32 @@
     record :- t/MaybeRecordSchema
     {:keys [if-not-exists
             if-exists
-            only-if] :as opts} :- fns/UpsertOptsWithTimestampSchema]
+            only-if
+            using] :as opts} :- fns/UpsertOptsWithTimestampSchema]
    (with-context deferred-context
-     (mlet [primary-table-name (get-in entity [:primary-table :name])
-            primary-table-key (get-in entity [:primary-table :key])
+     (mlet [:let [primary-table-name (get-in entity [:primary-table :name])
+                  primary-table-key (get-in entity [:primary-table :key])
 
-            nok-record (without-unique-keys entity record)
+                  nok-record (without-unique-keys entity record)
+
+                  ;; prefer insert - because if a new record is updated
+                  ;; into existence, all it's cols being nulled will cause
+                  ;; its automatic deletion
+                  insert? (or if-not-exists
+                              (and (not if-exists) (not only-if)))]
 
             insert-response (cond
                               if-not-exists
                               (r/insert session
                                         primary-table-name
                                         nok-record
-                                        {:if-not-exists true})
+                                        (fns/opts-remove-timestamp opts))
 
                               (and (not if-exists) (not only-if))
                               (r/insert session
                                         primary-table-name
-                                        nok-record)
+                                        nok-record
+                                        opts)
 
                               :else ;; only-if
                               (return nil))
@@ -359,24 +386,38 @@
 
                               :else false)]
 
-            update-response (if (and (not inserted?)
-                                     (or if-exists only-if))
+            update-response (cond
+
+                              (and (not insert?)
+                                   (or if-exists only-if))
                               (r/update
                                session
                                primary-table-name
                                primary-table-key
                                nok-record
-                               (if only-if
-                                 {:only-if only-if}
-                                 {:if-exists true}))
-                              (return nil))
+                               (fns/opts-remove-timestamp opts))
+
+                              insert?
+                              (return nil)
+
+                              :else
+                              (throw (ex-info
+                                      "internal error"
+                                      {:entity entity
+                                       :record record
+                                       :opts opts})))
 
             :let [updated? (applied? update-response)]
+
+            ;; TODO - removing the reselect - it's
+            ;; ok for an upsert to return just what was upserted...
+            ;; but there are some upstream things to work through
+            ;; to make it work properly
 
             upserted-record (cond
                               ;; definitely a first insert
                               (and inserted? if-not-exists)
-                              nok-record
+                              (return nok-record)
 
                               ;; insert or update - must retrieve
                               (or inserted? updated?)
@@ -388,11 +429,13 @@
 
                               ;; failure
                               :else
-                              (return nil))]
+                              (return nil))
+            ]
 
        (return
-        (if upserted-record
-          [upserted-record nil]
+        (if (or inserted? updated?)
+          [upserted-record
+           nil]
 
           [nil [(e/general-error-log-entry
                  {:error-tag :upsert/primary-record-upsert-error
@@ -422,6 +465,7 @@
            acquire-key-responses (acquire-unique-keys
                                   session
                                   entity
+                                  old-key-record
                                   new-record
                                   opts)
            acquire-failures (return
@@ -435,12 +479,30 @@
                             old-key-record
                             new-record
                             acquire-key-responses))
-           upsert-response (r/update
-                            session
-                            (get-in entity [:primary-table :name])
-                            (get-in entity [:primary-table :key])
-                            updated-record
-                            opts)]
+
+           ;; only update the cols relating to the unique keys
+           :let [all-uk-cols (all-unique-key-cols entity)
+                 uberkey-cols (-> entity t/uber-key flatten set)
+
+                 ;; we will set these if they are provided
+                 set-cols (set/difference all-uk-cols uberkey-cols)
+
+                 ;; only proceed if we have some col vals to set
+                 set-vals (select-keys updated-record set-cols)
+
+                 update-cols (into
+                              all-uk-cols
+                              uberkey-cols)]
+
+           upsert-response (if-not (empty? set-vals)
+                             (r/update
+                              session
+                              (get-in entity [:primary-table :name])
+                              (get-in entity [:primary-table :key])
+                              (select-keys updated-record
+                                           update-cols)
+                              opts)
+                             (return nil))]
       (return [updated-record
                acquire-failures]))))
 

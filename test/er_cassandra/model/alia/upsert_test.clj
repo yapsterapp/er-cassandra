@@ -9,6 +9,7 @@
    [er-cassandra.record :as r]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
+   [er-cassandra.model.alia.lookup :as l]
    [er-cassandra.model.alia.upsert :as u]))
 
 (use-fixtures :once st/validate-schemas)
@@ -143,7 +144,7 @@
 (deftest delete-index-record-test
   (let [m (create-simple-entity)
         id (uuid/v1)
-        _ @(r/insert tu/*model-session* :simple_upsert_test {:id id :nick "foo"})
+        _ (tu/insert-record :simple_upsert_test {:id id :nick "foo"})
         [status
          detail
          reason] @(u/delete-index-record tu/*model-session*
@@ -213,7 +214,7 @@
   (let [m (create-secondary-entity)
         [org-id id] [(uuid/v1) (uuid/v1)]
         r {:org_id org-id :id id :nick "foo"}
-        _ @(r/insert tu/*model-session* :secondary_upsert_test_by_nick r)
+        _ (tu/insert-record :secondary_upsert_test_by_nick r)
         old-r (fetch-record :secondary_upsert_test_by_nick [:org_id :nick] [org-id "foo"])
         [status
          record
@@ -244,27 +245,26 @@
 ;; since this is undesirable for secondary tables, insert should be
 ;; used instead - this test ensures that insert is used
 (deftest dont-delete-secondaries-with-nil-non-key-cols-test
-  (als/with-debug
-    (let [m (create-secondary-entity-for-nil-non-key-cols)
-          [id other-id] [(uuid/v1) (uuid/v1)]
-          r {:id id :other_id other-id :nick "foo"}
+  (let [m (create-secondary-entity-for-nil-non-key-cols)
+        [id other-id] [(uuid/v1) (uuid/v1)]
+        r {:id id :other_id other-id :nick "foo"}
 
-          i1 (upsert-instance m r)
-          f1 (fetch-record :secondary_with_nil_non_key_cols_test [:id] [id])
-          fi1 (fetch-record :secondary_with_nil_non_key_cols_test_by_other_id
-                            [:other_id :id] [other-id id])
+        i1 (upsert-instance m r)
+        f1 (fetch-record :secondary_with_nil_non_key_cols_test [:id] [id])
+        fi1 (fetch-record :secondary_with_nil_non_key_cols_test_by_other_id
+                          [:other_id :id] [other-id id])
 
-          nnr (assoc r :nick nil)
-          i2 (upsert-instance m nnr)
+        nnr (assoc r :nick nil)
+        i2 (upsert-instance m nnr)
 
-          f2 (fetch-record :secondary_with_nil_non_key_cols_test [:id] [id])
-          fi2 (fetch-record :secondary_with_nil_non_key_cols_test_by_other_id
-                            [:other_id :id] [other-id id])]
-      (is (= r f1))
-      (is (= r fi1))
+        f2 (fetch-record :secondary_with_nil_non_key_cols_test [:id] [id])
+        fi2 (fetch-record :secondary_with_nil_non_key_cols_test_by_other_id
+                          [:other_id :id] [other-id id])]
+    (is (= r f1))
+    (is (= r fi1))
 
-      (is (= nnr f2))
-      (is (= nnr fi2)))))
+    (is (= nnr f2))
+    (is (= nnr fi2))))
 
 (deftest upsert-secondaries-test
   (let [m (create-secondary-entity)
@@ -279,38 +279,6 @@
                    (ts/default-timestamp-opt))]
     (is (= r (fetch-record :secondary_upsert_test_by_nick [:org_id :nick] [org-id "bar"])))))
 
-(deftest stale-lookup-key-values-test
-  (let [m (t/create-entity
-           {:primary-table {:name :foos :key [:id]}
-            :lookup-key-tables [{:name :foos_by_bar :key [:bar]}
-                                {:name :foos_by_baz
-                                 :key [:baz]
-                                 :collections {:baz :set}}]})]
-
-    (testing "ignores lookup keys when missing from new-record"
-      (is (empty?
-           (u/stale-lookup-key-values
-            m
-            {:id :a :bar :b}
-            {:id :a}
-            (-> m :lookup-key-tables first)))))
-
-    (testing "correctly identifies a stale singular lookup key values"
-      (is (= [[:b]]
-             (u/stale-lookup-key-values
-              m
-              {:id :a :bar :b}
-              {:id :a :bar nil}
-              (-> m :lookup-key-tables first)))))
-
-    (testing "correctly identifiers stale collection lookup key values"
-      (is (= #{[:b] [:d]}
-             (set
-              (u/stale-lookup-key-values
-               m
-               {:id :a :baz #{:b :c :d}}
-               {:id :a :baz #{:c}}
-               (-> m :lookup-key-tables second))))))))
 
 (deftest delete-stale-lookups-test
   (let [m (create-mixed-lookup-entity)
@@ -372,62 +340,7 @@
     (is (= nil (fetch-record :upsert_mixed_lookup_test_by_phone
                              [:phone] "456")))))
 
-(deftest lookup-record-seq-test
-  (testing "mixed lookups seq"
-    (let [m (create-mixed-lookup-entity)
-          nick-t (->> m :lookup-key-tables
-                      (filter #(= :upsert_mixed_lookup_test_by_nick (:name %)))
-                      first)
-          email-t (->> m :lookup-key-tables
-                       (filter #(= :upsert_mixed_lookup_test_by_email (:name %)))
-                       first)
-          phone-t (->> m :lookup-key-tables
-                       (filter #(= :upsert_mixed_lookup_test_by_phone (:name %)))
-                       first)
-          [org-id id] [(uuid/v1) (uuid/v1)]
-          r {:org_id org-id :id id
-             :nick "foo"
-             :email #{"foo@bar.com" "foo@baz.com"}
-             :phone ["123" "456"]}
 
-          rs (u/lookup-record-seq m nil r)]
-
-      (is (= (set
-              [[nick-t {:org_id org-id :id id :nick "foo"}]
-               [email-t {:org_id org-id :id id :email "foo@bar.com"}]
-               [email-t {:org_id org-id :id id :email "foo@baz.com"}]
-               [phone-t {:org_id org-id :id id :phone "123"}]
-               [phone-t {:org_id org-id :id id :phone "456"}]])
-             (set rs)))))
-  (testing "with-columns option"
-    (let [m (t/create-entity
-           {:primary-table {:name :foos :key [:id]}
-            :secondary-tables [{:name :foos_by_bar :key [:bar]}
-                               {:name :foos_by_baz :key [:baz]}]
-            :lookup-key-tables [{:name :foos_by_x
-                                 :key [:x]
-                                 :with-columns [:c1 :c2]}]})]
-
-    (testing "lookup-keys with a full record supplied"
-      (let [record {:id 1 :bar "bar1" :baz "baz1" :c1 :C1 :c2 :C2 :c3 :C3 :x "x-key"}
-            [[t lrecord] & _ :as lookups] (u/lookup-record-seq m nil record)]
-
-        (are [x y] (= x y)
-          1      (count lookups)
-          :C1    (:c1 lrecord)
-          :C2    (:c2 lrecord)
-          false  (contains? lrecord :c3))))
-
-    (testing "lookup-keys with a partial record supplied"
-      (let [old-record {:id 1 :bar "bar1" :baz "baz1" :x "x-key" :c1 :C1 :c2 :C2 :c3 :C3 }
-            record {:id 1 :bar "bar1" :baz "baz1" :x "x-key" :c1 :C1 }
-            [[t lrecord] & _ :as lookups] (u/lookup-record-seq m old-record record)]
-
-        (are [x y] (= x y)
-          1      (count lookups)
-          :C1    (:c1 lrecord)
-          :C2    (:c2 lrecord)
-          false  (contains? lrecord :c3)))))))
 
 
 (deftest upsert-lookups-test

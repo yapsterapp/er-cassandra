@@ -1,6 +1,6 @@
 (ns er-cassandra.model.types
   (:require
-   [cats.core :refer [mlet return]]
+   [cats.core :refer [mlet return >>=]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
    [schema.core :as s]
@@ -14,9 +14,20 @@
 (s/defschema CallbackFnSchema
   (s/make-fn-schema s/Any [[{s/Keyword s/Any}]]))
 
+(defprotocol ICallback
+  (run-callback [_ entity record]
+    "run a callback on a record of an entity returning
+     updated-record or Deferred<updated-record>"))
+
+(s/defschema CallbackSchema
+  (s/conditional
+    fn? CallbackFnSchema
+    #(satisfies? ICallback %) (s/protocol ICallback)))
+
 (s/defschema CallbacksSchema
-  {(s/optional-key :after-load) [CallbackFnSchema]
-   (s/optional-key :before-save) [CallbackFnSchema]})
+  {(s/optional-key :after-load) [CallbackSchema]
+   (s/optional-key :before-save) [CallbackSchema]
+   (s/optional-key :after-save) [CallbackSchema]})
 
 ;; a primary key for a cassandra table
 ;; the first entry may itself be a vector, representing
@@ -95,13 +106,6 @@
 (s/defschema MaterializedViewSchema
   {(s/optional-key :view?) s/Bool})
 
-;; unique-key tables are lookup tables with a unique
-;; constraint on the key, enforced with an LWT
-(s/defschema UniqueKeyTableSchema
-  (merge BaseTableSchema
-         CollectionKeysSchema
-         {:type (s/eq :uniquekey)}))
-
 ;; secondary tables contain all columns from the primary
 ;; table, with a different primary key.
 ;; secondary and lookup tables may be materialized views,
@@ -111,14 +115,49 @@
          MaterializedViewSchema
          {:type (s/eq :secondary)}))
 
-;; lookup tables contain columns from the uberkey and
-;; a lookup key, plus any additional with-columns
-(s/defschema LookupTableSchema
-  (merge SecondaryTableSchema
+(defn- create-lookup-generator-schema
+  "add the lookup record generator related schema to a base schema"
+  [base-schema]
+  (s/conditional
+   :generator-fn
+   (merge base-schema
+          {:generator-fn (s/pred fn? "generator-fn")})
+
+   :else
+   (merge base-schema
+          {(s/optional-key :with-columns) (s/conditional
+                                           keyword? (s/eq :all)
+                                           :else [s/Keyword])})))
+
+;; unique-key tables are lookup tables with a unique
+;; constraint on the key, enforced with an LWT
+(def BaseUniqueKeyTableSchema
+  (merge BaseTableSchema
+         CollectionKeysSchema
+         {:type (s/eq :uniquekey)}))
+
+(s/defschema UniqueKeyTableSchema
+  (create-lookup-generator-schema BaseUniqueKeyTableSchema))
+
+(def BaseLookupTableSchema
+  (merge BaseTableSchema
          CollectionKeysSchema
          MaterializedViewSchema
-         {(s/optional-key :with-columns) [s/Keyword]}
          {:type (s/eq :lookup)}))
+
+;; lookup tables contain columns from the uberkey and
+;; a lookup key, plus any additional with-columns
+;; a generator-fn may be supplied which will be called with
+;; (generator-fn model table old-record new-record) and
+;; should return a list of lookup records. if no generator-fn
+;; is supplied then a default is used
+(s/defschema LookupTableSchema
+  (create-lookup-generator-schema BaseLookupTableSchema))
+
+(s/defschema IndexTableSchema
+  (s/conditional
+   #(= (:type %) :uniquekey) UniqueKeyTableSchema
+   #(= (:type %) :lookup) LookupTableSchema))
 
 (s/defschema TableSchema
   (s/conditional
@@ -173,16 +212,16 @@
 (s/defn ^:always-validate create-entity :- Entity
   "create an entity record from a spec"
   [entity-spec]
-  (let [spec (conform-all-tables entity-spec)]
+  (let [spec (conform-all-tables entity-spec)
+        spec (merge {:unique-key-tables []
+                     :secondary-tables []
+                     :lookup-key-tables []
+                     :callbacks {}
+                     :denorm-targets {}
+                     :denorm-sources {}}
+                    spec)]
     (s/validate EntitySchema spec)
-    (strict-map->Entity
-     (merge {:unique-key-tables []
-             :secondary-tables []
-             :lookup-key-tables []
-             :callbacks {}
-             :denorm-targets {}
-             :denorm-sources {}}
-            spec))))
+    (strict-map->Entity spec)))
 
 (defmacro defentity
   [name entity-spec]
@@ -268,6 +307,14 @@
        :lookup-key-tables
        (filterv (comp not :view?))))
 
+(defn all-key-cols
+  "a list of all cols used in keys across all tables for the entity"
+  [^Entity entity]
+  (distinct
+   (concat (uber-key entity)
+           (mapcat :key (:secondary-tables entity))
+           (mapcat :key (:lookup-key-tables entity)))))
+
 (defn extract-uber-key-value
   [^Entity entity record]
   (let [kv (k/extract-key-value
@@ -285,52 +332,33 @@
    record))
 
 (defn run-callbacks
-  ([^Entity entity callback-key records]
-   (run-callbacks entity callback-key records {}))
-  ([^Entity entity callback-key records opts]
-   (let [callbacks (concat (get-in entity [:callbacks callback-key])
-                           (get-in opts [callback-key]))]
-     (try
-       (reduce (fn [r callback]
-                 (mapv callback r))
-               records
-               callbacks)
-       (catch Exception ex
-         (throw (ex-info (format "Failed to run callbacks '%s' on record of entity for '%s'"
-                                 callback-key
-                                 (get-in entity [:primary-table :name]))
-                         {:callback-key callback-key
-                          :entity entity}
-                         ex)))))))
-
-(defn run-callbacks-single
+  "callbacks implement ICallback and may return a modified record
+   or a Deferred thereof"
   ([^Entity entity callback-key record]
-   (run-callbacks-single entity callback-key record {}))
+   (run-callbacks entity callback-key record {}))
   ([^Entity entity callback-key record opts]
-   (let [callbacks (concat (get-in entity [:callbacks callback-key])
-                           (get-in opts [callback-key]))]
-     (reduce (fn [r callback]
-               (callback r))
-             record
-             callbacks))))
+   (let [all-callbacks (concat (get-in entity [:callbacks callback-key])
+                               (get-in opts [callback-key]))
+         callback-mfs (for [cb all-callbacks]
+                        (fn [record]
+                          (cond
+                            (fn? cb)
+                            (cb record)
 
-(defn run-deferred-callbacks
-  ([^Entity entity callback-key deferred-records]
-   (run-deferred-callbacks entity callback-key deferred-records {}))
-  ([^Entity entity callback-key deferred-records opts]
-   (with-context deferred-context
-     (mlet [records deferred-records]
-       (return
-        (run-callbacks entity callback-key records opts))))))
+                            (satisfies? ICallback cb)
+                            (run-callback cb entity record)
 
-(defn run-deferred-callbacks-single
-  ([^Entity entity callback-key deferred-record]
-   (run-deferred-callbacks-single entity callback-key deferred-record {}))
-  ([^Entity entity callback-key deferred-record opts]
-   (with-context deferred-context
-     (mlet [record deferred-record]
-       (return
-        (run-callbacks-single entity callback-key record opts))))))
+                            :else
+                            (throw
+                             (ex-info
+                              "neither an fn or an ICallback"
+                              {:entity entity
+                               :callback-key callback-key
+                               :callback cb})))))]
+     (with-context deferred-context
+       (if (not-empty callback-mfs)
+         (apply >>= (return record) callback-mfs)
+         (return record))))))
 
 (defn create-protect-columns-callback
   "create a callback which will remove cols from a record

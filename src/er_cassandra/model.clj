@@ -51,8 +51,10 @@
   ensure-one
   ensure-one-instance
   select-many
+  select-many-buffered
   select-many-instances
-  select-many-cat]
+  select-many-cat
+  select-many-cat-buffered]
 
  [er-cassandra.model.upsert upsert upsert-many upsert-buffered]
 

@@ -1,25 +1,26 @@
 (ns er-cassandra.model.alia.upsert
   (:require
-   [taoensso.timbre :refer [trace debug info warn error]]
-   [clojure.set :as set]
-   [schema.core :as s]
-   [manifold.deferred :as d]
-   [cats.core :refer [mlet return]]
-   [cats.data :refer [pair]]
-   [cats.context :refer [with-context]]
+   [cats
+    [context :refer [with-context]]
+    [core :refer [mlet return]]
+    [data :refer [pair]]]
    [cats.labs.manifold :refer [deferred-context]]
-   [er-cassandra.key :as k]
-   [er-cassandra.record :as r]
-   [er-cassandra.model.types :as t]
-   [er-cassandra.model.model-session :as ms]
-   [er-cassandra.model.util :as util
-    :refer [combine-responses create-lookup-record]]
+   [clojure.set :as set]
+   [er-cassandra
+    [key :as k]
+    [record :as r]]
+   [er-cassandra.model
+    [types :as t]
+    [util :as util :refer [combine-responses create-lookup-record]]]
+   [er-cassandra.model.alia
+    [fn-schema :as fns]
+    [lookup :as l]
+    [unique-key :as unique-key]]
    [er-cassandra.model.util.timestamp :as ts]
-   [er-cassandra.model.alia.fn-schema :as fns]
-   [er-cassandra.model.alia.unique-key :as unique-key])
+   [schema.core :as s])
   (:import
-   [er_cassandra.session Session]
-   [er_cassandra.model.types Entity]))
+   er_cassandra.model.types.Entity
+   er_cassandra.session.Session))
 
 (s/defn delete-index-record
   "delete an index record - doesn't support LWTs, :where etc
@@ -73,7 +74,7 @@
   (let [key (:key secondary-table)
         old-key-value (k/extract-key-value key old-record)
         new-key-value (k/extract-key-value key new-record)]
-    (when (and (k/has-key? key new-record)
+    (when (and (or (nil? new-record) (k/has-key? key new-record))
                old-key-value
                (not= old-key-value new-key-value))
       old-key-value)))
@@ -115,18 +116,7 @@
             (k/extract-key-value k record))
        (insert-index-record session entity t record opts)))))
 
-(s/defn stale-lookup-key-values
-  [entity :- Entity
-   old-record :- t/MaybeRecordSchema
-   new-record :- t/MaybeRecordSchema
-   lookup-key-table :- t/LookupTableSchema]
-  (let [key (:key lookup-key-table)
-        col-colls (:collections lookup-key-table)]
 
-    (when (k/has-key? key new-record)
-      (let [old-kvs (set (k/extract-key-value-collection key old-record col-colls))
-            new-kvs (set (k/extract-key-value-collection key new-record col-colls))]
-        (filter identity (set/difference old-kvs new-kvs))))))
 
 (s/defn delete-stale-lookups
   [session :- Session
@@ -135,49 +125,20 @@
    new-record :- t/MaybeRecordSchema
    opts :- fns/DeleteUsingOnlyOptsWithTimestampSchema]
   (combine-responses
-   (mapcat
-    identity
+   (apply
+    concat
     (for [t (t/mutable-lookup-tables entity)]
-      (let [stale-kvs (stale-lookup-key-values entity old-record new-record t)]
-        (for [kv stale-kvs]
+      (let [stale-lookups (l/stale-lookup-key-values
+                           entity
+                           old-record
+                           new-record
+                           t)]
+        (for [skv stale-lookups]
           (delete-index-record session
-                         entity
-                         t
-                         kv
-                         (fns/upsert-opts->delete-opts opts))))))))
-
-(s/defn lookup-record-seq
-  "returns a seq of tuples [table lookup-record]"
-  [model :- Entity
-   old-record :- t/MaybeRecordSchema
-   record :- t/MaybeRecordSchema]
-  (mapcat
-   identity
-   (for [t (t/mutable-lookup-tables model)]
-     (let [uber-key (t/uber-key model)
-           uber-key-value (t/extract-uber-key-value model record)
-           key (:key t)
-           col-colls (:collections t)
-           with-cols (:with-columns t)]
-       (when (k/has-key? key record)
-         (let [kvs (filter identity
-                           (set (k/extract-key-value-collection key record col-colls)))]
-
-           (for [kv kvs]
-             (let [lookup-record (create-lookup-record uber-key uber-key-value key kv)
-                   lookup-record (if-not with-cols
-
-                                   lookup-record
-
-                                   (merge
-                                    ;; we default with-cols values from old record
-                                    ;; otherwise MVs depending on the lookup may
-                                    ;; have rows removed because with-cols cols
-                                    ;; weren't supplied
-                                    (select-keys old-record with-cols)
-                                    (select-keys record with-cols)
-                                    lookup-record))]
-               [t lookup-record]))))))))
+                               entity
+                               t
+                               skv
+                               (fns/upsert-opts->delete-opts opts))))))))
 
 (s/defn upsert-lookups
   [session :- Session
@@ -186,7 +147,7 @@
    record :- t/MaybeRecordSchema
    opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema]
   (combine-responses
-   (for [[t r] (lookup-record-seq entity old-record record)]
+   (for [[t r] (l/lookup-record-seq entity old-record record)]
      (insert-index-record session entity t r opts))))
 
 (s/defn copy-unique-keys
@@ -264,8 +225,9 @@
    record :- t/MaybeRecordSchema
    opts :- fns/UpsertOptsSchema]
    (with-context deferred-context
-     (mlet [:let [[record] (t/run-callbacks entity :before-save [record])
-                  opts (ts/default-timestamp-opt opts)]
+     (mlet [:let [opts (ts/default-timestamp-opt opts)]
+
+            record (t/run-callbacks entity :before-save record opts)
 
             ;; don't need the old record if there are no lookups
             old-record (if (has-lookups? entity)
@@ -302,7 +264,7 @@
                               (return nil))
 
             ;; gotta make the re-selected record presentable!
-            final-record (t/run-callbacks-single
+            final-record (t/run-callbacks
                           entity
                           :after-load
                           reselected-record)]
