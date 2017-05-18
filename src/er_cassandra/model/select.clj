@@ -154,6 +154,7 @@
         (s/map (fn [record-or-key-value]
                  (select-one session entity key record-or-key-value opts)))
         (s/realize-each)
+        (s/filter some?)
         return)))
 
 (defn select-many
@@ -191,6 +192,7 @@
           (s/map (fn [record-or-key-value]
                    (select-one-instance session entity key record-or-key-value opts)))
           (s/realize-each)
+          (s/filter some?)
           return))))
 
 (defn select-many-instances
@@ -229,6 +231,7 @@
                    (select-buffered session entity key record-or-key-value opts)))
           (s/realize-each)
           (s/concat)
+          (s/filter some?)
           return))))
 
 (defn select-many-cat
