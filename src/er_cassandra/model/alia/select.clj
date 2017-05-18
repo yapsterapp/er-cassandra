@@ -39,14 +39,14 @@
             t))
         (:unique-key-tables entity)))
 
-(defn if-lookup-key-table
+(defn if-lookup-table
   [^Entity entity key]
   (some (fn [t]
           (when (or (t/satisfies-primary-key? (:key t) key)
                     (t/satisfies-partition-key? (:key t) key)
                     (t/satisfies-cluster-key? (:key t) key))
             t))
-        (:lookup-key-tables entity)))
+        (:lookup-tables entity)))
 
 (defn select-from-full-table
   "one fetch - straight from a table. they key must be either
@@ -123,7 +123,7 @@
                                  opts)
 
          (if-let [lookup-table (or (t/is-unique-key-table entity from)
-                                   (t/is-lookup-key-table entity from))]
+                                   (t/is-lookup-table entity from))]
            (select-from-lookup-table session
                                      entity
                                      lookup-table
@@ -150,7 +150,7 @@
                                  opts)
 
          (if-let [lookup-table (or (if-unique-key-table entity key)
-                                   (if-lookup-key-table entity key))]
+                                   (if-lookup-table entity key))]
 
            (select-from-lookup-table session
                                      entity

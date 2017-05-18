@@ -37,7 +37,7 @@
                          :collections {:email :set}}]
     :secondary-tables [{:name :delete_mixed_lookup_test_by_nick
                         :key [:org_id :nick]}]
-    :lookup-key-tables [{:name :delete_mixed_lookup_test_by_phone
+    :lookup-tables [{:name :delete_mixed_lookup_test_by_phone
                          :key [:phone]
                          :collections {:phone :list}}]}))
 

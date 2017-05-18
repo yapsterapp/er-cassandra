@@ -160,7 +160,7 @@ tables, lookup tables and unique-key acquisition with lightweight-transactions
    :unique-key-tables [{:name :users_by_email
                         :key :email
                         :collection :list}]
-   :lookup-key-tables [{:name :users_by_search_key
+   :lookup-tables [{:name :users_by_search_key
                         :key :search_key
                         :collection :set}]})
 

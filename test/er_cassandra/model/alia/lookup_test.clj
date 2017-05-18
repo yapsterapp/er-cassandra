@@ -30,7 +30,7 @@
    "(phone text primary key, org_id timeuuid, id timeuuid)")
   (t/create-entity
    {:primary-table {:name :upsert_mixed_lookup_test :key [:org_id :id]}
-    :lookup-key-tables [{:name :upsert_mixed_lookup_test_by_nick
+    :lookup-tables [{:name :upsert_mixed_lookup_test_by_nick
                          :key [:org_id :nick]}
                         {:name :upsert_mixed_lookup_test_by_email
                          :key [:email]
@@ -42,7 +42,7 @@
 (deftest stale-lookup-key-values-test
   (let [m (t/create-entity
            {:primary-table {:name :foos :key [:id]}
-            :lookup-key-tables [{:name :foos_by_bar :key [:bar]}
+            :lookup-tables [{:name :foos_by_bar :key [:bar]}
                                 {:name :foos_by_baz
                                  :key [:baz]
                                  :collections {:baz :set}}]})]
@@ -53,7 +53,7 @@
             m
             {:id :a :bar :b}
             {:id :a}
-            (-> m :lookup-key-tables first)))))
+            (-> m :lookup-tables first)))))
 
     (testing "treats nil new-record as deletion for singular key values"
       (is (= [[:b]]
@@ -61,7 +61,7 @@
               m
               {:id :a :bar :b}
               nil
-              (-> m :lookup-key-tables first)))))
+              (-> m :lookup-tables first)))))
 
     (testing "correctly identifies a stale singular lookup key values"
       (is (= [[:b]]
@@ -69,7 +69,7 @@
               m
               {:id :a :bar :b}
               {:id :a :bar nil}
-              (-> m :lookup-key-tables first)))))
+              (-> m :lookup-tables first)))))
 
     (testing "correctly identifiers stale collection lookup key values"
       (is (= #{[:b] [:d]}
@@ -78,7 +78,7 @@
                m
                {:id :a :baz #{:b :c :d}}
                {:id :a :baz #{:c}}
-               (-> m :lookup-key-tables second))))))
+               (-> m :lookup-tables second))))))
 
     (testing "correctly identifiers stale collection lookup key values on delete"
       (is (= #{[:b] [:c] [:d]}
@@ -87,18 +87,18 @@
                m
                {:id :a :baz #{:b :c :d}}
                nil
-               (-> m :lookup-key-tables second))))))))
+               (-> m :lookup-tables second))))))))
 
 (deftest lookup-record-seq-test
   (testing "mixed lookups seq"
     (let [m (create-mixed-lookup-entity)
-          nick-t (->> m :lookup-key-tables
+          nick-t (->> m :lookup-tables
                       (filter #(= :upsert_mixed_lookup_test_by_nick (:name %)))
                       first)
-          email-t (->> m :lookup-key-tables
+          email-t (->> m :lookup-tables
                        (filter #(= :upsert_mixed_lookup_test_by_email (:name %)))
                        first)
-          phone-t (->> m :lookup-key-tables
+          phone-t (->> m :lookup-tables
                        (filter #(= :upsert_mixed_lookup_test_by_phone (:name %)))
                        first)
           [org-id id] [(uuid/v1) (uuid/v1)]
@@ -122,7 +122,7 @@
            {:primary-table {:name :foos :key [:id]}
             :secondary-tables [{:name :foos_by_bar :key [:bar]}
                                {:name :foos_by_baz :key [:baz]}]
-            :lookup-key-tables [{:name :foos_by_x
+            :lookup-tables [{:name :foos_by_x
                                  :key [:x]
                                  :with-columns [:c1 :c2]}]})]
 
@@ -152,7 +152,7 @@
            {:primary-table {:name :foos :key [:id]}
             :secondary-tables [{:name :foos_by_bar :key [:bar]}
                                {:name :foos_by_baz :key [:baz]}]
-            :lookup-key-tables [{:name :foos_by_x
+            :lookup-tables [{:name :foos_by_x
                                  :key [:x]
                                  :with-columns :all}]})]
 
