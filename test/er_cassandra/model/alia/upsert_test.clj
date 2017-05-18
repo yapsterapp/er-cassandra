@@ -49,7 +49,7 @@
    "(phone text primary key, org_id timeuuid, id timeuuid)")
   (t/create-entity
    {:primary-table {:name :upsert_mixed_lookup_test :key [:org_id :id]}
-    :lookup-key-tables [{:name :upsert_mixed_lookup_test_by_nick
+    :lookup-tables [{:name :upsert_mixed_lookup_test_by_nick
                          :key [:org_id :nick]}
                         {:name :upsert_mixed_lookup_test_by_email
                          :key [:email]
@@ -78,7 +78,7 @@
    )
   (t/create-entity
    {:primary-table {:name :upsert_lookup_and_secondaries_test :key [:org_id :id]}
-    :lookup-key-tables [{:name :upsert_lookup_and_secondaries_test_by_nick
+    :lookup-tables [{:name :upsert_lookup_and_secondaries_test_by_nick
                          :key [:org_id :nick]}
                         {:name :upsert_lookup_and_secondaries_test_by_email
                          :key [:email]
@@ -131,7 +131,7 @@
                          :collections {:phone :list}}]
     :secondary-tables [{:name :upsert_unique_lookup_secondaries_test_by_thing
                         :key [:org_id :thing]}]
-    :lookup-key-tables [{:name :upsert_unique_lookup_secondaries_test_by_title
+    :lookup-tables [{:name :upsert_unique_lookup_secondaries_test_by_title
                          :key [:org_id :title]}
                         {:name :upsert_unique_lookup_secondaries_test_by_tag
                          :key [:tag]
@@ -408,7 +408,7 @@
     (is (= false (u/has-lookups? m))))
   (let [m (t/create-entity
            {:primary-table {:name :has_lookups_test :key [:org_id :id]}
-            :lookup-key-tables [{:name :has_lookups_test_by_nick
+            :lookup-tables [{:name :has_lookups_test_by_nick
                                  :key [:org_id :nick]}]})]
     (is (= true (u/has-lookups? m))))
   (let [m (t/create-entity

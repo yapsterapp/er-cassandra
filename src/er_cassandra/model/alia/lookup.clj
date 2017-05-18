@@ -111,9 +111,9 @@
   [entity :- Entity
    old-record :- t/MaybeRecordSchema
    new-record :- t/MaybeRecordSchema
-   lookup-key-table :- t/IndexTableSchema]
-  (let [key (:key lookup-key-table)
-        col-colls (:collections lookup-key-table)]
+   lookup-table :- t/IndexTableSchema]
+  (let [key (:key lookup-table)
+        col-colls (:collections lookup-table)]
 
     ;; only if we are deleting the record, or have sufficient
     ;; key components to update the table
@@ -125,10 +125,10 @@
       (let [old-kvs (set
                      (map #(k/extract-key-value key %)
                           (generate-lookup-records-for-table
-                           entity lookup-key-table old-record old-record)))
+                           entity lookup-table old-record old-record)))
             new-kvs (set
                      (map #(k/extract-key-value key %)
                           (generate-lookup-records-for-table
-                           entity lookup-key-table old-record new-record)))
+                           entity lookup-table old-record new-record)))
             stale-kvs (filter identity (set/difference old-kvs new-kvs))]
         stale-kvs))))

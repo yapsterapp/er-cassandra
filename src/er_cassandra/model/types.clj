@@ -170,7 +170,7 @@
   {:primary-table PrimaryTableSchema
    (s/optional-key :unique-key-tables) [UniqueKeyTableSchema]
    (s/optional-key :secondary-tables) [SecondaryTableSchema]
-   (s/optional-key :lookup-key-tables) [LookupTableSchema]
+   (s/optional-key :lookup-tables) [LookupTableSchema]
    (s/optional-key :callbacks) CallbacksSchema
    (s/optional-key :denorm-targets) {s/Keyword DenormalizationRelationshipSchema}
    (s/optional-key :denorm-sources) {s/Keyword s/Keyword}})
@@ -180,7 +180,7 @@
     [primary-table :- PrimaryTableSchema
      unique-key-tables :- [UniqueKeyTableSchema]
      secondary-tables :- [SecondaryTableSchema]
-     lookup-key-tables :- [LookupTableSchema]
+     lookup-tables :- [LookupTableSchema]
      callbacks :- CallbacksSchema
      denorm-targets :- {s/Keyword DenormalizationRelationshipSchema}
      denorm-sources :- {s/Keyword s/Keyword}])
@@ -207,7 +207,7 @@
                  (conform-table :primary (:primary-table entity-schema)))
           [[:uniquekey :unique-key-tables]
            [:secondary :secondary-tables]
-           [:lookup :lookup-key-tables]]))
+           [:lookup :lookup-tables]]))
 
 (s/defn ^:always-validate create-entity :- Entity
   "create an entity record from a spec"
@@ -215,7 +215,7 @@
   (let [spec (conform-all-tables entity-spec)
         spec (merge {:unique-key-tables []
                      :secondary-tables []
-                     :lookup-key-tables []
+                     :lookup-tables []
                      :callbacks {}
                      :denorm-targets {}
                      :denorm-sources {}}
@@ -287,9 +287,9 @@
   [^Entity entity table]
   (is-table-name (:unique-key-tables entity) table))
 
-(defn is-lookup-key-table
+(defn is-lookup-table
   [^Entity entity table]
-  (is-table-name (:lookup-key-tables entity) table))
+  (is-table-name (:lookup-tables entity) table))
 
 (defn uber-key
   [^Entity entity]
@@ -304,7 +304,7 @@
 (defn mutable-lookup-tables
   [^Entity entity]
   (->> entity
-       :lookup-key-tables
+       :lookup-tables
        (filterv (comp not :view?))))
 
 (defn all-key-cols
@@ -313,7 +313,7 @@
   (distinct
    (concat (uber-key entity)
            (mapcat :key (:secondary-tables entity))
-           (mapcat :key (:lookup-key-tables entity)))))
+           (mapcat :key (:lookup-tables entity)))))
 
 (defn extract-uber-key-value
   [^Entity entity record]

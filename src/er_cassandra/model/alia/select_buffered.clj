@@ -114,7 +114,7 @@
                                           opts)
 
          (if-let [lookup-table (or (t/is-unique-key-table entity from)
-                                   (t/is-lookup-key-table entity from))]
+                                   (t/is-lookup-table entity from))]
            (select-buffered-from-lookup-table session
                                               entity
                                               lookup-table
@@ -141,7 +141,7 @@
                                           opts)
 
          (if-let [lookup-table (or (select/if-unique-key-table entity key)
-                                   (select/if-lookup-key-table entity key))]
+                                   (select/if-lookup-table entity key))]
 
            (select-buffered-from-lookup-table session
                                               entity
