@@ -1,7 +1,8 @@
 (ns er-cassandra.util.test
   (:require
    [clojure.test :as t]
-   [taoensso.timbre :as timbre :refer [trace debug info warn error]]
+   [taoensso.timbre :as timbre
+    :refer [trace debug info warn error]]
    [deferst.core :as deferst :refer [defsystem]]
    [deferst.system :as sys]
    [er-cassandra.session :as s]
