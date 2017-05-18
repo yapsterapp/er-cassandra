@@ -61,9 +61,16 @@
   (with-context deferred-context
       (mlet [:let [uber-key (t/uber-key entity)
                    key (:key unique-key-table)
+                   key-value (k/extract-key-value key unique-key-record)
+                   ;; can't use any PK components in an ONLY IF LWT
+                   [lwt-update-key
+                    lwt-update-key-value] (k/remove-key-components
+                                           uber-key
+                                           uber-key-value
+                                           key)
                    key-desc {:uber-key uber-key :uber-key-value uber-key-value
                              :key key
-                             :key-value (k/extract-key-value key unique-key-record)}]
+                             :key-value key-value}]
 
              insert-response (r/insert session
                                        (:name unique-key-table)
@@ -89,22 +96,37 @@
              ;; TODO - check that primary record has a live forward reference,
              ;;        or lookup is really stale despite primary existing
 
-             stale-update-response (if (or owned?
-                                           (and (not owned?) (not live-ref?)))
-                                     (r/update
-                                      session
-                                      (:name unique-key-table)
-                                      (:key unique-key-table)
-                                      unique-key-record
-                                      (merge
-                                       (fns/opts-remove-timestamp opts)
-                                       {:only-if
-                                        (t/extract-uber-key-equality-clause
-                                         entity
-                                         uber-key-value)}))
-                                     (return nil))
+             update-response (cond
+                               (and (not inserted?) owned?)
+                               (r/update
+                                session
+                                (:name unique-key-table)
+                                (:key unique-key-table)
+                                unique-key-record
+                                (merge
+                                 (fns/opts-remove-timestamp opts)
+                                 {:only-if
+                                  (k/extract-key-equality-clause
+                                   lwt-update-key
+                                   lwt-update-key-value)}))
 
-             updated? (return (applied? stale-update-response))]
+                               (and (not inserted?) (not owned?) (not live-ref?))
+                               (r/update
+                                session
+                                (:name unique-key-table)
+                                (:key unique-key-table)
+                                unique-key-record
+                                (merge
+                                 (fns/opts-remove-timestamp opts)
+                                 {:only-if
+                                  (k/extract-key-equality-clause
+                                   lwt-update-key
+                                   insert-response)}))
+
+                               :else
+                               (return nil))
+
+             updated? (return (applied? update-response))]
 
         (return
          (cond
