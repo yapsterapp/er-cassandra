@@ -16,14 +16,28 @@
 (defn create-singular-unique-key-entity
   []
   (tu/create-table :singular_unique_key_test
-                     "(id timeuuid primary key, nick text)")
+                   "(id timeuuid primary key, nick text)")
   (tu/create-table :singular_unique_key_test_by_nick
-                     "(nick text primary key, id timeuuid)")
+                   "(nick text primary key, id timeuuid)")
 
   (t/create-entity
    {:primary-table {:name :singular_unique_key_test :key [:id]}
     :unique-key-tables [{:name :singular_unique_key_test_by_nick
                          :key [:nick]}]}))
+
+(defn create-singular-unique-key-entity-with-additional-cols
+  []
+  (tu/create-table :singular_unique_key_with_cols_test
+                   "(id timeuuid primary key, nick text, stuff text)")
+  (tu/create-table :singular_unique_key_with_cols_test_by_nick
+                   "(nick text primary key, stuff text, id timeuuid)")
+
+  (t/create-entity
+   {:primary-table {:name :singular_unique_key_with_cols_test :key [:id]}
+    :unique-key-tables [{:name :singular_unique_key_with_cols_test_by_nick
+                         :key [:nick]
+                         :with-columns [:stuff]}]}))
+
 
 (defn create-set-unique-key-entity
   []
@@ -326,6 +340,59 @@
                      :key [:nick] :key-value ["bar"]}
                     :key/inserted]}
                  (set r))))))))
+
+(deftest acquire-unique-keys-with-additional-cols-test
+  (testing "acquire singular unique key with additional cols"
+    (let [sm (create-singular-unique-key-entity-with-additional-cols)
+          [ida idb] [(uuid/v1) (uuid/v1)]
+
+          _ (tu/insert-record :singular_unique_key_with_cols_test
+                              {:id ida :nick "foo" :stuff "blah"})]
+
+      (testing "acquire a singular unique key with additional cols"
+        (let [[[status key-desc reason]] @(uk/acquire-unique-keys
+                                           tu/*model-session*
+                                           sm
+                                           nil
+                                           {:id ida :nick "foo" :stuff "bloop"}
+                                           (ts/default-timestamp-opt))
+              r (tu/fetch-record :singular_unique_key_with_cols_test_by_nick
+                                 :nick "foo")]
+          (is (= :ok status))
+          (is (= {:uber-key [:id] :uber-key-value [ida]
+                  :key [:nick] :key-value ["foo"]} key-desc))
+          (is (= :key/inserted reason))
+          (is (= r {:id ida :nick "foo" :stuff "bloop"}))))
+
+      (testing "update a singular unique key with additional cols"
+        (let [[[status key-desc reason]] @(uk/acquire-unique-keys
+                                           tu/*model-session*
+                                           sm
+                                           nil
+                                           {:id ida :nick "foo" :stuff "moop"}
+                                           (ts/default-timestamp-opt))
+              r (tu/fetch-record :singular_unique_key_with_cols_test_by_nick
+                                 :nick "foo")]
+          (is (= :ok status))
+          (is (= {:uber-key [:id] :uber-key-value [ida]
+                  :key [:nick] :key-value ["foo"]} key-desc))
+          (is (= :key/owned reason))
+          (is (= r {:id ida :nick "foo" :stuff "moop"}))))
+
+      (testing "failing to acquire a singular unique key with additional cols"
+        (let [[[status key-desc reason]] @(uk/acquire-unique-keys
+                                           tu/*model-session*
+                                           sm
+                                           nil
+                                           {:id idb :nick "foo" :stuff "blargh"}
+                                           (ts/default-timestamp-opt))
+              r (tu/fetch-record :singular_unique_key_with_cols_test_by_nick
+                                 :nick "foo")]
+          (is (= :fail status))
+          (is (= {:uber-key [:id] :uber-key-value [idb]
+                  :key [:nick] :key-value ["foo"]} key-desc))
+          (is (= :key/notunique reason))
+          (is (= r {:id ida :nick "foo" :stuff "moop"})))))))
 
 (deftest update-with-acquire-responses-test
   (testing "removing singular unacquired value"

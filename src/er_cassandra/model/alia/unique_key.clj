@@ -89,8 +89,8 @@
              ;; TODO - check that primary record has a live forward reference,
              ;;        or lookup is really stale despite primary existing
 
-             stale-update-response (if (and (not owned?)
-                                            (not live-ref?))
+             stale-update-response (if (or owned?
+                                           (and (not owned?) (not live-ref?)))
                                      (r/update
                                       session
                                       (:name unique-key-table)
@@ -101,7 +101,7 @@
                                        {:only-if
                                         (t/extract-uber-key-equality-clause
                                          entity
-                                         insert-response)}))
+                                         uber-key-value)}))
                                      (return nil))
 
              updated? (return (applied? stale-update-response))]
