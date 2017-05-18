@@ -63,6 +63,10 @@
     *model-session*
     (str "create table " (name table-name) " " table-def)))
 
+(defn fetch-records
+  [table key key-value]
+  @(r/select *model-session* table key key-value))
+
 (defn fetch-record
   [table key key-value]
   @(r/select-one *model-session* table key key-value))

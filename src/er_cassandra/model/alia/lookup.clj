@@ -42,7 +42,9 @@
    old-record
    record]
   (let [uber-key (t/uber-key model)
-        uber-key-value (t/extract-uber-key-value model record)
+        uber-key-value (or
+                        (k/extract-key-value uber-key record)
+                        (k/extract-key-value uber-key old-record))
         col-colls (:collections table)
         with-cols (:with-columns table)]
     (when (k/has-key? key record)
@@ -113,7 +115,11 @@
   (let [key (:key lookup-key-table)
         col-colls (:collections lookup-key-table)]
 
-    (when (k/has-key? key new-record)
+    ;; only if we are deleting the record, or have sufficient
+    ;; key components to update the table
+    (when (or (nil? new-record)
+              (k/has-key? key new-record))
+
       ;; get old lookup keys which aren't present in the latest
       ;; set of lookup records
       (let [old-kvs (set
@@ -123,5 +129,6 @@
             new-kvs (set
                      (map #(k/extract-key-value key %)
                           (generate-lookup-records-for-table
-                           entity lookup-key-table old-record new-record)))]
-        (filter identity (set/difference old-kvs new-kvs))))))
+                           entity lookup-key-table old-record new-record)))
+            stale-kvs (filter identity (set/difference old-kvs new-kvs))]
+        stale-kvs))))
