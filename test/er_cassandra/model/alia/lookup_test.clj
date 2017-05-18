@@ -55,6 +55,14 @@
             {:id :a}
             (-> m :lookup-key-tables first)))))
 
+    (testing "treats nil new-record as deletion for singular key values"
+      (is (= [[:b]]
+             (l/stale-lookup-key-values
+              m
+              {:id :a :bar :b}
+              nil
+              (-> m :lookup-key-tables first)))))
+
     (testing "correctly identifies a stale singular lookup key values"
       (is (= [[:b]]
              (l/stale-lookup-key-values
@@ -70,6 +78,15 @@
                m
                {:id :a :baz #{:b :c :d}}
                {:id :a :baz #{:c}}
+               (-> m :lookup-key-tables second))))))
+
+    (testing "correctly identifiers stale collection lookup key values on delete"
+      (is (= #{[:b] [:c] [:d]}
+             (set
+              (l/stale-lookup-key-values
+               m
+               {:id :a :baz #{:b :c :d}}
+               nil
                (-> m :lookup-key-tables second))))))))
 
 (deftest lookup-record-seq-test

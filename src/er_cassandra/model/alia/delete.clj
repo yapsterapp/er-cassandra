@@ -63,21 +63,21 @@
                              session
                              entity
                              record
-                             (nil-values record)
+                             nil
                              opts)
 
            secondary-responses (alia-upsert/delete-stale-secondaries
                                 session
                                 entity
                                 record
-                                (nil-values record)
+                                nil
                                 opts)
 
            lookup-responses (alia-upsert/delete-stale-lookups
                              session
                              entity
                              record
-                             (nil-values record)
+                             nil
                              opts)]
       (return
        [:ok record :deleted]))))

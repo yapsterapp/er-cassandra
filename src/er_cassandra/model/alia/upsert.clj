@@ -74,7 +74,7 @@
   (let [key (:key secondary-table)
         old-key-value (k/extract-key-value key old-record)
         new-key-value (k/extract-key-value key new-record)]
-    (when (and (k/has-key? key new-record)
+    (when (and (or (nil? new-record) (k/has-key? key new-record))
                old-key-value
                (not= old-key-value new-key-value))
       old-key-value)))
@@ -125,8 +125,8 @@
    new-record :- t/MaybeRecordSchema
    opts :- fns/DeleteUsingOnlyOptsWithTimestampSchema]
   (combine-responses
-   (mapcat
-    identity
+   (apply
+    concat
     (for [t (t/mutable-lookup-tables entity)]
       (let [stale-lookups (l/stale-lookup-key-values
                            entity
