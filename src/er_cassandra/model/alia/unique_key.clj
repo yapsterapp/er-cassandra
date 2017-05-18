@@ -1,22 +1,24 @@
 (ns er-cassandra.model.alia.unique-key
   (:require
-   [taoensso.timbre :refer [trace debug info warn error]]
-   [clojure.set :as set]
-   [cats.core :refer [mlet return]]
-   [cats.context :refer [with-context]]
+   [cats
+    [context :refer [with-context]]
+    [core :refer [mlet return]]]
    [cats.labs.manifold :refer [deferred-context]]
-   [schema.core :as s]
-   [er-cassandra.session]
-   [er-cassandra.key :as k]
-   [er-cassandra.record :as r]
-   [er-cassandra.model.types :as t]
-   [er-cassandra.model.alia.fn-schema :as fns]
-   [er-cassandra.model.error :as e]
-   [er-cassandra.model.util.timestamp :as ts]
-   [er-cassandra.model.util :refer [combine-responses create-lookup-record]])
+   [clojure.set :as set]
+   [er-cassandra
+    [key :as k]
+    [record :as r]]
+   [er-cassandra.model
+    [error :as e]
+    [types :as t]
+    [util :refer [combine-responses create-lookup-record]]]
+   [er-cassandra.model.alia
+    [fn-schema :as fns]
+    [lookup :as l]]
+   [schema.core :as s])
   (:import
-   [er_cassandra.model.types Entity]
-   [er_cassandra.session Session]))
+   er_cassandra.model.types.Entity
+   er_cassandra.session.Session))
 
 (defn applied?
   [lwt-response]
@@ -53,23 +55,22 @@
    entity :- Entity
    unique-key-table :- t/UniqueKeyTableSchema
    uber-key-value :- t/KeyValueSchema
-   key-value :- t/KeyValueSchema
+   unique-key-record :- t/RecordSchema
    opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema]
 
   (with-context deferred-context
       (mlet [:let [uber-key (t/uber-key entity)
                    key (:key unique-key-table)
-                   unique-key-record (create-lookup-record
-                                      uber-key uber-key-value
-                                      key key-value)
                    key-desc {:uber-key uber-key :uber-key-value uber-key-value
-                             :key key :key-value key-value}]
+                             :key key
+                             :key-value (k/extract-key-value key unique-key-record)}]
 
              insert-response (r/insert session
                                        (:name unique-key-table)
                                        unique-key-record
                                        (merge (fns/opts-remove-timestamp opts)
                                               {:if-not-exists true}))
+
              :let [inserted? (applied? insert-response)
                    owned? (applied-or-owned?
                            entity
@@ -159,22 +160,6 @@
            deleted? [:ok key-desc :deleted]
            :else    [:ok key-desc :stale]))))))
 
-(s/defn stale-unique-key-values :- [t/KeyValueSchema]
-  [entity :- Entity
-   old-record :- t/MaybeRecordSchema
-   new-record :- t/MaybeRecordSchema
-   unique-key-table :- t/UniqueKeyTableSchema]
-  (let [key (:key unique-key-table)
-        col-colls (:collections unique-key-table)]
-    (when (k/has-key? key new-record)
-      (let [old-kvs (set (k/extract-key-value-collection key
-                                                         old-record
-                                                         col-colls))
-            new-kvs (set (k/extract-key-value-collection key
-                                                         new-record
-                                                         col-colls))]
-        (filter identity (set/difference old-kvs new-kvs))))))
-
 (s/defn release-stale-unique-keys
   [session :- Session
    entity :- Entity
@@ -187,7 +172,12 @@
     (for [t (:unique-key-tables entity)]
       (let [uber-key (t/uber-key entity)
             uber-key-value (t/extract-uber-key-value entity old-record)
-            stale-kvs (stale-unique-key-values entity old-record new-record t)]
+
+            stale-kvs (l/stale-lookup-key-values
+                       entity
+                       old-record
+                       new-record
+                       t)]
         (for [kv stale-kvs]
           (release-unique-key session
                               entity
@@ -199,31 +189,26 @@
 (s/defn acquire-unique-keys
   [session :- Session
    entity :- Entity
+   old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema
    opts :- fns/UpsertOptsWithTimestampSchema]
   (combine-responses
-   (mapcat
-    identity
+   (apply
+    concat
     (for [t (:unique-key-tables entity)]
       (let [uber-key (t/uber-key entity)
             uber-key-value (t/extract-uber-key-value entity record)
-            key (:key t)
-            col-colls (:collections t)]
-        (when (k/has-key? key record)
-          (let [kvs (filter identity
-                            (set (k/extract-key-value-collection key
-                                                                 record
-                                                                 col-colls)))]
-            (for [kv kvs]
-              (let [lookup-record (create-lookup-record
-                                   uber-key uber-key-value
-                                   key kv)]
-                (acquire-unique-key session
-                                    entity
-                                    t
-                                    uber-key-value
-                                    kv
-                                    (fns/upsert-opts->using-only opts)))))))))))
+
+            lookup-records (l/generate-lookup-records-for-table
+                            entity t old-record record)]
+
+        (for [lr lookup-records]
+          (acquire-unique-key session
+                              entity
+                              t
+                              uber-key-value
+                              lr
+                              (fns/upsert-opts->using-only opts))))))))
 
 (s/defn update-with-acquire-responses
   "remove unique key values which couldn't be acquired
@@ -458,6 +443,7 @@
            acquire-key-responses (acquire-unique-keys
                                   session
                                   entity
+                                  old-key-record
                                   new-record
                                   opts)
            acquire-failures (return

@@ -1,25 +1,13 @@
 (ns er-cassandra.model.alia.lookup
   (:require
-   [cats
-    [context :refer [with-context]]
-    [core :refer [mlet return]]
-    [data :refer [pair]]]
-   [cats.labs.manifold :refer [deferred-context]]
    [clojure.set :as set]
-   [er-cassandra
-    [key :as k]
-    [record :as r]]
+   [er-cassandra.key :as k]
    [er-cassandra.model
     [types :as t]
-    [util :as util :refer [combine-responses create-lookup-record]]]
-   [er-cassandra.model.alia
-    [fn-schema :as fns]
-    [unique-key :as unique-key]]
-   [er-cassandra.model.util.timestamp :as ts]
+    [util :as util :refer [create-lookup-record]]]
    [schema.core :as s])
   (:import
-   er_cassandra.model.types.Entity
-   er_cassandra.session.Session))
+   er_cassandra.model.types.Entity))
 
 (defn choose-lookup-additional-cols
   "we want to choose a minimum set of additional cols, over the
