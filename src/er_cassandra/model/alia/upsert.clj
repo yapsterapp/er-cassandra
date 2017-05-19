@@ -116,7 +116,28 @@
             (k/extract-key-value k record))
        (insert-index-record session entity t record opts)))))
 
-
+(s/defn delete-stale-lookups-for-table
+  [session :- Session
+   entity :- Entity
+   table :- t/LookupTableSchema
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema
+   opts :- fns/DeleteUsingOnlyOptsWithTimestampSchema]
+  (with-context deferred-context
+    (mlet
+      [stale-lookups (l/stale-lookup-key-values-for-table
+                      session
+                      entity
+                      old-record
+                      new-record
+                      table)]
+      (combine-responses
+       (for [skv stale-lookups]
+         (delete-index-record session
+                              entity
+                              table
+                              skv
+                              (fns/upsert-opts->delete-opts opts)))))))
 
 (s/defn delete-stale-lookups
   [session :- Session
@@ -124,21 +145,43 @@
    old-record :- t/MaybeRecordSchema
    new-record :- t/MaybeRecordSchema
    opts :- fns/DeleteUsingOnlyOptsWithTimestampSchema]
-  (combine-responses
-   (apply
-    concat
-    (for [t (t/mutable-lookup-tables entity)]
-      (let [stale-lookups (l/stale-lookup-key-values
-                           entity
-                           old-record
-                           new-record
-                           t)]
-        (for [skv stale-lookups]
-          (delete-index-record session
-                               entity
-                               t
-                               skv
-                               (fns/upsert-opts->delete-opts opts))))))))
+  (with-context deferred-context
+    (mlet
+      [all-delete-responses (->> (for [t (t/mutable-lookup-tables entity)]
+                                   (delete-stale-lookups-for-table
+                                    session
+                                    entity
+                                    t
+                                    old-record
+                                    new-record
+                                    opts))
+                                 combine-responses)]
+      (return
+       (apply concat all-delete-responses)))))
+
+(s/defn upsert-lookups-for-table
+  [session :- Session
+   entity :- Entity
+   table :- t/LookupTableSchema
+   old-record :- t/MaybeRecordSchema
+   record :- t/MaybeRecordSchema
+   opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema]
+  (with-context deferred-context
+    (mlet
+      [:let [uber-key (t/uber-key entity)
+             uber-key-value (t/extract-uber-key-value entity record)]
+       lookup-records (->> (l/generate-lookup-records-for-table
+                            session entity table old-record record)
+                           combine-responses)
+       acquire-responses (->> (for [lr lookup-records]
+                                (insert-index-record
+                                 session
+                                 entity
+                                 table
+                                 lr
+                                 opts))
+                              combine-responses)]
+      (return acquire-responses))))
 
 (s/defn upsert-lookups
   [session :- Session
@@ -146,9 +189,18 @@
    old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema
    opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema]
-  (combine-responses
-   (for [[t r] (l/lookup-record-seq entity old-record record)]
-     (insert-index-record session entity t r opts))))
+  (with-context deferred-context
+    (mlet [all-acquire-responses (->> (for [t (t/mutable-lookup-tables entity)]
+                                        (upsert-lookups-for-table
+                                         session
+                                         entity
+                                         t
+                                         old-record
+                                         record
+                                         opts))
+                                      combine-responses)]
+      (return
+       (apply concat all-acquire-responses)))))
 
 (s/defn copy-unique-keys
   [entity :- Entity

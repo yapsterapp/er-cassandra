@@ -5,9 +5,13 @@
    [er-cassandra.model
     [types :as t]
     [util :as util :refer [create-lookup-record]]]
-   [schema.core :as s])
+   [schema.core :as s]
+   [cats.core :refer [mlet return]]
+   [cats.context :refer [with-context]]
+   [cats.labs.manifold :refer [deferred-context]])
   (:import
-   er_cassandra.model.types.Entity))
+   er_cassandra.model.types.Entity
+   er_cassandra.session.Session))
 
 (defn choose-lookup-additional-cols
   "we want to choose a minimum set of additional cols, over the
@@ -74,7 +78,8 @@
    - old-record: previous primary table record (or nil for new)
    - record: upserted primary-table record to generate lookups for
              (or nil for deletion)"
-  [model :- Entity
+  [session :- Session
+   model :- Entity
    table :- t/IndexTableSchema
    old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema]
@@ -85,50 +90,40 @@
 
 (s/defn generate-lookup-records-for-table
   "generate all the lookup records for one lookup table"
-  [model :- Entity
+  [session :- Session
+   model :- Entity
    {generator-fn :generator-fn
     :as table} :- t/IndexTableSchema
    old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema]
   ((or generator-fn
        default-lookup-record-generator-fn)
-   model table old-record record))
+   session model table old-record record))
 
-(s/defn lookup-record-seq
-  "returns a seq of tuples [table lookup-record]"
-  [model :- Entity
-   old-record :- t/MaybeRecordSchema
-   record :- t/MaybeRecordSchema]
-  (apply
-   concat
-   (for [t (t/mutable-lookup-tables model)]
-     (->> (generate-lookup-records-for-table
-           model t old-record record)
-          (map (fn [lr]
-                 [t lr]))))))
-
-(s/defn stale-lookup-key-values
-  [entity :- Entity
+(s/defn stale-lookup-key-values-for-table
+  [session :- Session
+   entity :- Entity
    old-record :- t/MaybeRecordSchema
    new-record :- t/MaybeRecordSchema
    lookup-table :- t/IndexTableSchema]
-  (let [key (:key lookup-table)
-        col-colls (:collections lookup-table)]
-
+  (with-context deferred-context
     ;; only if we are deleting the record, or have sufficient
     ;; key components to update the table
-    (when (or (nil? new-record)
-              (k/has-key? key new-record))
+    (let [k (:key lookup-table)]
+      (if (or (nil? new-record)
+              (k/has-key? k new-record))
+        (mlet
+          [old-lookups (generate-lookup-records-for-table
+                        session entity lookup-table old-record old-record)
+           new-lookups (generate-lookup-records-for-table
+                        session entity lookup-table old-record new-record)
+           :let [old-kvs (set
+                          (map #(k/extract-key-value k %)
+                               old-lookups))
+                 new-kvs (set
+                          (map #(k/extract-key-value k %)
+                               new-lookups))
 
-      ;; get old lookup keys which aren't present in the latest
-      ;; set of lookup records
-      (let [old-kvs (set
-                     (map #(k/extract-key-value key %)
-                          (generate-lookup-records-for-table
-                           entity lookup-table old-record old-record)))
-            new-kvs (set
-                     (map #(k/extract-key-value key %)
-                          (generate-lookup-records-for-table
-                           entity lookup-table old-record new-record)))
-            stale-kvs (filter identity (set/difference old-kvs new-kvs))]
-        stale-kvs))))
+                 stale-kvs (filter identity (set/difference old-kvs new-kvs))]]
+          (return stale-kvs))
+        (return nil)))))
