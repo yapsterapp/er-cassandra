@@ -182,31 +182,78 @@
            deleted? [:ok key-desc :deleted]
            :else    [:ok key-desc :stale]))))))
 
+(s/defn release-stale-unique-keys-for-table
+  [session :- Session
+   entity :- Entity
+   table :- t/UniqueKeyTableSchema
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsWithTimestampSchema]
+  (with-context deferred-context
+    (mlet
+      [:let [uber-key (t/uber-key entity)
+             uber-key-value (t/extract-uber-key-value entity old-record)]
+       stale-kvs (l/stale-lookup-key-values-for-table
+                  session
+                  entity
+                  old-record
+                  new-record
+                  table)
+       release-responses (->> (for [kv stale-kvs]
+                                (release-unique-key
+                                 session
+                                 entity
+                                 table
+                                 uber-key-value
+                                 kv
+                                 (fns/upsert-opts->using-only opts)))
+                              combine-responses)]
+      (return release-responses))))
+
 (s/defn release-stale-unique-keys
   [session :- Session
    entity :- Entity
    old-record :- t/MaybeRecordSchema
    new-record :- t/MaybeRecordSchema
    opts :- fns/UpsertOptsWithTimestampSchema]
-  (combine-responses
-   (mapcat
-    identity
-    (for [t (:unique-key-tables entity)]
-      (let [uber-key (t/uber-key entity)
-            uber-key-value (t/extract-uber-key-value entity old-record)
+  (with-context deferred-context
+    (mlet
+      [all-release-responses (->> (for [t (:unique-key-tables entity)]
+                                    (release-stale-unique-keys-for-table
+                                     session
+                                     entity
+                                     t
+                                     old-record
+                                     new-record
+                                     opts))
+                                  combine-responses)]
+      (return
+       (apply concat all-release-responses)))))
 
-            stale-kvs (l/stale-lookup-key-values
-                       entity
-                       old-record
-                       new-record
-                       t)]
-        (for [kv stale-kvs]
-          (release-unique-key session
-                              entity
-                              t
-                              uber-key-value
-                              kv
-                              (fns/upsert-opts->using-only opts))))))))
+(s/defn acquire-unique-keys-for-table
+  [session :- Session
+   entity :- Entity
+   table :- t/UniqueKeyTableSchema
+   old-record :- t/MaybeRecordSchema
+   record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsWithTimestampSchema]
+  (with-context deferred-context
+    (mlet
+      [:let [uber-key (t/uber-key entity)
+             uber-key-value (t/extract-uber-key-value entity record)]
+       lookup-records (->> (l/generate-lookup-records-for-table
+                            session entity table old-record record)
+                           combine-responses)
+       acquire-responses (->> (for [lr lookup-records]
+                                (acquire-unique-key
+                                 session
+                                 entity
+                                 table
+                                 uber-key-value
+                                 lr
+                                 (fns/upsert-opts->using-only opts)))
+                              combine-responses)]
+      (return acquire-responses))))
 
 (s/defn acquire-unique-keys
   [session :- Session
@@ -214,23 +261,18 @@
    old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema
    opts :- fns/UpsertOptsWithTimestampSchema]
-  (combine-responses
-   (apply
-    concat
-    (for [t (:unique-key-tables entity)]
-      (let [uber-key (t/uber-key entity)
-            uber-key-value (t/extract-uber-key-value entity record)
-
-            lookup-records (l/generate-lookup-records-for-table
-                            entity t old-record record)]
-
-        (for [lr lookup-records]
-          (acquire-unique-key session
-                              entity
-                              t
-                              uber-key-value
-                              lr
-                              (fns/upsert-opts->using-only opts))))))))
+  (with-context deferred-context
+    (mlet [all-acquire-responses (->> (for [t (:unique-key-tables entity)]
+                                        (acquire-unique-keys-for-table
+                                         session
+                                         entity
+                                         t
+                                         old-record
+                                         record
+                                         opts))
+                                      combine-responses)]
+      (return
+       (apply concat all-acquire-responses)))))
 
 (s/defn update-with-acquire-responses
   "remove unique key values which couldn't be acquired

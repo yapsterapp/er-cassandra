@@ -115,44 +115,36 @@
          MaterializedViewSchema
          {:type (s/eq :secondary)}))
 
-(defn- create-lookup-generator-schema
-  "add the lookup record generator related schema to a base schema"
-  [base-schema]
-  (s/conditional
-   :generator-fn
-   (merge base-schema
-          {:generator-fn (s/pred fn? "generator-fn")})
-
-   :else
-   (merge base-schema
-          {(s/optional-key :with-columns) (s/conditional
-                                           keyword? (s/eq :all)
-                                           :else [s/Keyword])})))
-
 ;; unique-key tables are lookup tables with a unique
-;; constraint on the key, enforced with an LWT
-(def BaseUniqueKeyTableSchema
+;; constraint on the key, enforced with an LWT.
+;; additional columns can be copied to the table with
+;; :with-columns and the record generation can be
+;; completely customised with a :generator-fn
+;; which will be called with
+;; (generator-fn cassandra model table old-record new-record) and
+;; should return a list of lookup records or a Deferred thereof
+(def UniqueKeyTableSchema
   (merge BaseTableSchema
          CollectionKeysSchema
-         {:type (s/eq :uniquekey)}))
-
-(s/defschema UniqueKeyTableSchema
-  (create-lookup-generator-schema BaseUniqueKeyTableSchema))
-
-(def BaseLookupTableSchema
-  (merge BaseTableSchema
-         CollectionKeysSchema
-         MaterializedViewSchema
-         {:type (s/eq :lookup)}))
+         {:type (s/eq :uniquekey)
+          (s/optional-key :with-columns) (s/conditional
+                                          keyword? (s/eq :all)
+                                          :else [s/Keyword])
+          (s/optional-key :generator-fn) (s/pred fn? "generator-fn")}))
 
 ;; lookup tables contain columns from the uberkey and
 ;; a lookup key, plus any additional with-columns
 ;; a generator-fn may be supplied which will be called with
-;; (generator-fn model table old-record new-record) and
-;; should return a list of lookup records. if no generator-fn
-;; is supplied then a default is used
+;; (generator-fn cassandra model table old-record new-record) and
+;; should return a list of lookup records or a Deferred thereof.
+;; if no generator-fn is supplied then a default is used
 (s/defschema LookupTableSchema
-  (create-lookup-generator-schema BaseLookupTableSchema))
+  (s/conditional
+   :generator-fn (merge UniqueKeyTableSchema
+                        {:type (s/eq :lookup)})
+   :else (merge UniqueKeyTableSchema
+                MaterializedViewSchema
+                {:type (s/eq :lookup)})))
 
 (s/defschema IndexTableSchema
   (s/conditional
