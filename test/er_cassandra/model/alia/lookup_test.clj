@@ -5,6 +5,8 @@
    [clojure.test :as test :refer [deftest is are testing use-fixtures]]
    [schema.test :as st]
    [clj-uuid :as uuid]
+   [clojure.string :as str]
+   [manifold.deferred :as d]
    [er-cassandra.session.alia :as als]
    [er-cassandra.record :as r]
    [er-cassandra.model.util.timestamp :as ts]
@@ -13,31 +15,6 @@
 
 (use-fixtures :once st/validate-schemas)
 (use-fixtures :each (tu/with-model-session-fixture))
-
-(defn create-mixed-lookup-entity
-  []
-  (tu/create-table
-   :upsert_mixed_lookup_test
-   "(org_id timeuuid, id timeuuid, nick text, email set<text>, phone list<text>, stuff text,  primary key (org_id, id))")
-  (tu/create-table
-   :upsert_mixed_lookup_test_by_nick
-   "(nick text, org_id timeuuid, id timeuuid, primary key (org_id, nick))")
-  (tu/create-table
-   :upsert_mixed_lookup_test_by_email
-   "(email text primary key, org_id timeuuid, id timeuuid)")
-  (tu/create-table
-   :upsert_mixed_lookup_test_by_phone
-   "(phone text primary key, org_id timeuuid, id timeuuid)")
-  (t/create-entity
-   {:primary-table {:name :upsert_mixed_lookup_test :key [:org_id :id]}
-    :lookup-tables [{:name :upsert_mixed_lookup_test_by_nick
-                         :key [:org_id :nick]}
-                        {:name :upsert_mixed_lookup_test_by_email
-                         :key [:email]
-                         :collections {:email :set}}
-                        {:name :upsert_mixed_lookup_test_by_phone
-                         :key [:phone]
-                         :collections {:phone :list}}]}))
 
 (deftest stale-lookup-key-values-for-table-test
   (let [m (t/create-entity
@@ -93,3 +70,44 @@
                 {:id :a :baz #{:b :c :d}}
                 nil
                 (-> m :lookup-tables second))))))))
+
+(defn generator-fn-lookup-test-generator
+  [session entity table old-record
+   {id :id
+    r-name :name
+    :as record}]
+  (for [s (str/split r-name #"\s+")]
+    {:id id :name s}))
+
+(defn create-generator-fn-lookup-entity
+  []
+  (tu/create-table
+   :generator_fn_lookup_test
+   "(id uuid primary key, name text)")
+  (tu/create-table
+   :generator_fn_lookup_test_by_name
+   "(name_char text primary key, id uuid)")
+  (t/create-entity
+   {:primary-table {:name :generator_fn_lookup_test :key [:id]}
+    :lookup-tables [{:name :generator_fn_lookup_test_by_name_char
+                     :key [:name]
+                     :generator-fn generator-fn-lookup-test-generator}]}))
+
+
+(deftest lookup-record-generator-fn-test
+  (let [m (create-generator-fn-lookup-entity)
+        id (uuid/v1)
+
+        lookups (l/generate-lookup-records-for-table
+                 tu/*model-session*
+                 m
+                 (-> m :lookup-tables first)
+                 nil
+                 {:id id
+                  :name "foo bar baz"})]
+
+    (testing "creates the expected lookups"
+      (is (= #{{:id id :name "foo"}
+               {:id id :name "bar"}
+               {:id id :name "baz"}}
+             (set lookups))))))
