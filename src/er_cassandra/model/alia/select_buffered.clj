@@ -13,20 +13,20 @@
             [er-cassandra.model.util :as util]
             [er-cassandra.model.alia.select :as select])
   (:import
-   [er_cassandra.session Session]
+   [er_cassandra.model.model_session ModelSession]
    [er_cassandra.model.types Entity]))
 
 (defn select-buffered-from-full-table
   "one buffered fetch - straight from a table. they key must be either
    a full primary key, or a partition key combined with some
    clustering key conditions (given as :where options)"
-  ([^Session session ^Entity entity table opts]
+  ([^ModelSession session ^Entity entity table opts]
    (let [opts (-> opts
                   (assoc :row-generator (ms/->EntityInstanceRowGenerator)))]
 
      (r/select-buffered session (:name table) opts)))
 
-  ([^Session session ^Entity entity table key record-or-key-value opts]
+  ([^ModelSession session ^Entity entity table key record-or-key-value opts]
    (let [opts (-> opts
                   (dissoc :key-value)
                   (assoc :row-generator (ms/->EntityInstanceRowGenerator)))]
@@ -44,7 +44,7 @@
    this means that the lookup query may specify a partition-key and
    some clustering column condition (given as a :where option)"
 
-  [^Session session ^Entity entity table key record-or-key-value
+  [^ModelSession session ^Entity entity table key record-or-key-value
    {:keys [buffer-size] :as opts}]
   (with-context deferred-context
     (mlet
@@ -94,13 +94,13 @@
   "select records from primary or lookup tables as required
 
    returns a Deferred<Stream<record>>"
-  ([^Session session ^Entity entity] (select-buffered* session entity {}))
-  ([^Session session ^Entity entity opts]
+  ([^ModelSession session ^Entity entity] (select-buffered* session entity {}))
+  ([^ModelSession session ^Entity entity opts]
    (select-buffered-from-full-table session
                                     entity
                                     (:primary-table entity)
                                     opts))
-  ([^Session session ^Entity entity key record-or-key-value {:keys [from] :as opts}]
+  ([^ModelSession session ^Entity entity key record-or-key-value {:keys [from] :as opts}]
    (let [key (v/coerce key)
          opts (dissoc opts :from)]
      (if from

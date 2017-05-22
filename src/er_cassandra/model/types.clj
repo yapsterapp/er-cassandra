@@ -15,7 +15,7 @@
   (s/make-fn-schema s/Any [[{s/Keyword s/Any}]]))
 
 (defprotocol ICallback
-  (run-callback [_ entity record]
+  (run-callback [_ session entity record]
     "run a callback on a record of an entity returning
      updated-record or Deferred<updated-record>"))
 
@@ -326,9 +326,9 @@
 (defn run-callbacks
   "callbacks implement ICallback and may return a modified record
    or a Deferred thereof"
-  ([^Entity entity callback-key record]
-   (run-callbacks entity callback-key record {}))
-  ([^Entity entity callback-key record opts]
+  ([session ^Entity entity callback-key record]
+   (run-callbacks session entity callback-key record {}))
+  ([session ^Entity entity callback-key record opts]
    (let [all-callbacks (concat (get-in entity [:callbacks callback-key])
                                (get-in opts [callback-key]))
          callback-mfs (for [cb all-callbacks]
@@ -338,7 +338,7 @@
                             (cb record)
 
                             (satisfies? ICallback cb)
-                            (run-callback cb entity record)
+                            (run-callback cb session entity record)
 
                             :else
                             (throw

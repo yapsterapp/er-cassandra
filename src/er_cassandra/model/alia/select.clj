@@ -11,7 +11,7 @@
             [er-cassandra.util.vector :as v]
             [er-cassandra.model.util :as util])
   (:import
-   [er_cassandra.session Session]
+   [er_cassandra.model.model_session ModelSession]
    [er_cassandra.model.types Entity]))
 
 (defn if-primary-key-table
@@ -53,7 +53,7 @@
    a full primary key, or a partition key combined with some
    clustering key conditions (given as :where options)"
 
-  [^Session session ^Entity entity table key record-or-key-value opts]
+  [^ModelSession session ^Entity entity table key record-or-key-value opts]
   (let [kv (k/extract-key-value key record-or-key-value opts)
         opts (-> opts
                  (dissoc :key-value)
@@ -71,7 +71,7 @@
    this means that the lookup query may specify a partition-key and
    some clustering column condition (given as a :where option)"
 
-  [^Session session ^Entity entity table key record-or-key-value opts]
+  [^ModelSession session ^Entity entity table key record-or-key-value opts]
   (let [lkv (k/extract-key-value (or key (:key table)) record-or-key-value opts)
         key (if lkv (or key (:key table)) (k/partition-key (:key table)))
         key-value (if lkv
@@ -109,7 +109,7 @@
 
 (defn select*
   "select records from primary or lookup tables as required"
-  [^Session session ^Entity entity key record-or-key-value {:keys [from] :as opts}]
+  [^ModelSession session ^Entity entity key record-or-key-value {:keys [from] :as opts}]
    (let [key (v/coerce key)
          opts (dissoc opts :from)]
      (if from

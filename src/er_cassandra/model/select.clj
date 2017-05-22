@@ -26,6 +26,7 @@
             (s/map (fn [mi]
                      (if (ms/entity-instance? mi)
                        (t/run-callbacks
+                        session
                         entity
                         :after-load
                         mi
@@ -47,6 +48,7 @@
             (s/map (fn [mi]
                      (if (ms/entity-instance? mi)
                        (t/run-callbacks
+                        session
                         entity
                         :after-load
                         mi

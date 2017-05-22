@@ -19,7 +19,7 @@
    [er-cassandra.model.util :refer [combine-responses create-lookup-record]])
   (:import
    [er_cassandra.model.types Entity]
-   [er_cassandra.session Session]))
+   [er_cassandra.model.model_session ModelSession]))
 
 (s/defschema DenormalizeOp
   (s/enum :upsert :delete))
@@ -46,7 +46,7 @@
 
 (s/defn denormalize-to-target-record
   "denormalize to a single target record"
-  [session :- Session
+  [session :- ModelSession
    source-entity :- Entity
    target-entity :- Entity
    source-record :- t/RecordSchema
@@ -111,7 +111,7 @@
 
 (s/defn target-record-stream
   "returns a Deferred<Stream<record>> of target records"
-  [session :- Session
+  [session :- ModelSession
    source-entity :- Entity
    target-entity :- Entity
    source-record :- t/RecordSchema
@@ -137,7 +137,7 @@
 
 (s/defn denormalize-rel
   "denormalizes a single relationship"
-  [session :- Session
+  [session :- ModelSession
    source-entity :- Entity
    target-entity :- Entity
    source-record :- t/RecordSchema
@@ -180,7 +180,7 @@
 (s/defn denormalize
   "denormalize all relationships for a given source record
    returns Deferred<[[denorm-rel-kw [status maybe-err]]*]>"
-  [session :- Session
+  [session :- ModelSession
    source-entity :- Entity
    source-record :- t/RecordSchema
    denorm-op :- DenormalizeOp

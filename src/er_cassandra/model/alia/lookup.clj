@@ -10,8 +10,8 @@
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]])
   (:import
-   er_cassandra.model.types.Entity
-   er_cassandra.session.Session))
+   [er_cassandra.model.types Entity]
+   [er_cassandra.model.model_session ModelSession]))
 
 (defn choose-lookup-additional-cols
   "we want to choose a minimum set of additional cols, over the
@@ -78,7 +78,7 @@
    - old-record: previous primary table record (or nil for new)
    - record: upserted primary-table record to generate lookups for
              (or nil for deletion)"
-  [session :- Session
+  [session :- ModelSession
    model :- Entity
    table :- t/IndexTableSchema
    old-record :- t/MaybeRecordSchema
@@ -90,7 +90,7 @@
 
 (s/defn generate-lookup-records-for-table
   "generate all the lookup records for one lookup table"
-  [session :- Session
+  [session :- ModelSession
    model :- Entity
    {generator-fn :generator-fn
     :as table} :- t/IndexTableSchema
@@ -101,7 +101,7 @@
    session model table old-record record))
 
 (s/defn stale-lookup-key-values-for-table
-  [session :- Session
+  [session :- ModelSession
    entity :- Entity
    old-record :- t/MaybeRecordSchema
    new-record :- t/MaybeRecordSchema
