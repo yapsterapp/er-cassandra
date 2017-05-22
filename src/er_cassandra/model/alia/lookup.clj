@@ -40,12 +40,12 @@
    - old-record: previous primary table record (or nil for new)
    - record: upserted primary-table record to generate lookups for
              (or nil for deletion)"
-  [model
+  [entity
    table
    key
    old-record
    record]
-  (let [uber-key (t/uber-key model)
+  (let [uber-key (t/uber-key entity)
         uber-key-value (or
                         (k/extract-key-value uber-key record)
                         (k/extract-key-value uber-key old-record))
@@ -66,7 +66,7 @@
 
                                 (merge
                                  (choose-lookup-additional-cols
-                                  model with-cols old-record record)
+                                  entity with-cols old-record record)
 
                                  lookup-record))]
             lookup-record))))))
@@ -79,26 +79,26 @@
    - record: upserted primary-table record to generate lookups for
              (or nil for deletion)"
   [session :- ModelSession
-   model :- Entity
+   entity :- Entity
    table :- t/IndexTableSchema
    old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema]
-  (if record
-    (default-lookup-record-generator-for-key-fn
-     model table (:key table) old-record record)
-    []))
+  (default-lookup-record-generator-for-key-fn
+   entity table (:key table) old-record record))
 
 (s/defn generate-lookup-records-for-table
   "generate all the lookup records for one lookup table"
   [session :- ModelSession
-   model :- Entity
+   entity :- Entity
    {generator-fn :generator-fn
     :as table} :- t/IndexTableSchema
    old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema]
-  ((or generator-fn
-       default-lookup-record-generator-fn)
-   session model table old-record record))
+  (if record
+    ((or generator-fn
+         default-lookup-record-generator-fn)
+     session entity table old-record record)
+    []))
 
 (s/defn stale-lookup-key-values-for-table
   [session :- ModelSession
