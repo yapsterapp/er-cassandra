@@ -17,8 +17,8 @@
     [lookup :as l]]
    [schema.core :as s])
   (:import
-   er_cassandra.model.types.Entity
-   er_cassandra.session.Session))
+   [er_cassandra.model.types Entity]
+   [er_cassandra.model.model_session ModelSession]))
 
 (defn applied?
   [lwt-response]
@@ -51,7 +51,7 @@
    returns a Deferred[[:ok <keydesc> info]] if the key was acquired
    successfully, a ErrorDeferred[[:fail <keydesc> reason]]"
 
-  [session :- Session
+  [session :- ModelSession
    entity :- Entity
    unique-key-table :- t/UniqueKeyTableSchema
    uber-key-value :- t/KeyValueSchema
@@ -144,7 +144,7 @@
 
 (s/defn release-unique-key
   "remove a single unique key"
-  [session :- Session
+  [session :- ModelSession
    entity :- Entity
    unique-key-table :- t/UniqueKeyTableSchema
    uber-key-value :- t/KeyValueSchema
@@ -183,7 +183,7 @@
            :else    [:ok key-desc :stale]))))))
 
 (s/defn release-stale-unique-keys-for-table
-  [session :- Session
+  [session :- ModelSession
    entity :- Entity
    table :- t/UniqueKeyTableSchema
    old-record :- t/MaybeRecordSchema
@@ -211,7 +211,7 @@
       (return release-responses))))
 
 (s/defn release-stale-unique-keys
-  [session :- Session
+  [session :- ModelSession
    entity :- Entity
    old-record :- t/MaybeRecordSchema
    new-record :- t/MaybeRecordSchema
@@ -231,7 +231,7 @@
        (apply concat all-release-responses)))))
 
 (s/defn acquire-unique-keys-for-table
-  [session :- Session
+  [session :- ModelSession
    entity :- Entity
    table :- t/UniqueKeyTableSchema
    old-record :- t/MaybeRecordSchema
@@ -256,7 +256,7 @@
       (return acquire-responses))))
 
 (s/defn acquire-unique-keys
-  [session :- Session
+  [session :- ModelSession
    entity :- Entity
    old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema
@@ -385,7 +385,7 @@
    possibly with an LWT and conditions if options if-not-exists or only-if
    are provided.
    returns a Deferred [upserted-record-or-nil failure-description]"
-  ([session :- Session
+  ([session :- ModelSession
     entity :- Entity
     record :- t/MaybeRecordSchema
     {:keys [if-not-exists
@@ -492,7 +492,7 @@
   "attempts to acquire unique keys for an owner... returns
    a Deferred<[updated-owner-record failed-keys]> with an updated
    owner record containing only the keys that could be acquired"
-  [session :- Session
+  [session :- ModelSession
    entity :- Entity
    old-key-record :- t/MaybeRecordSchema ;; record with old unique keys
    new-record :- t/MaybeRecordSchema
@@ -552,7 +552,7 @@
   "first upserts the primary record, with any constraints,
    then updates unique keys. returns a
    Deferred[updated-record-or-nil failure-descriptions]"
-  [session :- Session
+  [session :- ModelSession
    entity :- Entity
    new-record :- t/MaybeRecordSchema
    opts :- fns/UpsertOptsWithTimestampSchema]
