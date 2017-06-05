@@ -22,14 +22,6 @@
 
    (ms/-delete session entity key record-or-key-value opts)))
 
-(defn delete-many
-  "issue one delete query for each record and combine the responses"
-  [^ModelSession session ^Entity entity key records]
-  (->> records
-       (map (fn [record]
-              (delete session entity key record)))
-       combine-responses))
-
 (defn delete-buffered
   "delete each record in a Stream<record>, optionally controlling
    concurrency with :buffer-size. returns a Deferred<Stream<response>>
@@ -49,3 +41,11 @@
                (s/buffer buffer-size s)
                s)))
           return))))
+
+(defn delete-many
+  "issue one delete query for each record and combine the responses"
+  [^ModelSession session ^Entity entity key records]
+  (with-context deferred-context
+    (mlet [dr-s (delete-buffered session entity key records)]
+      (->> dr-s
+           (s/reduce conj [])))))
