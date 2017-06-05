@@ -26,14 +26,6 @@
 
    (ms/-upsert session entity record opts)))
 
-(defn upsert-many
-  "issue one upsert query for each record and combine the responses"
-  [^ModelSession session ^Entity entity records]
-  (->> records
-       (map (fn [record]
-              (upsert session entity record)))
-       combine-responses))
-
 (defn upsert-buffered
   "upsert each record in a Stream<record>, optionally controlling
    concurrency with :buffer-size. returns a Deferred<Stream<response>>
@@ -52,3 +44,11 @@
                (s/buffer buffer-size s)
                s)))
           return))))
+
+(defn upsert-many
+  "issue one upsert query for each record and combine the responses"
+  [^ModelSession session ^Entity entity records]
+  (with-context deferred-context
+    (mlet [ups-s (upsert-buffered session entity records)]
+      (->> ups-s
+           (s/reduce conj [])))))
