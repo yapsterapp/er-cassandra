@@ -14,11 +14,11 @@
    [er-cassandra.model.alia.select :as alia-select])
   (:import
    [er_cassandra.model.types Entity]
-   [er_cassandra.session Session]))
+   [er_cassandra.model.model_session ModelSession]))
 
 (s/defn delete-primary-record
   "a delete which permits LWTs etc"
-  [session :- Session
+  [session :- ModelSession
    entity :- Entity
    table :- t/TableSchema
    key-value :- t/KeyValueSchema
@@ -44,7 +44,7 @@
        (into {})))
 
 (s/defn ^:private delete-with-primary
-  [session :- Session
+  [session :- ModelSession
    entity :- Entity
    key :- t/PrimaryKeySchema
    record :- t/RecordSchema
@@ -86,7 +86,7 @@
   "delete a single instance, removing primary, secondary unique-key and
    lookup records "
 
-  ([session :- Session
+  ([session :- ModelSession
     entity :- Entity
     key :- r/KeySchema
     record-or-key-value :- r/RecordOrKeyValueSchema

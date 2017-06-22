@@ -56,9 +56,9 @@
 (deftest test-mutable-lookup-tables
   (let [m (t/create-entity
            {:primary-table {:name :foos :key [:id]}
-            :lookup-key-tables [{:name :foos_by_bar :key [:bar]}
+            :lookup-tables [{:name :foos_by_bar :key [:bar]}
                                 {:name :foos_by_baz
                                  :key [:baz]
                                  :view? true}]})]
-    (is (= (->> m :lookup-key-tables (take 1))
+    (is (= (->> m :lookup-tables (take 1))
            (t/mutable-lookup-tables m)))))

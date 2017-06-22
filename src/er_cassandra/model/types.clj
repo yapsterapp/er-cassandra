@@ -15,7 +15,7 @@
   (s/make-fn-schema s/Any [[{s/Keyword s/Any}]]))
 
 (defprotocol ICallback
-  (run-callback [_ entity record]
+  (run-callback [_ session entity record]
     "run a callback on a record of an entity returning
      updated-record or Deferred<updated-record>"))
 
@@ -115,44 +115,36 @@
          MaterializedViewSchema
          {:type (s/eq :secondary)}))
 
-(defn- create-lookup-generator-schema
-  "add the lookup record generator related schema to a base schema"
-  [base-schema]
-  (s/conditional
-   :generator-fn
-   (merge base-schema
-          {:generator-fn (s/pred fn? "generator-fn")})
-
-   :else
-   (merge base-schema
-          {(s/optional-key :with-columns) (s/conditional
-                                           keyword? (s/eq :all)
-                                           :else [s/Keyword])})))
-
 ;; unique-key tables are lookup tables with a unique
-;; constraint on the key, enforced with an LWT
-(def BaseUniqueKeyTableSchema
+;; constraint on the key, enforced with an LWT.
+;; additional columns can be copied to the table with
+;; :with-columns and the record generation can be
+;; completely customised with a :generator-fn
+;; which will be called with
+;; (generator-fn cassandra model table old-record new-record) and
+;; should return a list of lookup records or a Deferred thereof
+(def UniqueKeyTableSchema
   (merge BaseTableSchema
          CollectionKeysSchema
-         {:type (s/eq :uniquekey)}))
-
-(s/defschema UniqueKeyTableSchema
-  (create-lookup-generator-schema BaseUniqueKeyTableSchema))
-
-(def BaseLookupTableSchema
-  (merge BaseTableSchema
-         CollectionKeysSchema
-         MaterializedViewSchema
-         {:type (s/eq :lookup)}))
+         {:type (s/eq :uniquekey)
+          (s/optional-key :with-columns) (s/conditional
+                                          keyword? (s/eq :all)
+                                          :else [s/Keyword])
+          (s/optional-key :generator-fn) (s/pred fn? "generator-fn")}))
 
 ;; lookup tables contain columns from the uberkey and
 ;; a lookup key, plus any additional with-columns
 ;; a generator-fn may be supplied which will be called with
-;; (generator-fn model table old-record new-record) and
-;; should return a list of lookup records. if no generator-fn
-;; is supplied then a default is used
+;; (generator-fn cassandra model table old-record new-record) and
+;; should return a list of lookup records or a Deferred thereof.
+;; if no generator-fn is supplied then a default is used
 (s/defschema LookupTableSchema
-  (create-lookup-generator-schema BaseLookupTableSchema))
+  (s/conditional
+   :generator-fn (merge UniqueKeyTableSchema
+                        {:type (s/eq :lookup)})
+   :else (merge UniqueKeyTableSchema
+                MaterializedViewSchema
+                {:type (s/eq :lookup)})))
 
 (s/defschema IndexTableSchema
   (s/conditional
@@ -170,7 +162,7 @@
   {:primary-table PrimaryTableSchema
    (s/optional-key :unique-key-tables) [UniqueKeyTableSchema]
    (s/optional-key :secondary-tables) [SecondaryTableSchema]
-   (s/optional-key :lookup-key-tables) [LookupTableSchema]
+   (s/optional-key :lookup-tables) [LookupTableSchema]
    (s/optional-key :callbacks) CallbacksSchema
    (s/optional-key :denorm-targets) {s/Keyword DenormalizationRelationshipSchema}
    (s/optional-key :denorm-sources) {s/Keyword s/Keyword}})
@@ -180,7 +172,7 @@
     [primary-table :- PrimaryTableSchema
      unique-key-tables :- [UniqueKeyTableSchema]
      secondary-tables :- [SecondaryTableSchema]
-     lookup-key-tables :- [LookupTableSchema]
+     lookup-tables :- [LookupTableSchema]
      callbacks :- CallbacksSchema
      denorm-targets :- {s/Keyword DenormalizationRelationshipSchema}
      denorm-sources :- {s/Keyword s/Keyword}])
@@ -207,7 +199,7 @@
                  (conform-table :primary (:primary-table entity-schema)))
           [[:uniquekey :unique-key-tables]
            [:secondary :secondary-tables]
-           [:lookup :lookup-key-tables]]))
+           [:lookup :lookup-tables]]))
 
 (s/defn ^:always-validate create-entity :- Entity
   "create an entity record from a spec"
@@ -215,7 +207,7 @@
   (let [spec (conform-all-tables entity-spec)
         spec (merge {:unique-key-tables []
                      :secondary-tables []
-                     :lookup-key-tables []
+                     :lookup-tables []
                      :callbacks {}
                      :denorm-targets {}
                      :denorm-sources {}}
@@ -287,9 +279,9 @@
   [^Entity entity table]
   (is-table-name (:unique-key-tables entity) table))
 
-(defn is-lookup-key-table
+(defn is-lookup-table
   [^Entity entity table]
-  (is-table-name (:lookup-key-tables entity) table))
+  (is-table-name (:lookup-tables entity) table))
 
 (defn uber-key
   [^Entity entity]
@@ -304,7 +296,7 @@
 (defn mutable-lookup-tables
   [^Entity entity]
   (->> entity
-       :lookup-key-tables
+       :lookup-tables
        (filterv (comp not :view?))))
 
 (defn all-key-cols
@@ -313,7 +305,7 @@
   (distinct
    (concat (uber-key entity)
            (mapcat :key (:secondary-tables entity))
-           (mapcat :key (:lookup-key-tables entity)))))
+           (mapcat :key (:lookup-tables entity)))))
 
 (defn extract-uber-key-value
   [^Entity entity record]
@@ -334,9 +326,9 @@
 (defn run-callbacks
   "callbacks implement ICallback and may return a modified record
    or a Deferred thereof"
-  ([^Entity entity callback-key record]
-   (run-callbacks entity callback-key record {}))
-  ([^Entity entity callback-key record opts]
+  ([session ^Entity entity callback-key record]
+   (run-callbacks session entity callback-key record {}))
+  ([session ^Entity entity callback-key record opts]
    (let [all-callbacks (concat (get-in entity [:callbacks callback-key])
                                (get-in opts [callback-key]))
          callback-mfs (for [cb all-callbacks]
@@ -346,7 +338,7 @@
                             (cb record)
 
                             (satisfies? ICallback cb)
-                            (run-callback cb entity record)
+                            (run-callback cb session entity record)
 
                             :else
                             (throw
