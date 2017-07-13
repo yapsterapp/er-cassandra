@@ -306,6 +306,9 @@
                                                 opts)
                 (return nil))
 
+            ;; TODO gotta get rid of the re-selects - they are breaking
+            ;; with :consistency :one (nil gets reselected sometimes)
+
             ;; re-select the record for nice empty-collections etc
             reselected-record (if updated-record-with-keys
                               (r/select-one

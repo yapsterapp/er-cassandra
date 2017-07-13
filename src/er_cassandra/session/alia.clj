@@ -116,7 +116,7 @@
   (with-context deferred-context
     (mlet
       [datastax-session (create-alia-session*
-                         (dissoc args :trace? :consistency))
+                         (dissoc args :trace?))
        :let [alia-session (map->AliaSession
                            {:keyspace keyspace
                             :alia-session datastax-session
@@ -216,8 +216,7 @@
     (mlet [datastax-session (create-alia-session*
                              (dissoc args
                                      :truncate-on-close
-                                     :trace?
-                                     :consistency))
+                                     :trace?))
            :let [spy-session (map->AliaSpySession
                               {:keyspace keyspace
                                :alia-session datastax-session
