@@ -197,7 +197,8 @@
         (is (= {:uber-key (t/uber-key m)
                 :uber-key-value [ida]
                 :key [:nick]
-                :key-value ["foo"]}))
+                :key-value ["foo"]}
+               key-desc))
         (is (= :deleted reason))
         (is (= nil dr))))
 
@@ -213,7 +214,8 @@
         (is (= {:uber-key (t/uber-key m)
                 :uber-key-value [ida]
                 :key [:nick]
-                :key-value ["foo"]}))
+                :key-value ["foo"]}
+               key-desc))
         (is (= :stale reason))))
 
     (testing "attempting to release someone else's key"
@@ -229,9 +231,10 @@
 
         (is (= :ok status))
         (is (= {:uber-key (t/uber-key m)
-                :uber-key-value [ida]
+                :uber-key-value [idb]
                 :key [:nick]
-                :key-value ["foo"]}))
+                :key-value ["foo"]}
+               key-desc))
         (is (= :stale reason))))))
 
 
@@ -571,9 +574,9 @@
         (is (= {:id id :nick nil :a "ana" :b "anb"}
                (select-keys fr [:id :nick :a :b])))
         (is (some? (:a_ttl fr)))
-        (is (= (> (:a_ttl fr) 5)))
+        (is (> (:a_ttl fr) 5))
         (is (some? (:a_writetime fr)))
-        (is (= (> (:a_writetime fr) 5)))))
+        (is (> (:a_writetime fr) 5))))
 
     (testing "update existing record"
       (let [id (uuid/v1)
@@ -610,9 +613,9 @@
         (is (= {:id id :nick "blah" :a "newa" :b "oldb"}
                (select-keys fr [:id :nick :a :b])))
         (is (some? (:a_ttl fr)))
-        (is (= (> (:a_ttl fr) 5)))
+        (is (> (:a_ttl fr) 5))
         (is (some? (:a_writetime fr)))
-        (is (= (> (:a_writetime fr) 5)))))
+        (is (> (:a_writetime fr) 5))))
 
     (testing "with if-not-exists"
 
@@ -644,7 +647,7 @@
             (is (= {:id id-b :nick nil :a "ana" :b "anb"}
                    (select-keys fr [:id :nick :a :b])))
             (is (some? (:a_ttl fr)))
-            (is (= (> (:a_ttl fr) 5)))))
+            (is (> (:a_ttl fr) 5))))
 
         (testing "if it does already exist"
           (let [r @(uk/upsert-primary-record-without-unique-keys
@@ -701,7 +704,7 @@
           (is (= {:id id :nick "bloogh" :a "newa" :b "newb"}
                  (select-keys fr [:id :nick :a :b])))
           (is (some? (:a_ttl fr)))
-          (is (= (> (:a_ttl fr) 5)))))
+          (is (> (:a_ttl fr) 5))))
 
       (testing "if it doesn't already exist"
         (let [id (uuid/v1)
