@@ -11,7 +11,7 @@
    (concatenate-keys default-separator key-col-vals))
 
   ([separator key-col-vals]
-   (when (every? identity key-col-vals)
+   (when (every? some? key-col-vals)
      (->> key-col-vals
           (map str)
           (str/join separator)))))

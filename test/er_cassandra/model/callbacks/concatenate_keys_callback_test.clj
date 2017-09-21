@@ -11,6 +11,10 @@
     (is (= "one/two" (cb/concatenate-keys ["one" "two"]))))
   (testing "some nils"
     (is (= nil (cb/concatenate-keys ["one" nil]))))
+  (testing "booleans"
+    (is (= "false/two" (cb/concatenate-keys [false, "two"])))
+    (is (= "true/two" (cb/concatenate-keys [true, "two"])))
+    (is (= "false/true/false" (cb/concatenate-keys [false true false]))))
   (testing "custom separator"
     (is (= "one:two" (cb/concatenate-keys ":" ["one" "two"])))))
 
@@ -28,6 +32,15 @@
               :foo "one"
               :bar nil}
              (cb {:foo "one" :bar nil})))))
+
+  (testing "booleans"
+    (let [cb (cb/concatenate-keys-callback :foobar [:foo :foo? :bar :bar?])]
+      (is (= {:foobar "one/true/two/false"
+              :foo "one"
+              :foo? true
+              :bar "two"
+              :bar? false}
+             (cb {:foo "one" :foo? true :bar "two" :bar? false})))))
 
   (testing "custom separator"
     (let [cb (cb/concatenate-keys-callback :foobar ":" [:foo :bar])]
