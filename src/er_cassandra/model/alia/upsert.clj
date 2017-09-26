@@ -281,6 +281,17 @@
 
             record (t/run-callbacks session entity :before-save record opts)
 
+            ;; TODO 20170926 plan to remove unnecessary re-selects.
+            ;;
+            ;; only re-select if the entity has-lookups? and some of the lookup
+            ;; columns are included in the record.
+            ;;
+            ;; provide any re-selected record to the upsert-primary-record-and-update-unique-keys
+            ;;
+            ;; return with either [a] just the upserted record if there were no
+            ;; affected lookups or [b] the re-selected record modified by the upserted
+            ;; record if there were affected lookups
+
             ;; don't need the old record if there are no lookups
             old-record (if (has-lookups? entity)
                          (r/select-one
