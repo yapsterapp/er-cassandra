@@ -6,17 +6,6 @@
 
 (use-fixtures :once st/validate-schemas)
 
-(deftest concatenate-keys-test
-  (testing "all cols supplied"
-    (is (= "one/two" (cb/concatenate-keys ["one" "two"]))))
-  (testing "some nils"
-    (is (= nil (cb/concatenate-keys ["one" nil]))))
-  (testing "booleans"
-    (is (= "false/two" (cb/concatenate-keys [false, "two"])))
-    (is (= "true/two" (cb/concatenate-keys [true, "two"])))
-    (is (= "false/true/false" (cb/concatenate-keys [false true false]))))
-  (testing "custom separator"
-    (is (= "one:two" (cb/concatenate-keys ":" ["one" "two"])))))
 
 (deftest concatenate-keys-callback-test
   (testing "all cols present"
