@@ -22,6 +22,11 @@
   (-str-rep [v]
     (cut/unparse-timestamp-utc-millis v)))
 
+(extend-type java.lang.Object
+  IConcatenatedKeySegment
+  (-str-rep [v]
+    (str v)))
+
 (def default-separator "/")
 
 (defn concatenate-keys
