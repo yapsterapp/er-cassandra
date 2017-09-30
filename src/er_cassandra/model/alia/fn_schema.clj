@@ -99,12 +99,14 @@
   [opts]
   (update-in opts [:using] (fn [u] (dissoc u :timestamp))))
 
+(s/defschema DenormalizeCallbackOptsSchema
+  {(s/optional-key :fetch-size) s/Int
+   (s/optional-key :buffer-size) s/Int})
 
 (s/defschema DenormalizeOptsSchema
   (merge
    UpsertUsingOnlyOptsWithTimestampSchema
-   {(s/optional-key :fetch-size) s/Int
-    (s/optional-key :buffer-size) s/Int}))
+   DenormalizeCallbackOptsSchema))
 
 (s/defn denormalize-opts->upsert-opts :- UpsertOptsSchema
   [opts :- DenormalizeOptsSchema]

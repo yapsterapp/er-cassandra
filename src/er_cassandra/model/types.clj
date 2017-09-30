@@ -15,7 +15,7 @@
   (s/make-fn-schema s/Any [[{s/Keyword s/Any}]]))
 
 (defprotocol ICallback
-  (run-callback [_ session entity record]
+  (-run-callback [_ session entity record opts]
     "run a callback on a record of an entity returning
      updated-record or Deferred<updated-record>"))
 
@@ -338,7 +338,7 @@
                             (cb record)
 
                             (satisfies? ICallback cb)
-                            (run-callback cb session entity record)
+                            (-run-callback cb session entity record opts)
 
                             :else
                             (throw

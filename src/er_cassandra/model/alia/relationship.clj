@@ -204,3 +204,18 @@
     ;; process one relationship at a time, otherwise the buffer-size is
     ;; uncontrolled
     (apply >>= (return deferred-context []) mfs)))
+
+(s/defn denormalize-callback
+  "creates a callback with the given op and opts"
+  ([denorm-op] (denormalize-callback denorm-op {}))
+  ([denorm-op :- DenormalizeOp
+    denorm-opts :- fns/DenormalizeCallbackOptsSchema]
+   (reify
+     t/ICallback
+     (-run-callback [_ session entity record opts]
+       (denormalize
+        session
+        entity
+        record
+        denorm-op
+        (merge opts denorm-opts))))))
