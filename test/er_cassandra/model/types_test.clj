@@ -83,7 +83,7 @@
         (is (= exp @(run-callbacks s m :before-save r)))))
     (testing "callback deferred"
       (let [m (update-callbacks m [(reify ICallback
-                                     (run-callback [_ session entity record]
+                                     (-run-callback [_ session entity record opts]
                                        (deferred/success-deferred
                                          (update record :name string/upper-case))))])
             exp {:id 1 :name "BAR"}]
