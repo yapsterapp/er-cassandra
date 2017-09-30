@@ -4,6 +4,10 @@
    [schema.core :as s]
    [er-cassandra.record :as r]))
 
+(s/defschema UpsertConsistencySchema
+  {(s/optional-key :consistency)
+   r/ConsistencyLevelSchema})
+
 (s/defschema UpsertWhereSchema
   {(s/optional-key :where) r/WhereSchema})
 

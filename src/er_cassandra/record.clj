@@ -20,6 +20,19 @@
 ;;
 ;; execution is async and returns a manifold Deferred
 
+(s/defschema ConsistencyLevelSchema
+  (s/enum :each-quorum
+          :one
+          :local-quorum
+          :quorum
+          :three
+          :all
+          :serial
+          :two
+          :local-serial
+          :local-one
+          :any))
+
 (defn combine-where
   [& clauses]
   (into []
