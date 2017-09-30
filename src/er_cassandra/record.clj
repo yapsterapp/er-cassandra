@@ -234,7 +234,8 @@
 
 (s/defschema InsertOptsSchema
   {(s/optional-key :if-not-exists) s/Bool
-   (s/optional-key :using) UpsertUsingSchema})
+   (s/optional-key :using) UpsertUsingSchema
+   (s/optional-key :consistency) ConsistencyLevelSchema})
 
 (s/defn insert-statement
   "returns a Hayt insert statement"
@@ -272,6 +273,7 @@
    (s/optional-key :if-exists) s/Bool
    (s/optional-key :if-not-exists) s/Bool
    (s/optional-key :using) UpsertUsingSchema
+   (s/optional-key :consistency) ConsistencyLevelSchema
    (s/optional-key :set-columns) UpdateColumnsSchema})
 
 (s/defn update-statement
