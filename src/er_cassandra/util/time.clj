@@ -49,3 +49,24 @@
     (if (not= tsc 0)
       tsc
       (compare (str timeuuid-a) (str timeuuid-b)))))
+
+(defn cassandra-uuid-compare
+  "it seems cassandra always compares timeuuids as lower than
+   non-timeuuids, so that's a thing"
+  [a b]
+  (let [ts-a (uuid/get-timestamp a)
+        ts-b (uuid/get-timestamp b)]
+    (cond
+      (and ts-a ts-b)
+      (timeuuid-comparator a b)
+
+      (and (nil? ts-a) (nil? ts-b))
+      (compare (str a) (str b))
+
+      ts-a
+      -1
+
+      ts-b
+      1
+
+      :else (throw (ex-info "huh?" {:a a :b b})))))
