@@ -55,10 +55,14 @@
 (s/defschema SecondaryKeySchema
   s/Keyword)
 
-;; just map source fields to target fields for now
-;; :source primary-key columns will always be included
+(s/defschema KeywordOrFnSchema
+  (s/conditional
+   fn? (s/pred fn?)
+   :else s/Keyword))
+
+;; a map of target fields from source fields-or-fns
 (s/defschema DenormalizeSchema
-  {s/Keyword s/Keyword})
+  {s/Keyword KeywordOrFnSchema})
 
 ;; a Relationship allows fields from a parent Entity or
 ;; one of its index tables to be
