@@ -5,7 +5,8 @@
    [clj-time.format :as f]
    [clj-uuid :as uuid])
   (:import
-   [java.util UUID]))
+   [java.util UUID]
+   [com.datastax.driver.core.utils UUIDs]))
 
 ;; make things work with v1 UUIDs
 (extend-protocol tc/ICoerce
@@ -70,3 +71,9 @@
       1
 
       :else (throw (ex-info "huh?" {:a a :b b})))))
+
+(defn time->start-of-timeuuid
+  [t]
+  (-> t
+      tc/to-long
+      UUIDs/startOf))
