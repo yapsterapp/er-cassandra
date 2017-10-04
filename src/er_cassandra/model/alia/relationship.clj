@@ -66,8 +66,8 @@
         fk-map (into {} (map vector fk fk-val))
 
         denorm-vals (->> (:denormalize denorm-rel)
-                         (map (fn [[scol tcol]]
-                                [tcol (get source-record scol)]))
+                         (map (fn [[tcol scol-or-fn]]
+                                [tcol (scol-or-fn source-record)]))
                          (into {}))]
 
     (case denorm-op

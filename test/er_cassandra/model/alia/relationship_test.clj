@@ -358,8 +358,8 @@
                 {:primary-table {:name :ck_relationship_test
                                  :key [[:ida :idb]]}
                  :denorm-targets {:test {:target target
-                                         :denormalize {:nick :target_nick
-                                                       :nock :target_nock}
+                                         :denormalize {:target_nick :nick
+                                                       :target_nock :nock}
                                          :cascade :none
                                          :foreign-key [:source_ida :source_idb]}}})]
     [source target]))
@@ -409,11 +409,11 @@
                 {:primary-table {:name :multi_relationship_test
                                  :key [[:ida :idb]]}
                  :denorm-targets {:test-a {:target target-a
-                                           :denormalize {:nick :target_nick}
+                                           :denormalize {:target_nick :nick}
                                            :cascade :none
                                            :foreign-key [:source_ida :source_idb]}
                                   :test-b {:target target-b
-                                           :denormalize {:nock :target_nock}
+                                           :denormalize {:target_nock :nock}
                                            :cascade :none
                                            :foreign-key [:source_ida :source_idb]}}})]
     [source target-a target-b]))
