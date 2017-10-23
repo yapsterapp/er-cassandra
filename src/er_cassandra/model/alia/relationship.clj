@@ -44,6 +44,33 @@
   (let [uk-val (t/extract-uber-key-value source-entity source-record)]
     [(:foreign-key denorm-rel) uk-val]))
 
+(s/defn denormalize-fields
+  "denormalize fields from source-record according to :denormalize
+   of denorm-rel, returning an updated target-record"
+  [source-entity :- Entity
+   target-entity :- Entity
+   denorm-rel :- t/DenormalizationRelationshipSchema
+   source-record :- t/RecordSchema
+   target-record :- t/RecordSchema]
+  (let [target-uberkey (-> target-entity :primary-table :key flatten)
+        target-uberkey-value (t/extract-uber-key-value
+                              target-entity
+                              target-record)
+        target-uberkey-map (into {} (map vector
+                                         target-uberkey
+                                         target-uberkey-value))
+
+        [fk fk-val :as fk-vals] (foreign-key-val source-entity source-record denorm-rel)
+        fk-map (into {} (map vector fk fk-val))
+
+        denorm-vals (->> (:denormalize denorm-rel)
+                         (map (fn [[tcol scol-or-fn]]
+                                [tcol (scol-or-fn source-record)]))
+                         (into {}))]
+    (merge denorm-vals
+           fk-map
+           target-uberkey-map)))
+
 (s/defn denormalize-to-target-record
   "denormalize to a single target record"
   [session :- ModelSession
