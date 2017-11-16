@@ -21,6 +21,96 @@
 (use-fixtures :once st/validate-schemas)
 (use-fixtures :each (tu/with-model-session-fixture))
 
+(deftest denormalize-fields-test
+  (let [te (t/create-entity
+            {:primary-table {:name :some_target :key [:id]}})
+        se (t/create-entity
+                {:primary-table {:name :some_source :key [:id]}
+                 :denorm-targets {:test {:target te
+                                         :denormalize {:nick :nick
+                                                       :count (comp inc :count)}
+                                         :cascade :none
+                                         :foreign-key [:parent_id]}}})
+
+        dtr (rel/denormalize-fields
+             se
+             te
+             (get-in se [:denorm-targets :test])
+             {:id "foo"
+              :nick "nick"
+              :count 1}
+             {:id "bar"
+              :parent_id "foo"})]
+    (is (= dtr {:id "bar" :parent_id "foo" :nick "nick" :count 2}))))
+
+(deftest denormalize-fields-to-target-test
+  (testing "simple key 1 matching rel"
+    (let [te (t/create-entity
+              {:primary-table {:name :some_target :key [:id]}})
+          oe (t/create-entity
+              {:primary-table {:name :some_other :key [:id]}})
+          se (t/create-entity
+              {:primary-table {:name :some_source :key [:id]}
+               :denorm-targets {:a {:target te
+                                    :denormalize {:nick :nick}
+                                    :cascade :none
+                                    :foreign-key [:parent_id]}
+                                :b {:target te
+                                    :denormalize {:count (comp inc :count)}
+                                    :cascade :none
+                                    :foreign-key [:child_id]}
+                                :c {:target oe
+                                    :denormalize {:name :name}
+                                    :cascade :none
+                                    :foreign-key [:other_id]}}})
+          dtr (rel/denormalize-fields-to-target
+               se
+               te
+               {:id "foo"
+                :nick "nick"
+                :count 1}
+               {:id "bar"
+                :parent_id "foo"})]
+      (is (= dtr {:id "bar" :parent_id "foo" :nick "nick"}))))
+
+  (testing "compound key 2 matching rels"
+    (let [te (t/create-entity
+              {:primary-table {:name :some_target :key [:id]}})
+          oe (t/create-entity
+              {:primary-table {:name :some_other :key [:id]}})
+          se (t/create-entity
+              {:primary-table {:name :some_source :key [:org_id :id]}
+               :denorm-targets {:a {:target te
+                                    :denormalize {:nick :nick}
+                                    :cascade :none
+                                    :foreign-key [:org_id :parent_id]}
+                                :b {:target te
+                                    :denormalize {:count (comp inc :count)}
+                                    :cascade :none
+                                    :foreign-key [:org_id :child_id]}
+                                :c {:target oe
+                                    :denormalize {:name :name}
+                                    :cascade :none
+                                    :foreign-key [:other_id]}}})
+          dtr (rel/denormalize-fields-to-target
+               se
+               te
+               {:org_id "ooo"
+                :id "foo"
+                :nick "nick"
+                :count 1}
+               {:org_id "ooo"
+                :id "bar"
+                :parent_id "foo"
+                :child_id "foo"})]
+      (is (= dtr
+             {:org_id "ooo"
+              :id "bar"
+              :parent_id "foo"
+              :child_id "foo"
+              :nick "nick"
+              :count 2})))))
+
 (defn create-simple-relationship
   ([] (create-simple-relationship nil))
   ([cascade-op]
