@@ -16,7 +16,8 @@
    [er-cassandra.model.types :as t]
    [er-cassandra.model.error :as e]
    [er-cassandra.model.alia.fn-schema :as fns]
-   [er-cassandra.model.util :refer [combine-responses create-lookup-record]])
+   [er-cassandra.model.util :refer [combine-responses create-lookup-record]]
+   [taoensso.timbre :refer [warn]])
   (:import
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
@@ -60,16 +61,42 @@
                                          target-uberkey
                                          target-uberkey-value))
 
-        [fk fk-val :as fk-vals] (foreign-key-val source-entity source-record denorm-rel)
+        [fk fk-val] (foreign-key-val source-entity source-record denorm-rel)
         fk-map (into {} (map vector fk fk-val))
 
         denorm-vals (->> (:denormalize denorm-rel)
                          (map (fn [[tcol scol-or-fn]]
                                 [tcol (scol-or-fn source-record)]))
                          (into {}))]
-    (merge denorm-vals
+    ;; the merge ensures that a bad denorm spec can't
+    ;; change the PK/FK of the target
+    (merge target-record
+           denorm-vals
            fk-map
            target-uberkey-map)))
+
+(s/defn matching-rels
+  "given a source-record and a target-record and their entities, return
+   any denorm-rels from the source-entity which are applicable to the pair,
+   by matching the target-entity and the foreign keys"
+  [source-entity :- Entity
+   target-entity :- Entity
+   source-record :- t/RecordSchema
+   target-record :- t/RecordSchema]
+  (->> (for [[rel-kw {rel-target-ref :target :as rel}]
+             (:denorm-targets source-entity)]
+         (let [rel-target-entity (deref-target-entity rel-target-ref)]
+           (assoc rel :target rel-target-entity)))
+
+       (filter (fn [{rel-target :target}]
+                 (= rel-target target-entity)))
+
+       (filter (fn [rel]
+                 (let [[fk fk-val] (foreign-key-val source-entity
+                                                    source-record
+                                                    rel)]
+                   (= ((apply juxt fk) target-record)
+                      fk-val))))))
 
 (s/defn denormalize-to-target-record
   "denormalize to a single target record"
@@ -202,7 +229,30 @@
         (return [denorm-rel-kw [:ok]])
         (return [denorm-rel-kw [:fail maybe-err]])))))
 
-
+(s/defn denormalize-fields-to-target
+  "if you have a source *and* a target record and you want to denormalize
+   any fields that should be denormalised from that source to that target, then
+   this is your fn. it will consider all denorm relationships and apply
+   denormalize-fields for each relationship where the target entity and
+   the source-pk/target-fk values match"
+  [source-entity :- Entity
+   target-entity :- Entity
+   source-record :- t/RecordSchema
+   target-record :- t/RecordSchema]
+  (let [denorm-rels (matching-rels
+                     source-entity
+                     target-entity
+                     source-record
+                     target-record)]
+    (reduce (fn [tr rel]
+              (denormalize-fields
+               source-entity
+               target-entity
+               rel
+               source-record
+               tr))
+            target-record
+            denorm-rels)))
 
 (s/defn denormalize
   "denormalize all relationships for a given source record
