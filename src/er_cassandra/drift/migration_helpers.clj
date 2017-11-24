@@ -23,6 +23,11 @@
   `(deref
     (er-cassandra.session/execute (session) ~@body)))
 
+(defn execute-seq
+  [statements]
+  (doseq [s statements]
+    (execute s)))
+
 (defn pause
   []
   (println "pausing to let cassandra catch up")
