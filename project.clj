@@ -14,7 +14,7 @@
 
   :dependencies [[org.clojure/clojure "_"]
 
-                 [org.clojure/tools.reader "1.0.0-beta3"]
+                 [org.clojure/tools.reader "_"]
                  [org.clojure/tools.logging "0.3.1"]
 
                  ;; wow, such logging
@@ -45,7 +45,7 @@
                  [org.clojure/math.combinatorics "0.1.4"]
                  [potemkin "0.4.3"
                   :exclusions [riddley]]
-                 [prismatic/plumbing "0.5.4"]
+                 [prismatic/plumbing "0.5.5"]
                  [clj-time "0.13.0"]
                  [danlentz/clj-uuid "0.1.7"]
                  [cc.qbits/alia "4.0.0-beta4"]
