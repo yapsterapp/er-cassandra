@@ -17,7 +17,7 @@
    [er-cassandra.model.error :as e]
    [er-cassandra.model.alia.fn-schema :as fns]
    [er-cassandra.model.util :refer [combine-responses create-lookup-record]]
-   [taoensso.timbre :refer [warn]])
+   [taoensso.timbre :refer [info warn]])
   (:import
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
@@ -130,11 +130,18 @@
       :upsert
       (let [new-target-record (merge denorm-vals
                                      fk-map
-                                     target-uberkey-map)]
-        (m/upsert session
-                  target-entity
-                  new-target-record
-                  (fns/denormalize-opts->upsert-opts opts)))
+                                     target-uberkey-map)
+            otr (select-keys
+                 target-record
+                 (keys new-target-record))]
+        (if (= otr new-target-record)
+          (do
+            ;; (warn "skipping update")
+            (return deferred-context true)) ;; nothing to update
+          (m/upsert session
+                    target-entity
+                    new-target-record
+                    (fns/denormalize-opts->upsert-opts opts))))
 
       :delete
       (let [cascade (:cascade denorm-rel)]
@@ -150,11 +157,16 @@
                                       (into {}))
                 new-target-record (merge null-denorm-vals
                                          fk-map
-                                         target-uberkey-map)]
-            (m/upsert session
-                      target-entity
-                      new-target-record
-                      (fns/denormalize-opts->upsert-opts opts)))
+                                         target-uberkey-map)
+                otr (select-keys
+                     target-record
+                     (keys new-target-record))]
+            (if (= otr new-target-record)
+              (return deferred-context true) ;; nothing to update
+              (m/upsert session
+                        target-entity
+                        new-target-record
+                        (fns/denormalize-opts->upsert-opts opts))))
 
           :delete
           (m/delete session
