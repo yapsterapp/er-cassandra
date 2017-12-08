@@ -14,32 +14,6 @@
 
   :dependencies [[org.clojure/clojure "_"]
 
-                 [org.clojure/tools.reader "_"]
-                 [org.clojure/tools.logging "0.3.1"]
-
-                 ;; wow, such logging
-                 [com.taoensso/timbre "4.10.0"]
-                 [org.slf4j/slf4j-api "1.7.25"]
-
-                 ;; JAR-HELL WARNING: slf4j-timbre has (needs) :aot :all
-                 ;; which includes compiled version of a bunch of
-                 ;; taoensso projects which will conflict
-                 ;; with uncompiled versions required elsewhere
-                 ;; unless slf4j-timbre is kept up to date
-                 ;;
-                 ;; org.clojure/clojure
-                 ;; org.clojure/tools.reader
-                 ;; org.slf4j/slf4j-api
-                 ;; com.taoensso/timbre,
-                 ;; com.taoensso/encore,
-                 ;; com.taoensso/truss
-                 ;; io.aviso/pretty
-                  [employeerepublic/slf4j-timbre "0.4.3"]
-
-                 [org.slf4j/jcl-over-slf4j "1.7.25"]
-                 [org.slf4j/log4j-over-slf4j "1.7.25"]
-                 [org.slf4j/jul-to-slf4j "1.7.25"]
-
                  [org.clojure/tools.cli "0.3.5"]
                  [org.clojure/core.match "0.3.0-alpha4"]
                  [org.clojure/math.combinatorics "0.1.4"]
@@ -48,14 +22,17 @@
                  [prismatic/plumbing "0.5.5"]
                  [clj-time "0.13.0"]
                  [danlentz/clj-uuid "0.1.7"]
-                 [cc.qbits/alia "4.0.0-beta4"]
-                 [cc.qbits/alia-manifold "4.0.0-beta4"]
+                 [cc.qbits/alia "4.0.3"
+                  :exclusions [com.google.guava/guava]]
+                 [cc.qbits/alia-manifold "4.0.3"
+                  :exclusions [manifold]]
                  [cc.qbits/hayt "4.0.0"]
                  [environ "1.1.0"]
                  [drift "1.5.3"]
-                 [manifold "0.1.7-alpha3"]
-                 [funcool/cats "2.1.0"]
-                 [employeerepublic/deferst "0.5.0"]]
+                 [employeerepublic/deferst "0.5.0"
+                  :exclusions [funcool/promesa
+                               manifold]]
+                 [employeerepublic/promisespromises "_"]]
 
   :aliases {"test-repl" ["with-profile" "cassandra-unit,repl" "repl"]}
 
