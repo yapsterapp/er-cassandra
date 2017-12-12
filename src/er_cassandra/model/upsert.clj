@@ -13,7 +13,7 @@
 
 (defn change
   ([^ModelSession session ^Entity entity old-record record]
-   (change session entity record {}))
+   (change session entity old-record record {}))
   ([^ModelSession session ^Entity entity old-record record opts]
    (ms/-change session entity old-record record opts)))
 

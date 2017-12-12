@@ -134,14 +134,12 @@
             otr (select-keys
                  target-record
                  (keys new-target-record))]
-        (if (= otr new-target-record)
-          (do
-            ;; (warn "skipping update")
-            (return deferred-context true)) ;; nothing to update
-          (m/upsert session
-                    target-entity
-                    new-target-record
-                    (fns/denormalize-opts->upsert-opts opts))))
+        ;; change only changes if necessary
+        (m/change session
+                  target-entity
+                  otr
+                  new-target-record
+                  (fns/denormalize-opts->upsert-opts opts)))
 
       :delete
       (let [cascade (:cascade denorm-rel)]
@@ -161,12 +159,11 @@
                 otr (select-keys
                      target-record
                      (keys new-target-record))]
-            (if (= otr new-target-record)
-              (return deferred-context true) ;; nothing to update
-              (m/upsert session
-                        target-entity
-                        new-target-record
-                        (fns/denormalize-opts->upsert-opts opts))))
+            (m/change session
+                      target-entity
+                      otr
+                      new-target-record
+                      (fns/denormalize-opts->upsert-opts opts)))
 
           :delete
           (m/delete session
