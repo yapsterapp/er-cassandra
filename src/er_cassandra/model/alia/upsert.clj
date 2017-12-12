@@ -2,7 +2,7 @@
   (:require
    [cats
     [context :refer [with-context]]
-    [core :refer [mlet return]]
+    [core :as monad :refer [mlet return]]
     [data :refer [pair]]]
    [cats.labs.manifold :refer [deferred-context]]
    [clojure.set :as set]
@@ -17,29 +17,12 @@
     [lookup :as l]
     [unique-key :as unique-key]]
    [er-cassandra.model.util.timestamp :as ts]
-   [schema.core :as s])
+   [er-cassandra.model.alia.delete :as alia.delete]
+   [schema.core :as s]
+   [prpr.promise :as pr :refer [ddo]])
   (:import
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
-
-(s/defn delete-index-record
-  "delete an index record - doesn't support LWTs, :where etc
-   which should only apply to the primary record"
-  [session :- ModelSession
-   entity :- Entity
-   table :- t/TableSchema
-   key-value :- t/KeyValueSchema
-   opts :- fns/DeleteUsingOnlyOptsWithTimestampSchema]
-  (with-context deferred-context
-    (mlet [delete-result (r/delete session
-                                   (:name table)
-                                   (:key table)
-                                   key-value
-                                   opts)]
-      (return
-       [:ok {:table (:name table)
-             :key (:key table)
-             :key-value key-value} :deleted]))))
 
 (s/defn insert-index-record
   "insert an index record - doesn't support LWTs, :where etc
@@ -66,43 +49,6 @@
       (return
        [:ok record :upserted]))))
 
-(s/defn stale-secondary-key-value
-  [entity :- Entity
-   old-record :- t/MaybeRecordSchema
-   new-record :- t/MaybeRecordSchema
-   secondary-table :- t/SecondaryTableSchema]
-  (let [key (:key secondary-table)
-        old-key-value (k/extract-key-value key old-record)
-        new-key-value (k/extract-key-value key new-record)]
-    (when (and (or (nil? new-record) (k/has-key? key new-record))
-               old-key-value
-               (not= old-key-value new-key-value))
-      old-key-value)))
-
-(s/defn delete-stale-secondaries
-  [session :- ModelSession
-   entity :- Entity
-   old-record :- t/MaybeRecordSchema
-   new-record :- t/MaybeRecordSchema
-   opts :- fns/DeleteUsingOnlyOptsWithTimestampSchema]
-  (combine-responses
-   (filter
-    identity
-    (for [t (t/mutable-secondary-tables entity)]
-      (let [stale-key-value (stale-secondary-key-value
-                             entity
-                             old-record
-                             new-record
-                             t)]
-        ;; (prn "delete-stale-secondaries: " t old-record new-record)
-        (if stale-key-value
-          (delete-index-record session
-                               entity
-                               t
-                               stale-key-value
-                               (fns/upsert-opts->delete-opts opts))
-          (return [:ok nil :no-stale-secondary])))))))
-
 (s/defn upsert-secondaries
   [session :- ModelSession
    entity :- Entity
@@ -115,49 +61,6 @@
             (k/has-key? k record)
             (k/extract-key-value k record))
        (insert-index-record session entity t record opts)))))
-
-(s/defn delete-stale-lookups-for-table
-  [session :- ModelSession
-   entity :- Entity
-   table :- t/LookupTableSchema
-   old-record :- t/MaybeRecordSchema
-   new-record :- t/MaybeRecordSchema
-   opts :- fns/DeleteUsingOnlyOptsWithTimestampSchema]
-  (with-context deferred-context
-    (mlet
-      [stale-lookups (l/stale-lookup-key-values-for-table
-                      session
-                      entity
-                      old-record
-                      new-record
-                      table)]
-      (combine-responses
-       (for [skv stale-lookups]
-         (delete-index-record session
-                              entity
-                              table
-                              skv
-                              (fns/upsert-opts->delete-opts opts)))))))
-
-(s/defn delete-stale-lookups
-  [session :- ModelSession
-   entity :- Entity
-   old-record :- t/MaybeRecordSchema
-   new-record :- t/MaybeRecordSchema
-   opts :- fns/DeleteUsingOnlyOptsWithTimestampSchema]
-  (with-context deferred-context
-    (mlet
-      [all-delete-responses (->> (for [t (t/mutable-lookup-tables entity)]
-                                   (delete-stale-lookups-for-table
-                                    session
-                                    entity
-                                    t
-                                    old-record
-                                    new-record
-                                    opts))
-                                 combine-responses)]
-      (return
-       (apply concat all-delete-responses)))))
 
 (s/defn upsert-lookups-for-table
   [session :- ModelSession
@@ -213,12 +116,6 @@
             to
             unique-key-tables)))
 
-(s/defn has-lookups?
-  [entity :- Entity]
-  (boolean
-   (or (not-empty (t/mutable-secondary-tables entity))
-       (not-empty (t/mutable-lookup-tables entity)))))
-
 (s/defn update-secondaries-and-lookups
   "update non-LWT secondary and lookup entries"
 
@@ -234,14 +131,14 @@
                  index-insert-opts (-> opts
                                        fns/upsert-opts->using-only)]
 
-           stale-secondary-responses (delete-stale-secondaries
+           stale-secondary-responses (alia.delete/delete-stale-secondaries
                                       session
                                       entity
                                       old-record
                                       updated-record-with-keys
                                       index-delete-opts)
 
-           stale-lookup-responses (delete-stale-lookups
+           stale-lookup-responses (alia.delete/delete-stale-lookups
                                    session
                                    entity
                                    old-record
@@ -263,87 +160,111 @@
 
       (return updated-record-with-keys))))
 
-(s/defn upsert*
-  "upsert a single instance, upserting primary, secondary, unique-key and
-   lookup records as required and deleting stale secondary, unique-key and
-   lookup records
+(s/defn upsert-changes*
+  "upsert a single instance given the previous value of the instance. if the
+   previous value is nil then it's an insert. if the new value is nil then
+   it's a delete. otherwise key changes will be computed using the old-record
+   and without requiring any select
 
-   returns a Deferred[Pair[updated-record key-failures]] where
-   updated-record is the record as currently in the db and key-failures
-   is a map of {key values} for unique keys which were requested but
-   could not be acquired "
+   returns a Deferred<Pair[record key-failures]> where key-failures describes
+   unique keys which were requested but could not be acquired"
+  [session :- ModelSession
+   entity :- Entity
+   old-record :- t/MaybeRecordSchema
+   record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsSchema]
+
+  (assert (or (nil? old-record)
+              (nil? record)
+              (= (t/extract-uber-key-value entity old-record)
+                 (t/extract-uber-key-value entity record))))
+
+  (ddo [:let [opts (ts/default-timestamp-opt opts)]
+
+        record (t/run-callbacks session entity :before-save record opts)
+
+        [updated-record-with-keys
+         acquire-failures] (unique-key/upsert-primary-record-and-update-unique-keys
+                            session
+                            entity
+                            old-record
+                            record
+                            opts)
+
+        _ (monad/when updated-record-with-keys
+            (update-secondaries-and-lookups session
+                                            entity
+                                            old-record
+                                            updated-record-with-keys
+                                            opts))
+
+        ;; do any :after-save actions
+        final-record (t/run-callbacks
+                      session
+                      entity
+                      :after-save
+                      updated-record-with-keys
+                      opts)]
+
+    (return
+     (pair final-record
+           acquire-failures))))
+
+(s/defn upsert*
+  "upsert a single instance
+
+   convenience fn - if the entity has any foreign keys it first selects
+                    the instance from the db, then calls upsert-changes*"
   [session :- ModelSession
    entity :- Entity
    record :- t/MaybeRecordSchema
    opts :- fns/UpsertOptsSchema]
-   (with-context deferred-context
-     (mlet [:let [opts (ts/default-timestamp-opt opts)]
+  (ddo [:let [has-foreign-keys? (not-empty
+                                 (t/all-foreign-key-cols entity))]
 
-            record (t/run-callbacks session entity :before-save record opts)
+        old-record (monad/when has-foreign-keys?
+                     (r/select-one
+                      session
+                      (get-in entity [:primary-table :name])
+                      (get-in entity [:primary-table :key])
+                      (t/extract-uber-key-value entity record)))]
 
-            ;; TODO 20170926 plan to remove unnecessary re-selects.
-            ;;
-            ;; only re-select if the entity has-lookups? and some of the lookup
-            ;; columns are included in the record.
-            ;;
-            ;; provide any re-selected record to the upsert-primary-record-and-update-unique-keys
-            ;;
-            ;; return with either [a] just the upserted record if there were no
-            ;; affected lookups or [b] the re-selected record modified by the upserted
-            ;; record if there were affected lookups
+    (upsert-changes*
+     session
+     entity
+     old-record
+     record
+     opts)))
 
-            ;; don't need the old record if there are no lookups
-            old-record (if (has-lookups? entity)
-                         (r/select-one
-                          session
-                          (get-in entity [:primary-table :name])
-                          (get-in entity [:primary-table :key])
-                          (t/extract-uber-key-value entity record))
+(s/defn change*
+  "change a single instance.
+   if old-record and record are identical - it's a no-op,
+   if record is nil - it's a delete,
+   otherwise it's an upsert-changes*
 
-                         (return nil))
+   returns Deferred<[record]>"
+  [session :- ModelSession
+   entity :- Entity
+   old-record :- t/MaybeRecordSchema
+   record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsSchema]
+  (cond
+    (nil? record)
+    (ddo [dr (alia.delete/delete* session
+                                  entity
+                                  (t/uber-key entity)
+                                  old-record
+                                  opts)]
+      (return [:delete old-record]))
 
-            [updated-record-with-keys
-             acquire-failures] (unique-key/upsert-primary-record-and-update-unique-keys
-                                session
-                                entity
-                                record
-                                opts)
+    (= old-record record)
+    (return deferred-context [:noop record])
 
-            _ (if updated-record-with-keys
-                (update-secondaries-and-lookups session
-                                                entity
-                                                old-record
-                                                updated-record-with-keys
-                                                opts)
-                (return nil))
-
-            ;; TODO gotta get rid of the re-selects - they are breaking
-            ;; with :consistency :one (nil gets reselected sometimes)
-
-            ;; re-select the record for nice empty-collections etc
-            reselected-record (if updated-record-with-keys
-                              (r/select-one
-                               session
-                               (get-in entity [:primary-table :name])
-                               (get-in entity [:primary-table :key])
-                               (t/extract-uber-key-value entity record))
-                              (return nil))
-
-            ;; do any :after-save actions
-            _ (t/run-callbacks
-               session
-               entity
-               :after-save
-               reselected-record
-               opts)
-
-            ;; gotta make the re-selected record presentable!
-            final-record (t/run-callbacks
-                          session
-                          entity
-                          :after-load
-                          reselected-record)]
-
-       (return
-        (pair final-record
-              acquire-failures)))))
+    :else
+    (ddo [[ur] (upsert-changes*
+                session
+                entity
+                old-record
+                record
+                opts)]
+      (return [:upsert ur]))))

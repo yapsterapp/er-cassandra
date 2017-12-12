@@ -291,6 +291,11 @@
   [^Entity entity]
   (get-in entity [:primary-table :key]))
 
+(defn unique-key-tables
+  [^Entity entity]
+  (->> entity
+       :unique-key-tables))
+
 (defn mutable-secondary-tables
   [^Entity entity]
   (->> entity
@@ -308,6 +313,15 @@
   [^Entity entity]
   (distinct
    (concat (uber-key entity)
+           (mapcat :key (:unique-key-tables entity))
+           (mapcat :key (:secondary-tables entity))
+           (mapcat :key (:lookup-tables entity)))))
+
+(defn all-foreign-key-cols
+  "a list of all cols used in foreign keys across all tables for the entity"
+  [^Entity entity]
+  (distinct
+   (concat (mapcat :key (:unique-key-tables entity))
            (mapcat :key (:secondary-tables entity))
            (mapcat :key (:lookup-tables entity)))))
 
