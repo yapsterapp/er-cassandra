@@ -199,15 +199,15 @@
                                             opts))
 
         ;; do any :after-save actions
-        final-record (t/run-callbacks
-                      session
-                      entity
-                      :after-save
-                      updated-record-with-keys
-                      opts)]
+        _ (t/run-callbacks
+           session
+           entity
+           :after-save
+           updated-record-with-keys
+           opts)]
 
     (return
-     (pair final-record
+     (pair updated-record-with-keys
            acquire-failures))))
 
 (s/defn upsert*
