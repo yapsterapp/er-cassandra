@@ -65,6 +65,28 @@
     (is (= (->> m :lookup-tables (take 1))
            (t/mutable-lookup-tables m)))))
 
+(deftest all-key-cols-test
+  (let [m (t/create-entity
+           {:primary-table {:name :foos :key [:id]}
+            :unique-key-tables [{:name :foos_by_email :key [:email]}]
+            :secondary-tables [{:name :foos_by_bar :key [:bar]}]
+            :lookup-tables [{:name :foos_by_baz
+                             :key [:baz]
+                             :view? true}]})]
+    (is (= #{:id :bar :baz :email}
+           (set (t/all-key-cols m))))))
+
+(deftest all-foreign-key-cols-test
+  (let [m (t/create-entity
+           {:primary-table {:name :foos :key [:id]}
+            :unique-key-tables [{:name :foos_by_email :key [:email]}]
+            :secondary-tables [{:name :foos_by_bar :key [:bar]}]
+            :lookup-tables [{:name :foos_by_baz
+                             :key [:baz]
+                             :view? true}]})]
+    (is (= #{:bar :baz :email}
+           (set (t/all-foreign-key-cols m))))))
+
 
 (deftest test-run-callbacks
   (let [s nil

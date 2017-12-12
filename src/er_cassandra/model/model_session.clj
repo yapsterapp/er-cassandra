@@ -17,6 +17,9 @@
     [this ^Entity entity key record-or-key-value opts]
     "select entity instances, returning a stream of results")
 
+  (-change [this ^Entity entity old-record record opts]
+    "change a single entity instance given the previous value")
+
   (-upsert [this ^Entity entity record opts]
     "upsert a single entity instance")
 

@@ -11,6 +11,12 @@
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
 
+(defn change
+  ([^ModelSession session ^Entity entity old-record record]
+   (change session entity record {}))
+  ([^ModelSession session ^Entity entity old-record record opts]
+   (ms/-change session entity old-record record opts)))
+
 (defn upsert
   "upsert a single instance, upserting primary, secondary, unique-key and
    lookup records as required and deleting stale secondary, unique-key and
@@ -23,8 +29,35 @@
   ([^ModelSession session ^Entity entity record]
    (upsert session entity record {}))
   ([^ModelSession session ^Entity entity record opts]
-
    (ms/-upsert session entity record opts)))
+
+(defn change-buffered
+  "upsert-changes frmo a Stream<[old-record record]>,
+  optionally controlling concurrency with :buffer-size.
+  returns a Deferred<Stream<response>> of upsert responses"
+  ([^ModelSession session ^Entity entity record-stream]
+   (change-buffered session
+                    entity
+                    record-stream
+                    {:buffer-size 25}))
+  ([^ModelSession session
+    ^Entity entity
+    record-stream
+    {:keys [buffer-size] :as opts}]
+   (with-context deferred-context
+     (->> record-stream
+          (s/map
+           (fn [[o-r r]]
+             (change session
+                     entity
+                     o-r
+                     r
+                     (dissoc opts :buffer-size))))
+          ((fn [s]
+             (if buffer-size
+               (s/buffer buffer-size s)
+               s)))
+          return))))
 
 (defn upsert-buffered
   "upsert each record in a Stream<record>, optionally controlling
@@ -45,7 +78,7 @@
                s)))
           return))))
 
-(defn upsert-many
+(defn ^:deprecated upsert-many
   "issue one upsert query for each record and combine the responses"
   [^ModelSession session ^Entity entity records]
   (with-context deferred-context
