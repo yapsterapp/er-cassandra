@@ -1,16 +1,7 @@
 (ns er-cassandra.model.callbacks.search-key-callback
   (:require
-   [clojure.string :as str])
-  (:import
-   [java.text Normalizer Normalizer$Form]))
-
-(defn normalize-string
-  [s]
-  (-> s
-      str/trim
-      (Normalizer/normalize Normalizer$Form/NFD)
-      (str/replace #"\p{InCombiningDiacriticalMarks}+", "")
-      .toLowerCase))
+   [clojure.string :as str]
+   [er-cassandra.util.string :refer [normalize-string]]))
 
 (defn ^:private prepare-string
   [s]
