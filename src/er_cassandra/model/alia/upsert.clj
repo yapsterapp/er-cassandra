@@ -207,7 +207,9 @@
            opts)]
 
     (return
-     (pair updated-record-with-keys
+     ;; merge the updated-record-with-keys with the old-record, so any
+     ;; cols not included in the update are in the response
+     (pair (merge old-record updated-record-with-keys)
            acquire-failures))))
 
 (s/defn upsert*
@@ -257,15 +259,14 @@
                       session
                       (get-in entity [:primary-table :name])
                       (get-in entity [:primary-table :key])
-                      (t/extract-uber-key-value entity record)))
-        [r acqf] (upsert-changes*
-                  session
-                  entity
-                  old-record
-                  record
-                  opts)]
-    (return [(merge old-record r)
-             acqf])))
+                      (t/extract-uber-key-value entity record)))]
+
+    (upsert-changes*
+     session
+     entity
+     old-record
+     record
+     opts)))
 
 (s/defn change*
   "change a single instance.

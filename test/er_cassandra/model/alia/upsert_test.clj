@@ -323,16 +323,34 @@
 
                 :title "mr"
                 :tag #{"quick" "slow"}
-                :dept ["hr" "dev"]}
+                :dept ["hr" "dev"]}]
 
-        _ @(u/upsert-changes* tu/*model-session*
-                              m
-                              nil
-                              record
-                              (ts/default-timestamp-opt))]
+    (testing "upserts a record"
+      (let [_ @(u/upsert-changes* tu/*model-session*
+                                  m
+                                  nil
+                                  record
+                                  (ts/default-timestamp-opt))]
 
-    (is (= record (fetch-record :upsert_unique_lookup_secondaries_test
-                                [:org_id :id] [org-id id])))))
+        (is (= record (fetch-record :upsert_unique_lookup_secondaries_test
+                                    [:org_id :id] [org-id id])))))
+
+    (testing "result includes columns from old-record not in update"
+      (let [new-record {:org_id org-id
+                        :id id
+                        :nick "bar"}
+            [r acqf] @(u/upsert-changes* tu/*model-session*
+                                         m
+                                         record
+                                         new-record
+                                         (ts/default-timestamp-opt))]
+
+        (is (= (merge record new-record)
+               (fetch-record :upsert_unique_lookup_secondaries_test
+                             [:org_id :id] [org-id id])))
+
+        (is (= (merge record new-record)
+               r))))))
 
 (deftest upsert-changes*-if-not-exists-test
   (let [m (create-simple-entity)
