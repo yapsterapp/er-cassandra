@@ -28,6 +28,7 @@
   [search-col & source-cols]
   (fn [r]
     (let [search-keys (->> source-cols
+                           (filter #(contains? r %))
                            (map #(get r %))
                            (mapcat extract-search-keys)
                            set)]
