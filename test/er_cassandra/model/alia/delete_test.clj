@@ -211,7 +211,7 @@
            :stuff "blah"}
 
         ;; check all expected records are created
-        _ @(u/upsert* tu/*model-session* m r {})
+        _ @(u/select-upsert* tu/*model-session* m r {})
         f-r (tu/fetch-record :delete_mixed_lookup_test [:org_id :id] [org-id id])
         f-nick (tu/fetch-record :delete_mixed_lookup_test_by_nick
                                 [:org_id :nick] [org-id "foo"])

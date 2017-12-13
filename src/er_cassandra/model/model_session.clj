@@ -23,6 +23,11 @@
   (-upsert [this ^Entity entity record opts]
     "upsert a single entity instance")
 
+  (-select-upsert [this ^Entity entity record opts]
+    "upsert a single entity instance, first selecting
+     the last version from the db if the entity has
+     any foreign keys")
+
   (-delete [this ^Entity entity key record-or-key-value opts]
     "delete a single entity instance")
 

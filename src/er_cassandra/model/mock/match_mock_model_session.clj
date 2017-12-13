@@ -27,8 +27,26 @@
       (swap! request-response-log-atom conj {:request request :response response})
       response))
 
+  (-change [_ model old-record record opts]
+    (let [request {:action :change
+                   :model model
+                   :record record
+                   :opts opts}
+          response (match matchers request)]
+      (swap! request-response-log-atom conj {:request request :response response})
+      response))
+
   (-upsert [_ model record opts]
     (let [request {:action :upsert
+                   :model model
+                   :record record
+                   :opts opts}
+          response (match matchers request)]
+      (swap! request-response-log-atom conj {:request request :response response})
+      response))
+
+  (-select-upsert [_ model record opts]
+    (let [request {:action :select-upsert
                    :model model
                    :record record
                    :opts opts}

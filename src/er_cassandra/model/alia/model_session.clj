@@ -12,7 +12,7 @@
    [er-cassandra.model.alia.select :refer [select*]]
    [er-cassandra.model.alia.select-buffered :refer [select-buffered*]]
    [er-cassandra.model.alia.upsert
-    :refer [upsert* change*]]
+    :refer [upsert* select-upsert* change*]]
    [er-cassandra.model.alia.delete :refer [delete*]])
   (:import
    [er_cassandra.model.types Entity]))
@@ -36,6 +36,9 @@
 
   (-upsert [this entity record opts]
     (upsert* this entity record opts))
+
+  (-select-upsert [this entity record opts]
+    (select-upsert* this entity record opts))
 
   (-delete [this entity key record-or-key-value opts]
     (delete* this entity key record-or-key-value opts))
@@ -107,6 +110,13 @@
                                     :record record
                                     :opts opts})
     (upsert* this entity record opts))
+
+  (-select-upsert [this entity record opts]
+    (swap! model-spy-log-atom conj {:action :upsert
+                                    :entity entity
+                                    :record record
+                                    :opts opts})
+    (select-upsert* this entity record opts))
 
   (-delete [this entity key record-or-key-value opts]
     (swap! model-spy-log-atom conj {:action :delete
