@@ -257,14 +257,15 @@
                       session
                       (get-in entity [:primary-table :name])
                       (get-in entity [:primary-table :key])
-                      (t/extract-uber-key-value entity record)))]
-
-    (upsert-changes*
-     session
-     entity
-     old-record
-     record
-     opts)))
+                      (t/extract-uber-key-value entity record)))
+        [r acqf] (upsert-changes*
+                  session
+                  entity
+                  old-record
+                  record
+                  opts)]
+    (return [(merge old-record r)
+             acqf])))
 
 (s/defn change*
   "change a single instance.
