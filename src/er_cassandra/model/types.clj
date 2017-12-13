@@ -317,13 +317,14 @@
            (mapcat :key (:secondary-tables entity))
            (mapcat :key (:lookup-tables entity)))))
 
-(defn all-foreign-key-cols
-  "a list of all cols used in foreign keys across all tables for the entity"
+(defn all-maintained-foreign-key-cols
+  "a list of all cols used in foreign keys maintained by this lib (rather than c* MVs)"
   [^Entity entity]
   (distinct
-   (concat (mapcat :key (:unique-key-tables entity))
-           (mapcat :key (:secondary-tables entity))
-           (mapcat :key (:lookup-tables entity)))))
+   (concat
+    (->> entity :unique-key-tables (mapcat :key))
+    (->> entity :secondary-tables (filter (complement :view?)) (mapcat :key))
+    (->> entity :lookup-tables (filter (complement :view?)) (mapcat :key)))))
 
 (defn extract-uber-key-value
   [^Entity entity record]
