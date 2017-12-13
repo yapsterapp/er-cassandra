@@ -254,12 +254,11 @@
               (not-empty
                (t/all-maintained-foreign-key-cols entity))]
 
-        old-record (monad/when has-maintained-foreign-keys?
-                     (r/select-one
-                      session
-                      (get-in entity [:primary-table :name])
-                      (get-in entity [:primary-table :key])
-                      (t/extract-uber-key-value entity record)))]
+        old-record (r/select-one
+                    session
+                    (get-in entity [:primary-table :name])
+                    (get-in entity [:primary-table :key])
+                    (t/extract-uber-key-value entity record))]
 
     (upsert-changes*
      session
