@@ -5,4 +5,6 @@
 (defn create-sort-name-callback
   [sort-col name-col]
   (fn [r]
-    (assoc r sort-col (normalize-string (get r name-col)))))
+    (if (contains? r name-col)
+      (assoc r sort-col (normalize-string (get r name-col)))
+      r)))
