@@ -306,7 +306,7 @@
                (fetch-record :upsert_lookup_and_secondaries_test_by_phone
                              [:phone] "456")))))))
 
-(deftest upsert*-test
+(deftest upsert-changes*-test
   (let [m (create-unique-lookup-secondaries-entity)
         [org-id id] [(uuid/v1) (uuid/v1)]
 
@@ -325,12 +325,16 @@
                 :tag #{"quick" "slow"}
                 :dept ["hr" "dev"]}
 
-        _ @(u/upsert* tu/*model-session* m record (ts/default-timestamp-opt))]
+        _ @(u/upsert-changes* tu/*model-session*
+                              m
+                              nil
+                              record
+                              (ts/default-timestamp-opt))]
 
     (is (= record (fetch-record :upsert_unique_lookup_secondaries_test
                                 [:org_id :id] [org-id id])))))
 
-(deftest upsert*-if-not-exists-test
+(deftest upsert-changes*-if-not-exists-test
   (let [m (create-simple-entity)
         id (uuid/v1)
 
@@ -338,9 +342,10 @@
         record-bar {:id id :nick "bar"}]
 
     (testing "insert record-foo if-not-exists"
-      (let [[r e] @(u/upsert*
+      (let [[r e] @(u/upsert-changes*
                     tu/*model-session*
                     m
+                    nil
                     record-foo
                     (ts/default-timestamp-opt
                      {:if-not-exists true}))]
@@ -348,9 +353,10 @@
 
     (testing "doesn't insert record-bar if-not-exists"
       (let [[r e] @(pr/catch-error
-                    (u/upsert*
+                    (u/upsert-changes*
                      tu/*model-session*
                      m
+                     nil
                      record-bar
                      (ts/default-timestamp-opt
                       {:if-not-exists true})))
@@ -359,7 +365,7 @@
         (is (= :upsert/primary-record-upsert-error r))
         (is (= record-foo fr))))))
 
-(deftest upsert*-if-exists-test
+(deftest upsert-changes*-if-exists-test
   (let [m (create-simple-entity)
         id (uuid/v1)
 
@@ -369,9 +375,10 @@
         _ (insert-record :simple_upsert_test record-bar)]
 
     (testing "upsert record-foo if-exists and it does exist"
-      (let [[r e] @(u/upsert*
+      (let [[r e] @(u/upsert-changes*
                     tu/*model-session*
                     m
+                    (dissoc record-foo :nick)
                     record-foo
                     (ts/default-timestamp-opt
                      {:if-exists true}))
@@ -382,9 +389,10 @@
       (let [_ (delete-record :simple_upsert_test :id id)
 
             [r e] @(pr/catch-error
-                    (u/upsert*
+                    (u/upsert-changes*
                      tu/*model-session*
                      m
+                     (dissoc record-bar :nick)
                      record-bar
                      (ts/default-timestamp-opt
                       {:if-exists true})))
@@ -393,7 +401,7 @@
         (is (= :upsert/primary-record-upsert-error r))
         (is (= nil fr))))))
 
-(deftest upsert*-only-if-test
+(deftest upsert-changes*-only-if-test
   (let [m (create-simple-entity)
         id (uuid/v1)
 
@@ -403,9 +411,10 @@
         _ (insert-record :simple_upsert_test record-bar)]
 
     (testing "upsert record-foo if condition holds"
-      (let [[r e] @(u/upsert*
+      (let [[r e] @(u/upsert-changes*
                     tu/*model-session*
                     m
+                    (dissoc record-foo :nick)
                     record-foo
                     (ts/default-timestamp-opt
                      {:only-if [[:= :nick "bar"]]}))
@@ -414,9 +423,10 @@
 
     (testing "doesn't insert record-bar if condition fails"
       (let [[r e] @(pr/catch-error
-                    (u/upsert*
+                    (u/upsert-changes*
                      tu/*model-session*
                      m
+                     (dissoc record-bar :nick)
                      record-bar
                      (ts/default-timestamp-opt
                       {:only-if [[:= :nick "bar"]]})))
@@ -424,3 +434,162 @@
             fr (fetch-record :simple_upsert_test :id id)]
         (is (= :upsert/primary-record-upsert-error r))
         (is (= record-foo fr))))))
+
+(deftest upsert*-test
+  (testing "upserts an instance of an entity with no foreign keys"
+    (let [m (create-simple-entity)
+          id (uuid/v1)
+
+          record-foo {:id id :nick "foo"}
+
+          [r e] @(u/upsert*
+                  tu/*model-session*
+                  m
+                  record-foo
+                  {})
+          fr (fetch-record :simple_upsert_test :id id)]
+      (is (= record-foo fr))))
+
+  (testing "throws if given an entity with foreign keys"
+    (let [m (create-secondary-entity)
+          [org-id id] [(uuid/v1) (uuid/v1)]
+          record-bar {:org_id org-id :id id :nick "bar"}
+
+          [r e] @(pr/catch-error
+                  (u/upsert*
+                   tu/*model-session*
+                   m
+                   record-bar
+                   {}))
+          fr (fetch-record :secondary_upsert_test [:org_id :id] [org-id id])]
+      (is (= r :upsert/require-explicit-select-upsert))
+      (is (= fr nil))))
+  )
+
+(deftest select-upsert*-test
+  (let [m (create-mixed-lookup-entity)
+        [org-id id] [(uuid/v1) (uuid/v1)]]
+
+    (testing "upserts an instance of an entity with foreign keys"
+      (let [record {:org_id org-id :id id
+                    :nick "foo"
+                    :email #{"foo@bar.com" "foo@baz.com"}
+                    :phone ["123" "456"]
+                    :stuff nil}
+            [r e] @(u/select-upsert*
+                    tu/*model-session*
+                    m
+                    record
+                    {})]
+        (is (= record
+               (fetch-record :upsert_mixed_lookup_test [:org_id :id] [org-id id])))
+
+        (is (= {:org_id org-id :id id :nick "foo"}
+               (fetch-record :upsert_mixed_lookup_test_by_nick
+                             [:org_id :nick] [org-id "foo"])))
+        (is (= {:org_id org-id :id id :email "foo@bar.com"}
+               (fetch-record :upsert_mixed_lookup_test_by_email
+                             [:email] ["foo@bar.com"])))
+        (is (= {:org_id org-id :id id :email "foo@baz.com"}
+               (fetch-record :upsert_mixed_lookup_test_by_email
+                             [:email] ["foo@baz.com"])))
+        (is (= {:org_id org-id :id id :phone "123"}
+               (fetch-record :upsert_mixed_lookup_test_by_phone
+                             [:phone] "123")))
+        (is (= {:org_id org-id :id id :phone "456"}
+               (fetch-record :upsert_mixed_lookup_test_by_phone
+                             [:phone] "456")))))
+
+    (testing "correctly updates foreign keys"
+      (let [record-b {:org_id org-id :id id
+                      :nick "bar"
+                      :email #{"foo@bar.com" "bar@baz.com"}
+                      :phone ["456" "789"]
+                      :stuff "blah"}
+            [r e] @(u/select-upsert*
+                    tu/*model-session*
+                    m
+                    record-b
+                    {})
+            fr (fetch-record :upsert_mixed_lookup_test [:org_id :id] [org-id id])]
+        (is (= record-b
+               (fetch-record :upsert_mixed_lookup_test [:org_id :id] [org-id id])))
+
+        (is (= nil
+               (fetch-record :upsert_mixed_lookup_test_by_nick
+                             [:org_id :nick] [org-id "foo"])))
+        (is (= {:org_id org-id :id id :nick "bar"}
+               (fetch-record :upsert_mixed_lookup_test_by_nick
+                             [:org_id :nick] [org-id "bar"])))
+
+
+        (is (= {:org_id org-id :id id :email "foo@bar.com"}
+               (fetch-record :upsert_mixed_lookup_test_by_email
+                             [:email] ["foo@bar.com"])))
+        (is (= nil
+               (fetch-record :upsert_mixed_lookup_test_by_email
+                             [:email] ["foo@baz.com"])))
+        (is (= {:org_id org-id :id id :email "bar@baz.com"}
+               (fetch-record :upsert_mixed_lookup_test_by_email
+                             [:email] ["bar@baz.com"])))
+
+
+        (is (= nil
+               (fetch-record :upsert_mixed_lookup_test_by_phone
+                             [:phone] "123")))
+        (is (= {:org_id org-id :id id :phone "456"}
+               (fetch-record :upsert_mixed_lookup_test_by_phone
+                             [:phone] "456")))
+        (is (= {:org_id org-id :id id :phone "789"}
+               (fetch-record :upsert_mixed_lookup_test_by_phone
+                             [:phone] "789")))))))
+
+(deftest change*-test
+  (testing "does nothing if record hasn't changed"
+    (let [m (create-simple-entity)
+          id (uuid/v1)
+
+          record-foo {:id id :nick "foo"}
+
+          [r e] @(u/change*
+                  tu/*model-session*
+                  m
+                  record-foo
+                  record-foo
+                  {})
+          fr (fetch-record :simple_upsert_test :id id)]
+      (is (= nil fr))))
+  (testing "deletes if record is nil"
+    (let [m (create-simple-entity)
+          id (uuid/v1)
+
+          record-foo {:id id :nick "foo"}
+          _ (upsert-instance m record-foo)
+          fr1 (fetch-record :simple_upsert_test :id id)
+
+          [r e] @(u/change*
+                  tu/*model-session*
+                  m
+                  record-foo
+                  nil
+                  {})
+          fr2 (fetch-record :simple_upsert_test :id id)]
+      (is (= record-foo fr1))
+      (is (= nil fr2))))
+  (testing "upsert-changes if record is non-nil and there are changes"
+    (let [m (create-simple-entity)
+          id (uuid/v1)
+
+          record-foo {:id id :nick "foo"}
+          _ (upsert-instance m record-foo)
+          fr1 (fetch-record :simple_upsert_test :id id)
+
+          [r e] @(u/change*
+                  tu/*model-session*
+                  m
+                  record-foo
+                  (assoc record-foo :nick "bar")
+                  {})
+          fr2 (fetch-record :simple_upsert_test :id id)]
+      (is (= record-foo fr1))
+      (is (= (assoc record-foo :nick "bar") fr2)))))

@@ -222,6 +222,34 @@
   (ddo [:let [has-foreign-keys? (not-empty
                                  (t/all-foreign-key-cols entity))]
 
+        _ (monad/when has-foreign-keys?
+            (throw
+             (pr/error-ex
+              :upsert/require-explicit-select-upsert
+              {:message (str "this entity has foreign keys, "
+                             "so requires the previous version "
+                             "to upsert. either use select-upsert"
+                             "or change")})))]
+
+    (upsert-changes*
+     session
+     entity
+     nil
+     record
+     opts)))
+
+(s/defn select-upsert*
+  "upsert a single instance
+
+   convenience fn - if the entity has any foreign keys it first selects
+                    the instance from the db, then calls upsert-changes*"
+  [session :- ModelSession
+   entity :- Entity
+   record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsSchema]
+  (ddo [:let [has-foreign-keys? (not-empty
+                                 (t/all-foreign-key-cols entity))]
+
         old-record (monad/when has-foreign-keys?
                      (r/select-one
                       session

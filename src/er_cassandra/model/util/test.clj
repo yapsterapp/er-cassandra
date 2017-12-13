@@ -87,7 +87,7 @@
   "upsert instances with a timestamp 1ms in the past by default"
   ([entity record] (upsert-instance entity record nil))
   ([entity record opts]
-   @(m/upsert *model-session* entity record (ts/past-timestamp-opt opts))))
+   @(m/select-upsert *model-session* entity record (ts/past-timestamp-opt opts))))
 
 (defn record-stream
   ([table-name] (record-stream table-name {}))
