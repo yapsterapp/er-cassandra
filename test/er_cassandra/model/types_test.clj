@@ -76,16 +76,22 @@
     (is (= #{:id :bar :baz :email}
            (set (t/all-key-cols m))))))
 
-(deftest all-foreign-key-cols-test
+(deftest all-maintained-foreign-key-cols-test
   (let [m (t/create-entity
            {:primary-table {:name :foos :key [:id]}
             :unique-key-tables [{:name :foos_by_email :key [:email]}]
-            :secondary-tables [{:name :foos_by_bar :key [:bar]}]
+            :secondary-tables [{:name :foos_by_bar :key [:bar]}
+                               {:name :foos_by_stuff
+                                :key [:stuff]
+                                :view? true}]
             :lookup-tables [{:name :foos_by_baz
-                             :key [:baz]
+                             :key [:baz]}
+                            {:name :foos_by_thing
+                             :key [:thing]
                              :view? true}]})]
     (is (= #{:bar :baz :email}
-           (set (t/all-foreign-key-cols m))))))
+           (set
+            (t/all-maintained-foreign-key-cols m))))))
 
 
 (deftest test-run-callbacks

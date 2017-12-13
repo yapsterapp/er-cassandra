@@ -219,10 +219,11 @@
    entity :- Entity
    record :- t/MaybeRecordSchema
    opts :- fns/UpsertOptsSchema]
-  (ddo [:let [has-foreign-keys? (not-empty
-                                 (t/all-foreign-key-cols entity))]
+  (ddo [:let [has-maintained-foreign-keys?
+              (not-empty
+               (t/all-maintained-foreign-key-cols entity))]
 
-        _ (monad/when has-foreign-keys?
+        _ (monad/when has-maintained-foreign-keys?
             (throw
              (pr/error-ex
               :upsert/require-explicit-select-upsert
@@ -247,10 +248,11 @@
    entity :- Entity
    record :- t/MaybeRecordSchema
    opts :- fns/UpsertOptsSchema]
-  (ddo [:let [has-foreign-keys? (not-empty
-                                 (t/all-foreign-key-cols entity))]
+  (ddo [:let [has-maintained-foreign-keys?
+              (not-empty
+               (t/all-maintained-foreign-key-cols entity))]
 
-        old-record (monad/when has-foreign-keys?
+        old-record (monad/when has-maintained-foreign-keys?
                      (r/select-one
                       session
                       (get-in entity [:primary-table :name])
