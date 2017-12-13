@@ -291,10 +291,10 @@
     (return deferred-context [:noop record])
 
     :else
-    (ddo [[ur] (upsert-changes*
+    (ddo [[ur acquire-failures] (upsert-changes*
                 session
                 entity
                 old-record
                 record
                 opts)]
-      (return [:upsert ur]))))
+      (return [:upsert ur acquire-failures]))))
