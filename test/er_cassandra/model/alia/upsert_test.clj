@@ -551,13 +551,15 @@
 
           record-foo {:id id :nick "foo"}
 
-          [r e] @(u/change*
+          [k r] @(u/change*
                   tu/*model-session*
                   m
                   record-foo
                   record-foo
                   {})
           fr (fetch-record :simple_upsert_test :id id)]
+      (is (= :noop k))
+      (is (= record-foo r))
       (is (= nil fr))))
   (testing "deletes if record is nil"
     (let [m (create-simple-entity)
@@ -567,29 +569,90 @@
           _ (upsert-instance m record-foo)
           fr1 (fetch-record :simple_upsert_test :id id)
 
-          [r e] @(u/change*
+          [k r] @(u/change*
                   tu/*model-session*
                   m
                   record-foo
                   nil
                   {})
           fr2 (fetch-record :simple_upsert_test :id id)]
+      (is (= k :delete))
+      (is (= record-foo r))
       (is (= record-foo fr1))
       (is (= nil fr2))))
+
   (testing "upsert-changes if record is non-nil and there are changes"
     (let [m (create-simple-entity)
           id (uuid/v1)
 
           record-foo {:id id :nick "foo"}
+          record-bar (assoc record-foo :nick "bar")
           _ (upsert-instance m record-foo)
           fr1 (fetch-record :simple_upsert_test :id id)
 
-          [r e] @(u/change*
-                  tu/*model-session*
-                  m
-                  record-foo
-                  (assoc record-foo :nick "bar")
-                  {})
+          [k r acqf] @(u/change*
+                       tu/*model-session*
+                       m
+                       record-foo
+                       record-bar
+                       {})
           fr2 (fetch-record :simple_upsert_test :id id)]
+      (is (= :upsert k))
+      (is (= record-bar r))
       (is (= record-foo fr1))
-      (is (= (assoc record-foo :nick "bar") fr2)))))
+      (is (= (assoc record-foo :nick "bar") fr2))))
+
+  (testing "acquire failures are returned"
+    (let [m (create-unique-lookup-secondaries-entity)
+          [org-id foo-id bar-id] [(uuid/v1) (uuid/v1) (uuid/v1)]
+
+          record-foo {:org_id org-id :id foo-id
+                      :nick "foo"
+                      :email #{"foo@bar.com" "foo@baz.com"}
+                      :phone ["123" "456"]
+                      :thing nil
+                      :title nil
+                      :tag #{}
+                      :dept []
+                      :stuff nil}
+
+          record-bar {:org_id org-id :id bar-id
+                      :nick "foo"
+                      :email #{"bar@bar.com" "foo@baz.com"}
+                      :phone ["123" "789"]
+                      :thing nil
+                      :title nil
+                      :tag #{}
+                      :dept []
+                      :stuff nil}
+
+          unconflicted-bar {:org_id org-id :id bar-id
+                            :nick nil
+                            :email #{"bar@bar.com"}
+                            :phone ["789"]
+                            :thing nil
+                            :title nil
+                            :tag #{}
+                            :dept []
+                            :stuff nil}
+
+          _ (upsert-instance m record-foo)
+
+          [k r acqf] @(u/change*
+                       tu/*model-session*
+                       m
+                       nil
+                       record-bar
+                       {})
+          fr (fetch-record :upsert_unique_lookup_secondaries_test
+                           [:org_id :id]
+                           [org-id bar-id])]
+      (is (= unconflicted-bar fr))
+      (is (= :upsert k))
+      (is (= unconflicted-bar r))
+      (is (= 3 (count acqf)))
+      (is (= #{[[:org_id :nick] [org-id "foo"]]
+               [[:email] ["foo@baz.com"]]
+               [[:phone] ["123"]]
+               }
+             (->> acqf (map second) (map (juxt :key :key-value)) set))))))
