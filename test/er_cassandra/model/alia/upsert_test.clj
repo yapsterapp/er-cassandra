@@ -379,6 +379,24 @@
         (is (= record-with-nil-nick
                (fetch-record :simple_upsert_test_with_protected_column
                              [:id]
+                             [id])))))
+
+    (testing "result includes columns removed from an op by :before-save callbacks"
+      (let [m (create-simple-entity-with-protected-column)
+
+            [id] [(uuid/v1)]
+            upsert-record {:id id :nick "bar" :update-nick? true}
+            [r acqf] @(u/upsert-changes* tu/*model-session*
+                                         m
+                                         nil
+                                         upsert-record
+                                         (ts/default-timestamp-opt))
+
+            record-with-nick {:id id :nick "bar"}]
+        (is (= record-with-nick r))
+        (is (= record-with-nick
+               (fetch-record :simple_upsert_test_with_protected_column
+                             [:id]
                              [id]))))
 
       )))
