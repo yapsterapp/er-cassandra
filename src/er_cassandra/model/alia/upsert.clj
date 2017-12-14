@@ -19,7 +19,8 @@
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.alia.delete :as alia.delete]
    [schema.core :as s]
-   [prpr.promise :as pr :refer [ddo]])
+   [prpr.promise :as pr :refer [ddo]]
+   [taoensso.timbre :refer [warn]])
   (:import
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
@@ -190,18 +191,18 @@
               removed-keys (set/difference record-keys record-bs-keys)
 
               ;; if the op is an insert, then old-record will be nil,
-              ;; and we will need nil values for any removed keys
+              ;; and we will need to return nil values for any removed keys
+              ;; to preserve schema
               nil-removed (->> removed-keys
                                (map (fn [k] [k nil]))
                                (into {}))]
-
 
         [updated-record-with-keys
          acquire-failures] (unique-key/upsert-primary-record-and-update-unique-keys
                             session
                             entity
                             old-record
-                            record
+                            record-bs
                             opts)
 
         _ (monad/when updated-record-with-keys

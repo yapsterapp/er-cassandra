@@ -24,6 +24,17 @@
   (t/create-entity
    {:primary-table {:name :simple_upsert_test :key [:id]}}))
 
+(defn create-simple-entity-with-protected-column
+  []
+  (tu/create-table :simple_upsert_test_with_protected_column
+                   "(id timeuuid primary key, nick text)")
+  (t/create-entity
+   {:primary-table {:name :simple_upsert_test_with_protected_column :key [:id]}
+    :callbacks
+    {:before-save [(t/create-protect-columns-callback
+                    :update-nick?
+                    :nick)]}}))
+
 (defn create-secondary-entity
   []
   (tu/create-table :secondary_upsert_test
@@ -350,7 +361,27 @@
                              [:org_id :id] [org-id id])))
 
         (is (= (merge record new-record)
-               r))))))
+               r))))
+
+    (testing "result includes columns removed from an op by :before-save callbacks"
+      (let [m (create-simple-entity-with-protected-column)
+
+            [id] [(uuid/v1)]
+            record {:id id :nick "foo"}
+            [r acqf] @(u/upsert-changes* tu/*model-session*
+                                         m
+                                         nil
+                                         record
+                                         (ts/default-timestamp-opt))
+
+            record-with-nil-nick {:id id :nick nil}]
+        (is (= record-with-nil-nick r))
+        (is (= record-with-nil-nick
+               (fetch-record :simple_upsert_test_with_protected_column
+                             [:id]
+                             [id]))))
+
+      )))
 
 (deftest upsert-changes*-if-not-exists-test
   (let [m (create-simple-entity)
