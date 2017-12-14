@@ -381,7 +381,7 @@
                              [:id]
                              [id])))))
 
-    (testing "result includes columns removed from an op by :before-save callbacks"
+    (testing "keys which are not valid c* columsn are removed from results"
       (let [m (create-simple-entity-with-protected-column)
 
             [id] [(uuid/v1)]
@@ -397,9 +397,7 @@
         (is (= record-with-nick
                (fetch-record :simple_upsert_test_with_protected_column
                              [:id]
-                             [id]))))
-
-      )))
+                             [id])))))))
 
 (deftest upsert-changes*-if-not-exists-test
   (let [m (create-simple-entity)
