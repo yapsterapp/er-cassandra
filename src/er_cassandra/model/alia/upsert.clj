@@ -161,6 +161,12 @@
 
       (return updated-record-with-keys))))
 
+(s/defn cassandra-column-name?
+  [k]
+  (->> k
+       name
+       (re-matches #"\p{Alpha}[_\p{Alnum}]+")))
+
 (s/defn upsert-changes*
   "upsert a single instance given the previous value of the instance. if the
    previous value is nil then it's an insert. if the new value is nil then
@@ -194,7 +200,9 @@
               ;; and we will need to return nil values for any removed keys
               ;; to preserve schema
               nil-removed (->> removed-keys
-                               (map (fn [k] [k nil]))
+                               (filter cassandra-column-name?)
+                               (map (fn [k]
+                                      [k nil]))
                                (into {}))]
 
         [updated-record-with-keys
