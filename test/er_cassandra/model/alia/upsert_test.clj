@@ -381,7 +381,7 @@
                              [:id]
                              [id])))))
 
-    (testing "keys which are not valid c* columsn are removed from results"
+    (testing "keys which are not valid c* columns are removed from results"
       (let [m (create-simple-entity-with-protected-column)
 
             [id] [(uuid/v1)]
