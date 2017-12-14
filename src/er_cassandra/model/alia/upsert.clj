@@ -179,9 +179,22 @@
               (= (t/extract-uber-key-value entity old-record)
                  (t/extract-uber-key-value entity record))))
 
-  (ddo [:let [opts (ts/default-timestamp-opt opts)]
+  (ddo [:let [opts (ts/default-timestamp-opt opts)
 
-        record (t/run-callbacks session entity :before-save record opts)
+              record-keys (-> record keys set)]
+
+
+        record-bs (t/run-callbacks session entity :before-save record opts)
+
+        :let [record-bs-keys (-> record-bs keys set)
+              removed-keys (set/difference record-keys record-bs-keys)
+
+              ;; if the op is an insert, then old-record will be nil,
+              ;; and we will need nil values for any removed keys
+              nil-removed (->> removed-keys
+                               (map (fn [k] [k nil]))
+                               (into {}))]
+
 
         [updated-record-with-keys
          acquire-failures] (unique-key/upsert-primary-record-and-update-unique-keys
@@ -209,7 +222,7 @@
     (return
      ;; merge the updated-record-with-keys with the old-record, so any
      ;; cols not included in the update are in the response
-     (pair (merge old-record updated-record-with-keys)
+     (pair (merge nil-removed old-record updated-record-with-keys)
            acquire-failures))))
 
 (s/defn upsert*
