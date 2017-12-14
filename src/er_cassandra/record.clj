@@ -6,10 +6,15 @@
    [schema.core :as s]
    [clojure.set :as set]
    [manifold.deferred :as d]
+   [manifold.stream :as stream]
    [qbits.hayt :as h]
    [er-cassandra.util.vector :as v]
    [er-cassandra.key :refer [flatten-key extract-key-equality-clause]]
-   [er-cassandra.session :as session])
+   [er-cassandra.session :as session]
+   [prpr.promise :as pr :refer [ddo]]
+   [cats.context :refer [with-context]]
+   [cats.core :refer [return]]
+   [cats.labs.manifold :refer [deferred-context]])
   (:import
    [er_cassandra.session Session]
    [qbits.hayt.cql CQLRaw CQLFn]))
@@ -267,6 +272,32 @@
       (select-keys opts [:if-not-exists :using]))
      (dissoc opts :if-not-exists :using))
     first)))
+
+(defn insert-buffered
+  "insert a stream of records"
+  ([^Session session table record-stream]
+   (insert-buffered session
+                    table
+                    record-stream
+                    {:buffer-size 25}))
+
+  ([^Session session
+    table
+    record-stream
+    {:keys [buffer-size] :as opts}]
+   (->> record-stream
+        (stream/map
+         (fn [r]
+           (insert session
+                   table
+                   r
+                   (dissoc opts :buffer-size))))
+        (stream/realize-each)
+        ((fn [s]
+           (if buffer-size
+             (stream/buffer buffer-size s)
+             s)))
+        (return deferred-context))))
 
 (s/defschema UpdateOptsSchema
   {(s/optional-key :only-if) WhereSchema
