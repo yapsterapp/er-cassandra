@@ -186,11 +186,25 @@
               (= (t/extract-uber-key-value entity old-record)
                  (t/extract-uber-key-value entity record))))
 
-  (ddo [:let [opts (ts/default-timestamp-opt opts)]
+  (ddo [:let [opts (ts/default-timestamp-opt opts)
 
-        ;; serialize the old-record and record
+              ;; get the non-cassandra key-vals to use on the :before-save
+              ;; callback on the old-record
+              non-cassandra-cols (->> record
+                                      keys
+                                      (filter (complement cassandra-column-name?)))
+              non-cassandra (select-keys record non-cassandra-cols)]
+
+        ;; serialize the old-record... give it the non-cassandra cols from the
+        ;; record so that e.g. protected cols don't get removed if they
+        ;; are being updated
         old-record-ser (when old-record
-                         (t/run-callbacks session entity :before-save old-record opts))
+                         (t/run-callbacks
+                          session
+                          entity
+                          :before-save
+                          (merge non-cassandra old-record)
+                          opts))
         record-ser (t/run-callbacks session entity :before-save record opts)
 
         :let [record-keys (-> record keys set)
