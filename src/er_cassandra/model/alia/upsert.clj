@@ -178,7 +178,7 @@
   [session :- ModelSession
    entity :- Entity
    old-record :- t/MaybeRecordSchema
-   record :- t/MaybeRecordSchema
+   record :- t/RecordSchema
    opts :- fns/UpsertOptsSchema]
 
   (assert (or (nil? old-record)
@@ -189,7 +189,8 @@
   (ddo [:let [opts (ts/default-timestamp-opt opts)]
 
         ;; serialize the old-record and record
-        old-record-ser (t/run-callbacks session entity :before-save old-record opts)
+        old-record-ser (when old-record
+                         (t/run-callbacks session entity :before-save old-record opts))
         record-ser (t/run-callbacks session entity :before-save record opts)
 
         :let [record-keys (-> record keys set)
