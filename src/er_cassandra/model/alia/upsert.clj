@@ -6,6 +6,7 @@
     [data :refer [pair]]]
    [cats.labs.manifold :refer [deferred-context]]
    [clojure.set :as set]
+   [clojure.pprint :refer [pprint]]
    [er-cassandra
     [key :as k]
     [record :as r]]
@@ -280,7 +281,10 @@
               {:message (str "this entity has foreign keys, "
                              "so requires the previous version "
                              "to upsert. either use select-upsert"
-                             "or change")})))]
+                             "or change")
+               :entity (with-out-str (pprint entity))
+               :record record
+               :opts opts})))]
 
     (upsert-changes*
      session
