@@ -186,15 +186,15 @@
               (= (t/extract-uber-key-value entity old-record)
                  (t/extract-uber-key-value entity record))))
 
-  (ddo [:let [opts (ts/default-timestamp-opt opts)
+  (ddo [:let [opts (ts/default-timestamp-opt opts)]
 
-              record-keys (-> record keys set)]
+        ;; serialize the old-record and record
+        old-record-ser (t/run-callbacks session entity :before-save old-record opts)
+        record-ser (t/run-callbacks session entity :before-save record opts)
 
-
-        record-bs (t/run-callbacks session entity :before-save record opts)
-
-        :let [record-bs-keys (-> record-bs keys set)
-              removed-keys (set/difference record-keys record-bs-keys)
+        :let [record-keys (-> record keys set)
+              record-ser-keys (-> record-ser keys set)
+              removed-keys (set/difference record-keys record-ser-keys)
 
               ;; if the op is an insert, then old-record will be nil,
               ;; and we will need to return nil values for any removed keys
@@ -205,33 +205,44 @@
                                       [k nil]))
                                (into {}))]
 
-        [updated-record-with-keys
+        [updated-record-with-keys-ser
          acquire-failures] (unique-key/upsert-primary-record-and-update-unique-keys
                             session
                             entity
-                            old-record
-                            record-bs
+                            old-record-ser
+                            record-ser
                             opts)
 
-        _ (monad/when updated-record-with-keys
+        _ (monad/when updated-record-with-keys-ser
             (update-secondaries-and-lookups session
                                             entity
-                                            old-record
-                                            updated-record-with-keys
+                                            old-record-ser
+                                            updated-record-with-keys-ser
                                             opts))
+
+        ;; construct the response and deserialise
+        response-record-raw (merge nil-removed
+                                   old-record
+                                   updated-record-with-keys-ser)
+        response-record (t/run-callbacks
+                         session
+                         entity
+                         :after-load
+                         response-record-raw
+                         opts)
 
         ;; do any :after-save actions
         _ (t/run-callbacks
            session
            entity
            :after-save
-           updated-record-with-keys
+           response-record
            opts)]
 
     (return
      ;; merge the updated-record-with-keys with the old-record, so any
      ;; cols not included in the update are in the response
-     (pair (merge nil-removed old-record updated-record-with-keys)
+     (pair response-record
            acquire-failures))))
 
 (s/defn upsert*
