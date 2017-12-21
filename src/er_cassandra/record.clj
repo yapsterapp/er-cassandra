@@ -85,7 +85,8 @@
   (merge
    FullTableSelectOptsSchema
    {(s/optional-key :where) WhereSchema
-    (s/optional-key :order-by) OrderBySchema}))
+    (s/optional-key :order-by) OrderBySchema
+    (s/optional-key :prepare?) s/Bool}))
 
 (s/defschema SelectBufferedOptsSchema
   (merge
@@ -161,6 +162,85 @@
                (when columns (apply h/columns columns))
                (when order-by (apply h/order-by order-by))
                (when limit (h/limit limit))))))
+
+(s/defn placeholder-kw
+  "a prepared-statement placeholder keyword"
+  [prefix key]
+  (->> key name (str (name prefix) "_") keyword))
+
+(s/defn prepare-record-placeholders
+  "replace the values in a record with prepared-statement placeholders"
+  [prefix record]
+  (->> record
+       (map (fn [[k v]]
+              [k (placeholder-kw prefix k)]))
+       (into {})))
+
+(s/defn prepared-record-values
+  "replace the keys in a record with the prepared-statement placeholders"
+  [prefix record]
+  (->> record
+       (map (fn [[k v]]
+              [(placeholder-kw prefix k) v]))))
+
+(s/defn prepare-where-placeholders
+  "replace the values in a where with preparead-statement placeholders"
+  [where-clause]
+  (->> where-clause
+       (map (fn [[op col val]]
+              [op col (placeholder-kw :where col)]))))
+
+(s/defn prepare-where-values
+  [where-clause]
+  (->> where-clause
+       (map (fn [[op col val]]
+              [(placeholder-kw :where col) val]))
+       (into {})))
+
+(s/defn prepare-select-statement
+  "return a hayt statement suitable for preparing"
+  ([table :- s/Keyword
+    key :- KeySchema
+    record-or-key-value :- RecordOrKeyValueSchema]
+   (prepare-select-statement table key record-or-key-value {}))
+
+  ([table :- s/Keyword
+    key :- KeySchema
+    record-or-key-value :- RecordOrKeyValueSchema
+    {:keys [where columns order-by limit] :as opts} :- SelectOptsSchema]
+   (let [key-clause (extract-key-equality-clause key record-or-key-value opts)
+         where-clause (if (sequential? (first where))
+                        where ;; it's already a seq of conditions
+                        (when (not-empty where) [where]))
+         where-clause (combine-where key-clause where-clause)
+         where-placeholders (prepare-where-placeholders where-clause)]
+     (h/select table
+               (h/where where-placeholders)
+               (when columns (apply h/columns columns))
+               (when order-by (apply h/order-by order-by))
+               (when limit (h/limit (placeholder-kw :limit :limit)))))))
+
+(s/defn prepare-select-values
+  "return values for use with a prepared statement"
+  ([table :- s/Keyword
+    key :- KeySchema
+    record-or-key-value :- RecordOrKeyValueSchema]
+   (prepare-select-values table key record-or-key-value {}))
+
+  ([table :- s/Keyword
+    key :- KeySchema
+    record-or-key-value :- RecordOrKeyValueSchema
+    {:keys [where columns order-by limit] :as opts} :- SelectOptsSchema]
+   (let [key-clause (extract-key-equality-clause key record-or-key-value opts)
+         where-clause (if (sequential? (first where))
+                        where ;; it's already a seq of conditions
+                        (when (not-empty where) [where]))
+         where-clause (combine-where key-clause where-clause)
+         where-values (prepare-where-values where-clause)
+         limit-value (when limit {(placeholder-kw :limit :limit) limit})]
+     (merge
+      where-values
+      limit-value))))
 
 (defn select
   "select records"
@@ -255,6 +335,21 @@
              (h/values record)
              (when if-not-exists (h/if-not-exists true))
              (when (not-empty using) (apply h/using (flatten (seq using)))))))
+
+(s/defn prepare-insert-statement
+  "returns a Hayt prepared insert statement"
+  ([table :- s/Keyword
+    record :- RecordSchema] (prepare-insert-statement table record {}))
+
+  ([table :- s/Keyword
+    record :- RecordSchema
+    {:keys [if-not-exists using] :as opts} :- InsertOptsSchema]
+   (let [insert-placeholders (prepare-record-placeholders :insert record)]
+
+     (h/insert table
+               (h/values insert-placeholders)
+               (when if-not-exists (h/if-not-exists true))
+               (when (not-empty using) (apply h/using (flatten (seq using))))))))
 
 (defn insert
   "insert a single record"

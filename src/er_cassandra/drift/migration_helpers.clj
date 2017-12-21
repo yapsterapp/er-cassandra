@@ -21,7 +21,7 @@
 (defmacro execute
   [& body]
   `(deref
-    (er-cassandra.session/execute (session) ~@body)))
+    (er-cassandra.session/execute (session) ~@body {})))
 
 (defn execute-seq
   [statements]
