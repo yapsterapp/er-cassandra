@@ -30,7 +30,8 @@
     (log/infof "creating migrations table: %s" migrations-table-name)
     (deref (session/execute
             session
-            (create-migration-table-query)))))
+            (create-migration-table-query)
+            {}))))
 
 (defn- namespace-versions-query
   [namespace]
@@ -40,12 +41,12 @@
 
 (defn- namespace-max-version
   [^Session session namespace]
-  (->> (namespace-versions-query namespace)
-       (session/execute session)
-       deref
-       (map :version)
-       sort
-       last))
+  (->>
+   (session/execute session (namespace-versions-query namespace) {})
+   deref
+   (map :version)
+   sort
+   last))
 
 (defn- delete-namespace-version-query
   [namespace version]
@@ -56,7 +57,7 @@
 (defn- delete-namespace-version
   [^Session session namespace version]
   (deref
-   (session/execute session (delete-namespace-version-query namespace version))))
+   (session/execute session (delete-namespace-version-query namespace version) {})))
 
 (defn- namespace-versions-above-query
   [namespace version]
@@ -67,10 +68,10 @@
 
 (defn- namespace-versions-above
   [^Session session namespace version]
-  (->> (namespace-versions-above-query namespace version)
-       (session/execute session)
-       deref
-       (map :version)))
+  (->>
+   (session/execute session (namespace-versions-above-query namespace version) {})
+   deref
+   (map :version)))
 
 (defn- delete-namespace-versions-above
   [^Session session namespace version]
@@ -92,7 +93,8 @@
     (deref
      (session/execute
       session
-      (insert-namespace-version-query namespace version)))))
+      (insert-namespace-version-query namespace version)
+      {}))))
 
 (defn create-init-fn
   "create a drift init function"

@@ -86,26 +86,22 @@
                    (fn [_]
                      (as-> stmt %
                        (str/replace % "${keyspace}" keyspace)
-                       (alia/execute alia-session %))
+                       (alia/execute alia-session % {}))
                      (return deferred-context true)))]
 
     (with-context deferred-context
       (mlet [_ (if (not-empty init-fns)
                  (apply >>= (return true) init-fns)
                  (return true))
-             _ (alia/execute alia-session (str "USE " keyspace ";"))]
+             _ (alia/execute alia-session (str "USE " keyspace ";") {})]
         (return alia-session)))))
 
-(defrecord AliaSession [keyspace alia-session trace?]
+(defrecord AliaSession [keyspace alia-session prepared-stmts-atom trace?]
   KeyspaceProvider
   (keyspace [_] keyspace)
   Session
-  (execute [_ statement]
-    (execute* alia-session statement {}))
   (execute [_ statement opts]
     (execute* alia-session statement (assoc opts :trace? trace?)))
-  (execute-buffered [_ statement]
-    (execute-buffered* alia-session statement {}))
   (execute-buffered [_ statement opts]
     (execute-buffered* alia-session statement (assoc opts :trace? trace?)))
   (close [_]
@@ -120,7 +116,8 @@
        :let [alia-session (map->AliaSession
                            {:keyspace keyspace
                             :alia-session datastax-session
-                            :trace? trace?})]]
+                            :trace? trace?
+                            :prepared-stmts-atom (atom {})})]]
       (return
        [alia-session
         (fn [] (s/close alia-session))]))))
@@ -157,7 +154,7 @@
     (with-context deferred-context
       (mlet [:let [tfns (for [t tables]
                           (fn [_]
-                            (s/execute session (h/truncate t))
+                            (s/execute session (h/truncate t) {})
                             (return deferred-context true)))]]
         (if (not-empty tfns)
           (apply >>= (return true) tfns)
@@ -177,17 +174,14 @@
 
 (defrecord AliaSpySession [keyspace
                            alia-session
+                           prepared-stmts-atom
                            spy-log-atom
                            truncate-on-close
                            trace?]
   Session
-  (execute [this statement]
-    (s/execute this statement {}))
   (execute [_ statement opts]
     (swap! spy-log-atom conj statement)
     (execute* alia-session statement (assoc opts :trace? trace?)))
-  (execute-buffered [this statement]
-    (s/execute-buffered this statement {}))
   (execute-buffered [_ statement opts]
     (swap! spy-log-atom conj statement)
     (execute-buffered* alia-session statement (assoc opts :trace? trace?)))
@@ -222,7 +216,8 @@
                                :alia-session datastax-session
                                :spy-log-atom (atom [])
                                :truncate-on-close truncate-on-close
-                               :trace? trace?})]]
+                               :trace? trace?
+                               :prepared-stmts-atom (atom {})})]]
       (return
        [spy-session
         (fn [] (s/close spy-session))]))))

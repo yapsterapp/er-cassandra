@@ -50,12 +50,8 @@
   (keyspace [_] (s/keyspace alia-session))
 
   s/Session
-  (execute [_ statement]
-    (s/execute alia-session statement))
   (execute [_ statement opts]
     (s/execute alia-session statement opts))
-  (execute-buffered [_ statement]
-    (s/execute-buffered alia-session statement))
   (execute-buffered [_ statement opts]
     (s/execute-buffered alia-session statement opts))
   (close [_]
@@ -139,12 +135,8 @@
     (s/reset-spy-log alia-session))
 
   s/Session
-  (execute [_ statement]
-    (s/execute alia-session statement))
   (execute [_ statement opts]
     (s/execute alia-session statement opts))
-  (execute-buffered [_ statement]
-    (s/execute-buffered alia-session statement))
   (execute-buffered [_ statement opts]
     (s/execute-buffered alia-session statement opts))
   (close [this]
