@@ -22,7 +22,7 @@
                  [prismatic/plumbing "0.5.5"]
                  [clj-time "0.13.0"]
                  [danlentz/clj-uuid "0.1.7"]
-                 [cc.qbits/alia "4.0.3"
+                 [mccraigmccraig/alia "4.0.4"
                   :exclusions [com.google.guava/guava]]
                  [cc.qbits/alia-manifold "4.0.3"
                   :exclusions [manifold]]
