@@ -23,6 +23,7 @@
 (defn prepare-async
   [alia-session statement]
   (let [r (d/deferred)]
+    (info "preparing: " statement)
     (alia/prepare-async
      alia-session
      statement
@@ -36,7 +37,9 @@
    str-statement]
   (if-let [ps (get @prepared-stmts-atom
                    str-statement)]
-    (return deferred-context ps)
+    (do
+      (info "re-using prepared-statement: " str-statement)
+      (return deferred-context ps))
     (ddo [ps (prepare-async alia-session str-statement)]
       (swap! prepared-stmts-atom
              assoc
@@ -104,7 +107,7 @@
   (info "closing underlying alia session and cluster")
   (let [cluster (.getCluster session)]
     (alia/shutdown session)
-    (alia/shutdown cluster)))
+    (alia/shutdown cluster)                                                                                                                                                                                                                ))
 
 (defnk ^:private create-alia-session*
   "returns a Deferred<com.datastax.driver.core/Session>"
