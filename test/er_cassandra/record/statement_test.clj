@@ -21,7 +21,8 @@
          (sut/select-statement
           :foos
           :id
-          "foo"))))
+          "foo"
+          {}))))
 
   (testing "compound key"
     (is (=
@@ -29,7 +30,8 @@
          (sut/select-statement
           :foos
           [[:foo] :bar]
-          ["foo" "bar"]))))
+          ["foo" "bar"]
+          {}))))
 
   (testing "with columns"
     (is (=
@@ -97,7 +99,8 @@
            (sut/insert-statement
             :foos
             {:id "id"
-             :foo "foo"}))))
+             :foo "foo"}
+            {}))))
   (testing "with ttl"
     (is (= {:insert :foos
             :values {:id "id" :foo "foo"}
@@ -142,7 +145,8 @@
             :foos
             [:id]
             {:id 100
-             :foo "foo"}))))
+             :foo "foo"}
+            {}))))
   (testing "compound key, multiple cols"
     (is (= {:update :foos
             :set-columns {:foo "foo" :bar "bar"}
@@ -153,7 +157,8 @@
             {:id 100
              :id2 200
              :foo "foo"
-             :bar "bar"}))))
+             :bar "bar"}
+            {}))))
   (testing "set-columns"
     (is (= {:update :foos
             :set-columns {:foo "foo"}
@@ -242,21 +247,24 @@
            (sut/delete-statement
             :foos
             :id
-            10)))
+            10
+            {})))
     (is (= {:delete :foos
             :columns :*
             :where [[:= :id 10][:= :id2 20]]}
            (sut/delete-statement
             :foos
             [:id :id2]
-            [10 20])))
+            [10 20]
+            {})))
     (is (= {:delete :foos
             :columns :*
             :where [[:= :id 10][:= :id2 20]]}
            (sut/delete-statement
             :foos
             [:id :id2]
-            {:id 10 :id2 20}))))
+            {:id 10 :id2 20}
+            {}))))
   (testing "using timestamp"
     (is (= {:delete :foos
             :columns :*
