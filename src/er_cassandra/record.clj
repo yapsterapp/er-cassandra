@@ -1,7 +1,7 @@
 (ns er-cassandra.record
   (:refer-clojure :exclude [update])
   (:require
-   [plumbing.core :refer :all]
+   [plumbing.core :refer [assoc-when]]
    [taoensso.timbre :refer [trace debug info warn error]]
    [schema.core :as s]
    [clojure.set :as set]
@@ -198,11 +198,19 @@
        (into {})))
 
 (s/defn prepare-select-statement
-  "return a hayt statement suitable for preparing"
+  "return a hayt statement suitable for preparing a select query"
   ([table :- s/Keyword
-    key :- KeySchema
-    record-or-key-value :- RecordOrKeyValueSchema]
-   (prepare-select-statement table key record-or-key-value {}))
+    {:keys [where columns order-by limit] :as opts} :- SelectOptsSchema]
+   (let [where-clause (if (sequential? (first where))
+                        where ;; it's already a seq of conditions
+                        (when (not-empty where) [where]))
+         where-placeholders (prepare-where-placeholders where-clause)]
+     (h/select table
+               (when (not-empty where-placeholders)
+                 (h/where where-placeholders))
+               (when columns (apply h/columns columns))
+               (when order-by (apply h/order-by order-by))
+               (when limit (h/limit (placeholder-kw :limit :limit))))))
 
   ([table :- s/Keyword
     key :- KeySchema
@@ -215,7 +223,8 @@
          where-clause (combine-where key-clause where-clause)
          where-placeholders (prepare-where-placeholders where-clause)]
      (h/select table
-               (h/where where-placeholders)
+               (when (not-empty where-placeholders)
+                 (h/where where-placeholders))
                (when columns (apply h/columns columns))
                (when order-by (apply h/order-by order-by))
                (when limit (h/limit (placeholder-kw :limit :limit)))))))
@@ -223,9 +232,16 @@
 (s/defn prepare-select-values
   "return values for use with a prepared statement"
   ([table :- s/Keyword
-    key :- KeySchema
-    record-or-key-value :- RecordOrKeyValueSchema]
-   (prepare-select-values table key record-or-key-value {}))
+    {:keys [where columns order-by limit] :as opts} :- SelectOptsSchema]
+   (let [where-clause (if (sequential? (first where))
+                        where ;; it's already a seq of conditions
+                        (when (not-empty where) [where]))
+         where-values (prepare-where-values where-clause)
+         ;; note the java driver requires ints for limit
+         limit-value (when limit {(placeholder-kw :limit :limit) (int limit)})]
+     (merge
+      where-values
+      limit-value)))
 
   ([table :- s/Keyword
     key :- KeySchema
@@ -237,7 +253,8 @@
                         (when (not-empty where) [where]))
          where-clause (combine-where key-clause where-clause)
          where-values (prepare-where-values where-clause)
-         limit-value (when limit {(placeholder-kw :limit :limit) limit})]
+         ;; note the java driver requires ints for limit
+         limit-value (when limit {(placeholder-kw :limit :limit) (int limit)})]
      (merge
       where-values
       limit-value))))
@@ -252,14 +269,31 @@
     table
     key
     record-or-key-value
-    opts]
-   (session/execute
-    session
-    (select-statement table
+    {prepare? :prepare?
+     :as opts}]
+   (let [select-opts (select-keys opts [:columns :where :only-if :order-by :limit])
+         select-stmt (if prepare?
+                       (prepare-select-statement table
+                                                 key
+                                                 record-or-key-value
+                                                 select-opts)
+                       (select-statement table
+                                         key
+                                         record-or-key-value
+                                         select-opts))
+         ps-values (when prepare?
+                     (prepare-select-values
+                      table
                       key
                       record-or-key-value
-                      (select-keys opts [:columns :where :only-if :order-by :limit]))
-    (dissoc opts :columns :where :only-if :order-by :limit))))
+                      select-opts))]
+     (warn "select-stmt" select-stmt)
+     (session/execute
+      session
+      select-stmt
+      (-> opts
+          (dissoc :columns :where :only-if :order-by :limit)
+          (assoc-when :values ps-values))))))
 
 ;; TODO change to return a Deferred<Stream> which turns out to be a lot more
 ;; convenient to work with
@@ -273,15 +307,25 @@
 
   ([^Session session table] (select-buffered session table {}))
 
-  ([^Session session table opts]
-   (let [stmt (select-statement
-               table
-               (select-keys opts [:columns :limit]))]
+  ([^Session session table {prepare? :prepare? :as opts}]
+   (let [select-opts (select-keys opts [:columns :limit])
+         select-stmt (if prepare?
+                       (prepare-select-statement
+                        table
+                        select-opts)
+                       (select-statement
+                        table
+                        select-opts))
+         ps-values (when prepare?
+                     (prepare-select-values
+                      table
+                      select-opts))]
      (session/execute-buffered
       session
-      stmt
+      select-stmt
       (-> opts
-          (dissoc :columns :limit)))))
+          (dissoc :columns :limit)
+          (assoc-when :values ps-values)))))
 
   ([^Session session table key record-or-key-value]
    (select session table key record-or-key-value {}))
@@ -290,17 +334,31 @@
     table
     key
     record-or-key-value
-    {:keys [buffer-size] :as opts}]
-   (let [stmt (select-statement
-               table
-               key
-               record-or-key-value
-               (select-keys opts [:columns :where :only-if :order-by :limit]))]
+    {prepare? :prepare? :as opts}]
+   (let [select-opts (select-keys opts [:columns :where :only-if :order-by :limit])
+         select-stmt (if prepare?
+                       (prepare-select-statement
+                        table
+                        key
+                        record-or-key-value
+                        select-opts)
+                       (select-statement
+                        table
+                        key
+                        record-or-key-value
+                        select-opts))
+         ps-values (when prepare?
+                     (prepare-select-values
+                      table
+                      key
+                      record-or-key-value
+                      select-opts))]
      (session/execute-buffered
       session
-      stmt
+      select-stmt
       (-> opts
-          (dissoc :columns :where :only-if :order-by :limit))))))
+          (dissoc :columns :where :only-if :order-by :limit)
+          (assoc-when :values ps-values))))))
 
 (defn select-one
   "select a single record"
@@ -438,16 +496,17 @@
    (update session table key record {}))
 
   ([^Session session table key record opts]
-   (d/chain
-    (session/execute
-     session
-     (update-statement
-      table
-      key
-      record
-      (select-keys opts [:only-if :if-exists :using :set-columns]))
-     (dissoc opts :only-if :if-exists :using :set-columns))
-    first)))
+   (ddo [:let [stmt (update-statement
+                     table
+                     key
+                     record
+                     (select-keys opts [:only-if :if-exists :using :set-columns]))
+               _ (warn stmt)]
+         [resp _] (session/execute
+                   session
+                   stmt
+                   (dissoc opts :only-if :if-exists :using :set-columns))]
+     (return resp))))
 
 (s/defschema DeleteUsingSchema
   {(s/optional-key :timestamp) s/Int})
