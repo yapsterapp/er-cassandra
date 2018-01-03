@@ -11,6 +11,7 @@
    [er-cassandra.session]
    [er-cassandra.key :as k]
    [er-cassandra.record :as r]
+   [er-cassandra.record.schema :as rs]
    [er-cassandra.util.stream :as stu]
    [er-cassandra.model :as m]
    [er-cassandra.model.types :as t]
@@ -179,7 +180,7 @@
    target-entity :- Entity
    source-record :- t/RecordSchema
    denorm-rel :- t/DenormalizationRelationshipSchema
-   opts :- r/SelectBufferedOptsSchema]
+   opts :- rs/SelectBufferedOptsSchema]
   (with-context deferred-context
     (mlet [:let [[fk fk-val] (foreign-key-val source-entity source-record denorm-rel)]
 

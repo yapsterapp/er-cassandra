@@ -7,6 +7,7 @@
    [er-cassandra
     [key :as k]
     [record :as r]]
+   [er-cassandra.record.schema :as rs]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model
     [types :as t]
@@ -191,9 +192,9 @@
 
   ([session :- ModelSession
     entity :- Entity
-    key :- r/KeySchema
-    record-or-key-value :- r/RecordOrKeyValueSchema
-    opts :- r/DeleteOptsSchema]
+    key :- rs/KeySchema
+    record-or-key-value :- rs/RecordOrKeyValueSchema
+    opts :- rs/DeleteOptsSchema]
 
    (with-context deferred-context
      (mlet [[record & _] (alia-select/select* session
