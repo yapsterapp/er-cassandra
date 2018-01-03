@@ -40,15 +40,13 @@
     {prepare? :prepare?
      :as opts}]
    (let [select-opts (select-keys opts [:columns :where :only-if :order-by :limit])
-         select-stmt (if prepare?
-                       (st/prepare-select-statement table
-                                                 key
-                                                 record-or-key-value
-                                                 select-opts)
-                       (st/select-statement table
-                                         key
-                                         record-or-key-value
-                                         select-opts))
+         select-stmt ((if prepare?
+                        st/prepare-select-statement
+                        st/select-statement)
+                      table
+                      key
+                      record-or-key-value
+                      select-opts)
          ps-values (when prepare?
                      (st/prepare-select-values
                       table
@@ -77,13 +75,11 @@
 
   ([^Session session table {prepare? :prepare? :as opts}]
    (let [select-opts (select-keys opts [:columns :limit])
-         select-stmt (if prepare?
-                       (st/prepare-select-statement
-                        table
-                        select-opts)
-                       (st/select-statement
-                        table
-                        select-opts))
+         select-stmt ((if prepare?
+                        st/prepare-select-statement
+                        st/select-statement)
+                      table
+                      select-opts)
          ps-values (when prepare?
                      (st/prepare-select-values
                       table
@@ -104,17 +100,13 @@
     record-or-key-value
     {prepare? :prepare? :as opts}]
    (let [select-opts (select-keys opts [:columns :where :only-if :order-by :limit])
-         select-stmt (if prepare?
-                       (st/prepare-select-statement
-                        table
-                        key
-                        record-or-key-value
-                        select-opts)
-                       (st/select-statement
-                        table
-                        key
-                        record-or-key-value
-                        select-opts))
+         select-stmt ((if prepare?
+                        st/prepare-select-statement
+                        st/select-statement)
+                      table
+                      key
+                      record-or-key-value
+                      select-opts)
          ps-values (when prepare?
                      (st/prepare-select-values
                       table
@@ -145,16 +137,30 @@
   ([^Session session table record]
    (insert session table record {}))
 
-  ([^Session session table record opts]
-   (d/chain
-    (session/execute
-     session
-     (st/insert-statement
-      table
-      record
-      (select-keys opts [:if-not-exists :using]))
-     (dissoc opts :if-not-exists :using))
-    first)))
+  ([^Session session
+    table
+    record
+    {prepare? :prepare?
+     :as opts}]
+   (ddo [:let [insert-opts (select-keys opts [:if-not-exists :using])
+               insert-stmt ((if prepare?
+                              st/prepare-insert-statement
+                              st/insert-statement)
+                            table
+                            record
+                            insert-opts)
+               insert-values (when prepare?
+                               (st/prepare-insert-values
+                                table
+                                record
+                                insert-opts))]
+         [r _] (session/execute
+                session
+                insert-stmt
+                (-> opts
+                    (dissoc :if-not-exists :using)
+                    (assoc-when :values insert-values)))]
+     (return r))))
 
 (defn insert-buffered
   "insert a stream of records"
@@ -188,17 +194,32 @@
   ([^Session session table key record]
    (update session table key record {}))
 
-  ([^Session session table key record opts]
-   (ddo [:let [stmt (st/update-statement
+  ([^Session session
+    table
+    key
+    record
+    {prepare? :prepare?
+     :as opts}]
+   (ddo [:let [update-opts (select-keys opts [:only-if :if-exists :using :set-columns])
+               stmt ((if prepare?
+                       st/prepare-update-statement
+                       st/update-statement)
                      table
                      key
                      record
-                     (select-keys opts [:only-if :if-exists :using :set-columns]))
-               _ (warn stmt)]
+                     update-opts)
+               update-values (when prepare?
+                               (st/prepare-update-values
+                                table
+                                key
+                                record
+                                update-opts))]
          [resp _] (session/execute
                    session
                    stmt
-                   (dissoc opts :only-if :if-exists :using :set-columns))]
+                   (-> opts
+                       (dissoc :only-if :if-exists :using :set-columns)
+                       (assoc-when :values update-values)))]
      (return resp))))
 
 (defn delete
@@ -207,14 +228,31 @@
   ([^Session session table key record-or-key-value]
    (delete session table key record-or-key-value {}))
 
-  ([^Session session table key record-or-key-value opts]
-   (d/chain
-    (session/execute
-     session
-     (st/delete-statement
-      table
-      key
-      record-or-key-value
-      (select-keys opts [:only-if :if-exists :using :where]))
-     (dissoc opts :only-if :if-exists :using :where))
-    first)))
+  ([^Session session
+    table
+    key
+    record-or-key-value
+    {prepare? :prepare?
+     :as opts}]
+   (ddo [:let [delete-opts (select-keys opts [:only-if :if-exists :using :where])
+               delete-stmt ((if prepare?
+                              st/prepare-delete-statement
+                              st/delete-statement)
+                            table
+                            key
+                            record-or-key-value
+                            delete-opts)
+               delete-values (when prepare?
+                               (st/prepare-delete-values
+                                table
+                                key
+                                record-or-key-value
+                                delete-opts))]
+         [resp _] (session/execute
+                   session
+                   delete-stmt
+                   (-> opts
+                       (dissoc :only-if :if-exists :using :where)
+                       (assoc-when :values delete-values)))]
+     (return
+      resp))))
