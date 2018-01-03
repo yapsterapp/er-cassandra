@@ -14,7 +14,9 @@
    [prpr.promise :as pr :refer [ddo]]
    [cats.context :refer [with-context]]
    [cats.core :refer [return]]
-   [cats.labs.manifold :refer [deferred-context]])
+   [cats.labs.manifold :refer [deferred-context]]
+   [er-cassandra.record.schema :as sch]
+   [er-cassandra.record.statement :as st])
   (:import
    [er_cassandra.session Session]
    [qbits.hayt.cql CQLRaw CQLFn]))
@@ -24,240 +26,6 @@
 ;; keys can be extracted from records, provided explicitly or mixed.
 ;;
 ;; execution is async and returns a manifold Deferred
-
-(s/defschema ConsistencyLevelSchema
-  (s/enum :each-quorum
-          :one
-          :local-quorum
-          :quorum
-          :three
-          :all
-          :serial
-          :two
-          :local-serial
-          :local-one
-          :any))
-
-(defn combine-where
-  [& clauses]
-  (into []
-        (->> clauses
-             (filter identity)
-             (apply concat))))
-
-(s/defschema WhereClauseSchema
-  [(s/one (s/enum :<= :< := :>= :> :in) :where-op)
-   (s/one s/Keyword :where-col)
-   (s/one s/Any :where-val)])
-
-(s/defschema WhereSchema
-  [WhereClauseSchema])
-
-(s/defschema UpdateColumnSchema
-  s/Keyword)
-
-(s/defschema UpdateColumnsSchema
-  [(s/one UpdateColumnSchema :first-col) UpdateColumnSchema])
-
-(s/defschema SelectColumnSchema
-  (s/conditional
-   keyword? s/Keyword
-   #(instance? CQLRaw %) CQLRaw
-   #(instance? CQLFn %) CQLFn))
-
-(s/defschema SelectColumnsSchema
-  [(s/one SelectColumnSchema :first-col) SelectColumnSchema])
-
-(s/defschema OrderByClauseSchema
-  [(s/one s/Keyword :order-by-col)
-   (s/one (s/enum :asc :desc) :order-by-dir)])
-
-(s/defschema OrderBySchema
-  [OrderByClauseSchema])
-
-(s/defschema LimitSchema s/Int)
-
-(s/defschema FullTableSelectOptsSchema
-  {(s/optional-key :columns) SelectColumnsSchema
-   (s/optional-key :limit) LimitSchema})
-
-(s/defschema SelectOptsSchema
-  (merge
-   FullTableSelectOptsSchema
-   {(s/optional-key :where) WhereSchema
-    (s/optional-key :order-by) OrderBySchema
-    (s/optional-key :prepare?) s/Bool}))
-
-(s/defschema SelectBufferedOptsSchema
-  (merge
-   SelectOptsSchema
-   {(s/optional-key :fetch-size) s/Int
-    (s/optional-key :buffer-size) s/Int}))
-
-(s/defschema PartitionKeySchema
-  (s/conditional
-   keyword?
-   s/Keyword
-
-   :else
-   [(s/one s/Keyword :partition-key-first-component)
-    s/Keyword]))
-
-(s/defschema KeySchema
-  (s/conditional
-   keyword?
-   s/Keyword
-
-   :else
-   [(s/one PartitionKeySchema :partition-key)
-    s/Keyword]))
-
-(s/defschema KeyValueComponentSchema
-  (s/pred some? :key-value-component))
-
-(s/defschema RecordSchema
-  {s/Keyword s/Any})
-
-(s/defschema RecordOrKeyValueSchema
-  (s/conditional
-   map?
-   RecordSchema
-
-   sequential?
-   [(s/one KeyValueComponentSchema :first-key-value-component)
-    KeyValueComponentSchema]
-
-   :else
-   KeyValueComponentSchema))
-
-(s/defn select-statement
-  "returns a Hayt select statement"
-
-  ([table :- s/Keyword]
-   (select-statement table {}))
-
-  ([table :- s/Keyword
-    {:keys [limit columns] :as opts} :- FullTableSelectOptsSchema]
-
-   (h/select table
-             (when columns (apply h/columns columns))
-             (when limit (h/limit limit))))
-
-  ([table :- s/Keyword
-    key :- KeySchema
-    record-or-key-value :- RecordOrKeyValueSchema]
-   (select-statement table key record-or-key-value {}))
-
-  ([table :- s/Keyword
-    key :- KeySchema
-    record-or-key-value :- RecordOrKeyValueSchema
-    {:keys [where columns order-by limit] :as opts} :- SelectOptsSchema]
-   (let [key-clause (extract-key-equality-clause key record-or-key-value opts)
-         where-clause (if (sequential? (first where))
-                        where ;; it's already a seq of conditions
-                        (when (not-empty where) [where]))
-         where-clause (combine-where key-clause where-clause)]
-     (h/select table
-               (h/where where-clause)
-               (when columns (apply h/columns columns))
-               (when order-by (apply h/order-by order-by))
-               (when limit (h/limit limit))))))
-
-(s/defn placeholder-kw
-  "a prepared-statement placeholder keyword"
-  [prefix key]
-  (->> key name (str (name prefix) "_") keyword))
-
-(s/defn prepare-record-placeholders
-  "replace the values in a record with prepared-statement placeholders"
-  [prefix record]
-  (->> record
-       (map (fn [[k v]]
-              [k (placeholder-kw prefix k)]))
-       (into {})))
-
-(s/defn prepared-record-values
-  "replace the keys in a record with the prepared-statement placeholders"
-  [prefix record]
-  (->> record
-       (map (fn [[k v]]
-              [(placeholder-kw prefix k) v]))))
-
-(s/defn prepare-where-placeholders
-  "replace the values in a where with preparead-statement placeholders"
-  [where-clause]
-  (->> where-clause
-       (map (fn [[op col val]]
-              [op col (placeholder-kw :where col)]))))
-
-(s/defn prepare-where-values
-  [where-clause]
-  (->> where-clause
-       (map (fn [[op col val]]
-              [(placeholder-kw :where col) val]))
-       (into {})))
-
-(s/defn prepare-select-statement
-  "return a hayt statement suitable for preparing a select query"
-  ([table :- s/Keyword
-    {:keys [where columns order-by limit] :as opts} :- SelectOptsSchema]
-   (let [where-clause (if (sequential? (first where))
-                        where ;; it's already a seq of conditions
-                        (when (not-empty where) [where]))
-         where-placeholders (prepare-where-placeholders where-clause)]
-     (h/select table
-               (when (not-empty where-placeholders)
-                 (h/where where-placeholders))
-               (when columns (apply h/columns columns))
-               (when order-by (apply h/order-by order-by))
-               (when limit (h/limit (placeholder-kw :limit :limit))))))
-
-  ([table :- s/Keyword
-    key :- KeySchema
-    record-or-key-value :- RecordOrKeyValueSchema
-    {:keys [where columns order-by limit] :as opts} :- SelectOptsSchema]
-   (let [key-clause (extract-key-equality-clause key record-or-key-value opts)
-         where-clause (if (sequential? (first where))
-                        where ;; it's already a seq of conditions
-                        (when (not-empty where) [where]))
-         where-clause (combine-where key-clause where-clause)
-         where-placeholders (prepare-where-placeholders where-clause)]
-     (h/select table
-               (when (not-empty where-placeholders)
-                 (h/where where-placeholders))
-               (when columns (apply h/columns columns))
-               (when order-by (apply h/order-by order-by))
-               (when limit (h/limit (placeholder-kw :limit :limit)))))))
-
-(s/defn prepare-select-values
-  "return values for use with a prepared statement"
-  ([table :- s/Keyword
-    {:keys [where columns order-by limit] :as opts} :- SelectOptsSchema]
-   (let [where-clause (if (sequential? (first where))
-                        where ;; it's already a seq of conditions
-                        (when (not-empty where) [where]))
-         where-values (prepare-where-values where-clause)
-         ;; note the java driver requires ints for limit
-         limit-value (when limit {(placeholder-kw :limit :limit) (int limit)})]
-     (merge
-      where-values
-      limit-value)))
-
-  ([table :- s/Keyword
-    key :- KeySchema
-    record-or-key-value :- RecordOrKeyValueSchema
-    {:keys [where columns order-by limit] :as opts} :- SelectOptsSchema]
-   (let [key-clause (extract-key-equality-clause key record-or-key-value opts)
-         where-clause (if (sequential? (first where))
-                        where ;; it's already a seq of conditions
-                        (when (not-empty where) [where]))
-         where-clause (combine-where key-clause where-clause)
-         where-values (prepare-where-values where-clause)
-         ;; note the java driver requires ints for limit
-         limit-value (when limit {(placeholder-kw :limit :limit) (int limit)})]
-     (merge
-      where-values
-      limit-value))))
 
 (defn select
   "select records"
@@ -273,21 +41,21 @@
      :as opts}]
    (let [select-opts (select-keys opts [:columns :where :only-if :order-by :limit])
          select-stmt (if prepare?
-                       (prepare-select-statement table
+                       (st/prepare-select-statement table
                                                  key
                                                  record-or-key-value
                                                  select-opts)
-                       (select-statement table
+                       (st/select-statement table
                                          key
                                          record-or-key-value
                                          select-opts))
          ps-values (when prepare?
-                     (prepare-select-values
+                     (st/prepare-select-values
                       table
                       key
                       record-or-key-value
                       select-opts))]
-     (warn "select-stmt" select-stmt)
+     ;; (warn "select-stmt" select-stmt)
      (session/execute
       session
       select-stmt
@@ -310,14 +78,14 @@
   ([^Session session table {prepare? :prepare? :as opts}]
    (let [select-opts (select-keys opts [:columns :limit])
          select-stmt (if prepare?
-                       (prepare-select-statement
+                       (st/prepare-select-statement
                         table
                         select-opts)
-                       (select-statement
+                       (st/select-statement
                         table
                         select-opts))
          ps-values (when prepare?
-                     (prepare-select-values
+                     (st/prepare-select-values
                       table
                       select-opts))]
      (session/execute-buffered
@@ -337,18 +105,18 @@
     {prepare? :prepare? :as opts}]
    (let [select-opts (select-keys opts [:columns :where :only-if :order-by :limit])
          select-stmt (if prepare?
-                       (prepare-select-statement
+                       (st/prepare-select-statement
                         table
                         key
                         record-or-key-value
                         select-opts)
-                       (select-statement
+                       (st/select-statement
                         table
                         key
                         record-or-key-value
                         select-opts))
          ps-values (when prepare?
-                     (prepare-select-values
+                     (st/prepare-select-values
                       table
                       key
                       record-or-key-value
@@ -371,44 +139,6 @@
     (select session table key record-or-key-value (merge opts {:limit 1}))
     first)))
 
-(s/defschema UpsertUsingSchema
-  {(s/optional-key :ttl) s/Int
-   (s/optional-key :timestamp) s/Int})
-
-(s/defschema InsertOptsSchema
-  {(s/optional-key :if-not-exists) s/Bool
-   (s/optional-key :using) UpsertUsingSchema
-   (s/optional-key :consistency) ConsistencyLevelSchema})
-
-(s/defn insert-statement
-  "returns a Hayt insert statement"
-
-  ([table :- s/Keyword
-    record :- RecordSchema] (insert-statement table record {}))
-
-  ([table :- s/Keyword
-    record :- RecordSchema
-    {:keys [if-not-exists using] :as opts} :- InsertOptsSchema]
-   (h/insert table
-             (h/values record)
-             (when if-not-exists (h/if-not-exists true))
-             (when (not-empty using) (apply h/using (flatten (seq using)))))))
-
-(s/defn prepare-insert-statement
-  "returns a Hayt prepared insert statement"
-  ([table :- s/Keyword
-    record :- RecordSchema] (prepare-insert-statement table record {}))
-
-  ([table :- s/Keyword
-    record :- RecordSchema
-    {:keys [if-not-exists using] :as opts} :- InsertOptsSchema]
-   (let [insert-placeholders (prepare-record-placeholders :insert record)]
-
-     (h/insert table
-               (h/values insert-placeholders)
-               (when if-not-exists (h/if-not-exists true))
-               (when (not-empty using) (apply h/using (flatten (seq using))))))))
-
 (defn insert
   "insert a single record"
 
@@ -419,7 +149,7 @@
    (d/chain
     (session/execute
      session
-     (insert-statement
+     (st/insert-statement
       table
       record
       (select-keys opts [:if-not-exists :using]))
@@ -452,43 +182,6 @@
              s)))
         (return deferred-context))))
 
-(s/defschema UpdateOptsSchema
-  {(s/optional-key :only-if) WhereSchema
-   (s/optional-key :if-exists) s/Bool
-   (s/optional-key :if-not-exists) s/Bool
-   (s/optional-key :using) UpsertUsingSchema
-   (s/optional-key :consistency) ConsistencyLevelSchema
-   (s/optional-key :set-columns) UpdateColumnsSchema})
-
-(s/defn update-statement
-  "returns a Hayt update statement"
-
-  ([table :- s/Keyword
-    key :- KeySchema
-    record :- RecordSchema] (update-statement table key record {}))
-
-  ([table :- s/Keyword
-    key :- KeySchema
-    record :- RecordSchema
-    {:keys [only-if
-            if-exists
-            if-not-exists
-            using
-            set-columns] :as opts} :- UpdateOptsSchema]
-   (let [key-clause (extract-key-equality-clause key record opts)
-         set-cols (if (not-empty set-columns)
-                    (select-keys record set-columns)
-                    (apply dissoc record (flatten-key key)))
-
-         stmt (h/update table
-                        (h/set-columns set-cols)
-                        (h/where key-clause)
-                        (when only-if (h/only-if only-if))
-                        (when if-exists (h/if-exists true))
-                        (when if-not-exists (h/if-exists false))
-                        (when (not-empty using) (apply h/using (flatten (seq using)))))]
-     stmt)))
-
 (defn update
   "update a single record"
 
@@ -496,7 +189,7 @@
    (update session table key record {}))
 
   ([^Session session table key record opts]
-   (ddo [:let [stmt (update-statement
+   (ddo [:let [stmt (st/update-statement
                      table
                      key
                      record
@@ -508,34 +201,6 @@
                    (dissoc opts :only-if :if-exists :using :set-columns))]
      (return resp))))
 
-(s/defschema DeleteUsingSchema
-  {(s/optional-key :timestamp) s/Int})
-
-(s/defschema DeleteOptsSchema
-  {(s/optional-key :only-if) WhereSchema
-   (s/optional-key :if-exists) s/Bool
-   (s/optional-key :using) DeleteUsingSchema
-   (s/optional-key :where) WhereSchema})
-
-(s/defn delete-statement
-  "returns a Hayt delete statement"
-
-  ([table :- s/Keyword
-    key :- KeySchema
-    record-or-key-value :- RecordOrKeyValueSchema]
-   (delete-statement table key record-or-key-value {}))
-
-  ([table :- s/Keyword
-    key :- KeySchema
-    record-or-key-value :- RecordOrKeyValueSchema
-    {:keys [only-if if-exists using where] :as opts} :- DeleteOptsSchema]
-   (let [key-clause (extract-key-equality-clause key record-or-key-value opts)]
-     (h/delete table
-               (h/where (combine-where key-clause where))
-               (when only-if (h/only-if only-if))
-               (when if-exists (h/if-exists true))
-               (when (not-empty using) (apply h/using (flatten (seq using))))))))
-
 (defn delete
   "delete a record"
 
@@ -546,7 +211,7 @@
    (d/chain
     (session/execute
      session
-     (delete-statement
+     (st/delete-statement
       table
       key
       record-or-key-value
