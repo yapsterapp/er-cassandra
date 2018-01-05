@@ -49,6 +49,9 @@
 
 (s/defschema LimitSchema s/Int)
 
+(s/defschema PrepareOptSchema
+  {(s/optional-key :prepare?) s/Bool})
+
 (s/defschema FullTableSelectOptsSchema
   {(s/optional-key :columns) SelectColumnsSchema
    (s/optional-key :limit) LimitSchema})
@@ -56,9 +59,9 @@
 (s/defschema SelectOptsSchema
   (merge
    FullTableSelectOptsSchema
+   PrepareOptSchema
    {(s/optional-key :where) WhereSchema
-    (s/optional-key :order-by) OrderBySchema
-    (s/optional-key :prepare?) s/Bool}))
+    (s/optional-key :order-by) OrderBySchema}))
 
 (s/defschema SelectBufferedOptsSchema
   (merge
@@ -108,24 +111,30 @@
    (s/optional-key :timestamp) s/Int})
 
 (s/defschema InsertOptsSchema
-  {(s/optional-key :if-not-exists) s/Bool
-   (s/optional-key :using) UpsertUsingSchema
-   (s/optional-key :consistency) ConsistencyLevelSchema})
+  (merge
+   PrepareOptSchema
+   {(s/optional-key :if-not-exists) s/Bool
+    (s/optional-key :using) UpsertUsingSchema
+    (s/optional-key :consistency) ConsistencyLevelSchema}))
 
 
 (s/defschema UpdateOptsSchema
-  {(s/optional-key :only-if) WhereSchema
-   (s/optional-key :if-exists) s/Bool
-   (s/optional-key :if-not-exists) s/Bool
-   (s/optional-key :using) UpsertUsingSchema
-   (s/optional-key :consistency) ConsistencyLevelSchema
-   (s/optional-key :set-columns) UpdateColumnsSchema})
+  (merge
+   PrepareOptSchema
+   {(s/optional-key :only-if) WhereSchema
+    (s/optional-key :if-exists) s/Bool
+    (s/optional-key :if-not-exists) s/Bool
+    (s/optional-key :using) UpsertUsingSchema
+    (s/optional-key :consistency) ConsistencyLevelSchema
+    (s/optional-key :set-columns) UpdateColumnsSchema}))
 
 (s/defschema DeleteUsingSchema
   {(s/optional-key :timestamp) s/Int})
 
 (s/defschema DeleteOptsSchema
-  {(s/optional-key :only-if) WhereSchema
-   (s/optional-key :if-exists) s/Bool
-   (s/optional-key :using) DeleteUsingSchema
-   (s/optional-key :where) WhereSchema})
+  (merge
+   PrepareOptSchema
+   {(s/optional-key :only-if) WhereSchema
+    (s/optional-key :if-exists) s/Bool
+    (s/optional-key :using) DeleteUsingSchema
+    (s/optional-key :where) WhereSchema}))

@@ -49,7 +49,10 @@
 
 (s/defschema UpsertOptsSchema
   (conditional-upsert-schema
-   (merge UpsertWhereSchema UpsertUsingSchema)))
+   (merge
+    rs/PrepareOptSchema
+    UpsertWhereSchema
+    UpsertUsingSchema)))
 
 (s/defschema UpsertUsingWithTimestampSchema
   {(s/optional-key :ttl) s/Int
@@ -60,8 +63,10 @@
 
 (s/defschema UpsertOptsWithTimestampSchema
   (conditional-upsert-schema
-   (merge UpsertWhereSchema
-          UpsertUsingOnlyOptsWithTimestampSchema)))
+   (merge
+    rs/PrepareOptSchema
+    UpsertWhereSchema
+    UpsertUsingOnlyOptsWithTimestampSchema)))
 
 (s/defschema DeleteUsingWithTimestampSchema
   {:timestamp s/Int})
@@ -72,7 +77,9 @@
       (assoc :using DeleteUsingWithTimestampSchema)))
 
 (s/defschema DeleteUsingOnlyOptsWithTimestampSchema
-  {:using DeleteUsingWithTimestampSchema})
+  (merge
+   rs/PrepareOptSchema
+   {:using DeleteUsingWithTimestampSchema}))
 
 (s/defn upsert-opts->delete-opts :- rs/DeleteOptsSchema
   "remove irrelevant parts of upsert opts to match delete opts"
@@ -105,6 +112,7 @@
 
 (s/defschema DenormalizeOptsSchema
   (merge
+   rs/PrepareOptSchema
    UpsertUsingOnlyOptsWithTimestampSchema
    DenormalizeCallbackOptsSchema))
 
@@ -117,3 +125,7 @@
   (-> opts
       denormalize-opts->upsert-opts
       upsert-opts->delete-opts))
+
+(s/defn opts->prepare?-opt :- rs/PrepareOptSchema
+  [opts]
+  (select-keys opts [:prepare?]))
