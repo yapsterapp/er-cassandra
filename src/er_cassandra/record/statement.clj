@@ -68,7 +68,8 @@
   [prefix record]
   (->> record
        (map (fn [[k v]]
-              [(placeholder-kw prefix k) v]))))
+              [(placeholder-kw prefix k) v]))
+       (into {})))
 
 (s/defn prepare-where-placeholders
   "replace the values in a where with preparead-statement placeholders"
