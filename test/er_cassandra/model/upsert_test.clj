@@ -55,6 +55,22 @@
         (is (= :upsert/primary-record-upsert-error r))
         (is (= record-foo fr))))))
 
+(deftest prepare-upsert-test
+  (let [m (create-simple-entity)
+        id (uuid/v1)
+
+        record-foo {:id id :nick "foo"}]
+
+    (testing "upsert record-foo with prepared statements"
+      (let [[r e] @(m/upsert
+                    tu/*model-session*
+                    m
+                    record-foo
+                    (ts/default-timestamp-opt
+                     {:prepare? true}))
+            fr (fetch-record :simple_model_upsert_test :id id)]
+        (is (= record-foo fr))))))
+
 (deftest upsert-buffered-test
   (let [m (create-simple-entity)
         [id-foo id-bar] [(uuid/v1) (uuid/v1)]
