@@ -228,9 +228,11 @@
   "return true if the record has at least all columns of
    the entity uber-key"
   [entity record]
-  (let [r-cols (-> record keys set)
-        uk-cols (-> entity :primary-table :key flatten set)]
-    (empty? (set/difference uk-cols r-cols))))
+  (if (map? record)
+    (let [r-cols (-> record keys set)
+          uk-cols (-> entity :primary-table :key flatten set)]
+      (empty? (set/difference uk-cols r-cols)))
+    false))
 
 (defn satisfies-primary-key?
   "return true if key is the same as the full primary-key"
