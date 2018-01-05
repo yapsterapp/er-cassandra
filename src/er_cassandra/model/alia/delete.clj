@@ -16,7 +16,9 @@
     [fn-schema :as fns]
     [lookup :as l]
     [unique-key :as unique-key]]
-   [er-cassandra.model.alia.select :as alia-select])
+   [er-cassandra.model.alia.select :as alia-select]
+   [prpr.promise :refer [ddo]]
+   [er-cassandra.model.model-session :as ms])
   (:import
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
@@ -196,19 +198,23 @@
     record-or-key-value :- rs/RecordOrKeyValueSchema
     opts :- rs/DeleteOptsSchema]
 
-   (with-context deferred-context
-     (mlet [[record & _] (alia-select/select* session
-                                              entity
-                                              key
-                                              record-or-key-value
-                                              nil)
-            opts (ts/default-timestamp-opt opts)]
-       (if record
-         (delete-with-primary
-          session
-          entity
-          (-> entity :primary-table :key)
-          record
-          opts)
-         (return
-          [:ok nil :no-primary-record]))))))
+   (ddo [;; if it's a record, don't re-select
+         [record & _] (if (t/satisfies-entity? entity record-or-key-value)
+                        (return [record-or-key-value])
+                        (alia-select/select* session
+                                             entity
+                                             key
+                                             record-or-key-value
+                                             (fns/opts->prepare?-opt
+                                              opts)))
+         opts (ts/default-timestamp-opt opts)]
+
+     (if record
+       (delete-with-primary
+        session
+        entity
+        (-> entity :primary-table :key)
+        record
+        opts)
+       (return
+        [:ok nil :no-primary-record])))))

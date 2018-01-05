@@ -3,6 +3,7 @@
    [cats.core :refer [mlet return >>=]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
+   [clojure.set :as set]
    [schema.core :as s]
    [clj-time.core :as t]
    [er-cassandra.util.vector :as v]
@@ -222,6 +223,14 @@
 (defmacro defentity
   [name entity-spec]
   `(def ~name (create-entity ~entity-spec)))
+
+(defn satisfies-entity?
+  "return true if the record has at least all columns of
+   the entity uber-key"
+  [entity record]
+  (let [r-cols (-> record keys set)
+        uk-cols (-> entity :primary-table :key flatten set)]
+    (empty? (set/difference uk-cols r-cols))))
 
 (defn satisfies-primary-key?
   "return true if key is the same as the full primary-key"
