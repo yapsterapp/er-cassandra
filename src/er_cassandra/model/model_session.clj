@@ -53,6 +53,10 @@
   (conj-row [_ row k v] (assoc! row (keyword k) v))
   (finalize-row [_ row] (map->EntityInstance (persistent! row))))
 
+(defn create-entity-instance
+  [m]
+  (map->EntityInstance m))
+
 ;; print the ModelInstance records as vanilla maps for now
 (defmethod print-method er_cassandra.model.model_session.EntityInstance [x writer]
   (print-method (into {} x) writer))
