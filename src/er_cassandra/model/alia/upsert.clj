@@ -280,7 +280,7 @@
               :upsert/require-explicit-select-upsert
               {:message (str "this entity has foreign keys, "
                              "so requires the previous version "
-                             "to upsert. either use select-upsert"
+                             "to upsert. either use select-upsert "
                              "or change")
                :entity (with-out-str (pprint entity))
                :record record
