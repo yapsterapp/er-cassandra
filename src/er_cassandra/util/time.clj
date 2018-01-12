@@ -44,8 +44,8 @@
    timestamps and if they are equal comparing their
    binary encodings - this does the same"
   [timeuuid-a timeuuid-b]
-  (let [ts-a (-> timeuuid-a uuid/get-timestamp)
-        ts-b (-> timeuuid-b uuid/get-timestamp)
+  (let [ts-a (some-> timeuuid-a uuid/get-timestamp)
+        ts-b (some-> timeuuid-b uuid/get-timestamp)
         tsc (compare ts-a ts-b)]
     (if (not= tsc 0)
       tsc
@@ -55,8 +55,8 @@
   "it seems cassandra always compares timeuuids as lower than
    non-timeuuids, so that's a thing"
   [a b]
-  (let [ts-a (uuid/get-timestamp a)
-        ts-b (uuid/get-timestamp b)]
+  (let [ts-a (some-> a uuid/get-timestamp)
+        ts-b (some-> b uuid/get-timestamp)]
     (cond
       (and ts-a ts-b)
       (timeuuid-comparator a b)
