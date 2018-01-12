@@ -35,16 +35,22 @@
   "it seems cassandra always compares timeuuids as lower than
    non-timeuuids, so that's a thing"
   [a b]
-  (let [a-timeuuid? (and (instance? UUID a)
-                          (= 1 (clj-uuid/get-version a)))
-        b-timeuuid? (and (instance? UUID b)
-                          (= 1 (clj-uuid/get-version b)))]
+  (let [ts-a (some-> a uuid/get-timestamp)
+        ts-b (some-> b uuid/get-timestamp)]
     (cond
-      (and a-timeuuid? b-timeuuid?)
+      (and ts-a ts-b)
       (timeuuid-comparator a b)
 
-      :else
-      (compare a b))))
+      (and (nil? ts-a) (nil? ts-b))
+      (compare (str a) (str b))
+
+      ts-a
+      -1
+
+      ts-b
+      1
+
+      :else (throw (ex-info "huh?" {:a a :b b})))))
 
 (defprotocol ICassandraUUIDCompare
   (-compare [a b]))
@@ -72,7 +78,7 @@
                       {:a a :b b}))))
 
   Object
-  (-compare [a b] (cassandra-uuid-compare a b))
+  (-compare [a b] (compare a b))
 
   nil
   (-compare [a b] (compare a b)))

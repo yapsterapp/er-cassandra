@@ -17,6 +17,11 @@
    #uuid "13e17bf0-f7c2-11e7-bf96-d454f28d853f" ;; time later, lexically earlier
    ])
 
+(def v4-lex-lo-time-v4-lex-hi
+  [#uuid "1effaa20-8f88-4f34-be5f-0d81646c015e"
+   #uuid "723a6b10-e194-11e7-83df-e038a7a06aab"
+   #uuid "9df1d6a2-3383-4b80-8efe-e68fef5f2c36"])
+
 (deftest -compare-test
   (testing "correctly compares time-lexical contradictory timeuuids"
     (let [[before after] contradictory-lex-timeuuids]
@@ -36,6 +41,14 @@
       (is (> (sut/-compare hi t) 0))
       (is (> (sut/-compare t low) 0))
       (is (> (sut/-compare hi low) 0))))
+
+  (testing "always compares timeuuids below other uuids"
+    (let [[v4lo t v4hi] v4-lex-lo-time-v4-lex-hi]
+      (is (< (compare (str v4lo) (str t)) 0))
+      (is (> (sut/-compare v4lo t) 0))
+
+      (is (< (compare (str t) (str v4hi)) 0))
+      (is (< (sut/-compare t v4hi) 0))))
 
   (testing "errors when a uuid is compared with another type"
     (let [[low t hi] (same-time-timeuuids)]
