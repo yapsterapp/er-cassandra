@@ -178,6 +178,7 @@
                                :truncate]))
          (mapcat vals)
          (filter identity)
+         (map name) ;; coerce kw to string
          distinct
          sort
          vec)))
