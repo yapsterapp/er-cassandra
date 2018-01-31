@@ -10,7 +10,7 @@
                org.clojure/tools.reader
                org.clojure/tools.logging]
 
-  :dependencies [[org.clojure/clojure "1.8.0"]
+  :dependencies [[org.clojure/clojure "1.9.0"]
 
                  [org.clojure/tools.cli "0.3.5"]
                  [org.clojure/core.match "0.3.0-alpha4"]
@@ -30,7 +30,7 @@
                  [employeerepublic/deferst "0.5.0"
                   :exclusions [funcool/promesa
                                manifold]]
-                 [employeerepublic/promisespromises "_"]]
+                 [employeerepublic/promisespromises "0.1"]]
 
   :aliases {"test-repl" ["with-profile" "cassandra-unit,repl" "repl"]}
 
