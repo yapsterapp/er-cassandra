@@ -2,14 +2,15 @@
   (:require
    [clojure.test :as test :refer [deftest is are use-fixtures]]
    [schema.test :as st]
-   [er-cassandra.model.callbacks.search-key-callback :as cb]))
+   [er-cassandra.model.callbacks.search-key-callback :as cb]
+   [er-cassandra.util.string :refer [normalize-string]]))
 
 (use-fixtures :once st/validate-schemas)
 
 (deftest test-normalize-string
-  (is (= "foo" (cb/normalize-string "foo")))
+  (is (= "foo" (normalize-string "foo")))
   (is (= "aaeeiioooouuuu aaeeiioooouuuu"
-         (cb/normalize-string "aáeéiíoóöőuúüű AÁEÉIÍOÓÖŐUÚÜŰ"))))
+         (normalize-string "aáeéiíoóöőuúüű AÁEÉIÍOÓÖŐUÚÜŰ"))))
 
 (deftest test-prepare-string
   (is (= [] (@#'cb/prepare-string "")))

@@ -48,7 +48,9 @@
   [table-name table-def]
   @(s/execute
     *session*
-    (str "drop table if exists " (name table-name)))
+    (str "drop table if exists " (name table-name))
+    {})
   @(s/execute
     *session*
-    (str "create table " (name table-name) " " table-def)))
+    (str "create table " (name table-name) " " table-def)
+    {}))

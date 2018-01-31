@@ -29,7 +29,8 @@
    (d/chain (session/execute session
                              (table-metadata-query
                               (name keyspace)
-                              (name table)))
+                              (name table))
+                             {})
             first)))
 
 (defn ^:private usertype-metadata-query
@@ -49,7 +50,8 @@
    (d/chain (session/execute session
                              (usertype-metadata-query
                               (name keyspace)
-                              (name type)))
+                              (name type))
+                             {})
             first)))
 
 (defn ^:private column-metadata-query
@@ -70,7 +72,8 @@
    (session/execute session
                     (column-metadata-query
                      (name keyspace)
-                     (name table)))))
+                     (name table))
+                    {})))
 
 (defn column-names
   ([^Session session table]

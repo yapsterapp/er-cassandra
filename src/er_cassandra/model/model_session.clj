@@ -17,8 +17,16 @@
     [this ^Entity entity key record-or-key-value opts]
     "select entity instances, returning a stream of results")
 
+  (-change [this ^Entity entity old-record record opts]
+    "change a single entity instance given the previous value")
+
   (-upsert [this ^Entity entity record opts]
     "upsert a single entity instance")
+
+  (-select-upsert [this ^Entity entity record opts]
+    "upsert a single entity instance, first selecting
+     the last version from the db if the entity has
+     any foreign keys")
 
   (-delete [this ^Entity entity key record-or-key-value opts]
     "delete a single entity instance")
@@ -44,6 +52,10 @@
   (init-row [_] (transient {}))
   (conj-row [_ row k v] (assoc! row (keyword k) v))
   (finalize-row [_ row] (map->EntityInstance (persistent! row))))
+
+(defn create-entity-instance
+  [m]
+  (map->EntityInstance m))
 
 ;; print the ModelInstance records as vanilla maps for now
 (defmethod print-method er_cassandra.model.model_session.EntityInstance [x writer]

@@ -10,7 +10,8 @@
    [er-cassandra.record :as r]
    [er-cassandra.model :as m]
    [er-cassandra.model.util.timestamp :as ts]
-   [er-cassandra.model.types :as t]))
+   [er-cassandra.model.types :as t]
+   [prpr.promise :as pr]))
 
 (use-fixtures :once st/validate-schemas)
 (use-fixtures :each (tu/with-model-session-fixture))
@@ -42,15 +43,32 @@
         (is (= record-foo fr))))
 
     (testing "doesn't insert record-bar if condition fails"
+      (let [[r e] @(pr/catch-error
+                    (m/upsert
+                     tu/*model-session*
+                     m
+                     record-bar
+                     (ts/default-timestamp-opt
+                      {:only-if [[:= :nick "bar"]]})))
+
+            fr (fetch-record :simple_model_upsert_test :id id)]
+        (is (= :upsert/primary-record-upsert-error r))
+        (is (= record-foo fr))))))
+
+(deftest prepare-upsert-test
+  (let [m (create-simple-entity)
+        id (uuid/v1)
+
+        record-foo {:id id :nick "foo"}]
+
+    (testing "upsert record-foo with prepared statements"
       (let [[r e] @(m/upsert
                     tu/*model-session*
                     m
-                    record-bar
+                    record-foo
                     (ts/default-timestamp-opt
-                     {:only-if [[:= :nick "bar"]]}))
-
+                     {:prepare? true}))
             fr (fetch-record :simple_model_upsert_test :id id)]
-        (is (= nil r))
         (is (= record-foo fr))))))
 
 (deftest upsert-buffered-test

@@ -8,7 +8,8 @@
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.alia.unique-key :as uk]
-   [qbits.hayt :as h]))
+   [qbits.hayt :as h]
+   [prpr.promise :as pr]))
 
 (use-fixtures :once st/validate-schemas)
 (use-fixtures :each (tu/with-model-session-fixture))
@@ -197,7 +198,8 @@
         (is (= {:uber-key (t/uber-key m)
                 :uber-key-value [ida]
                 :key [:nick]
-                :key-value ["foo"]}))
+                :key-value ["foo"]}
+               key-desc))
         (is (= :deleted reason))
         (is (= nil dr))))
 
@@ -213,7 +215,8 @@
         (is (= {:uber-key (t/uber-key m)
                 :uber-key-value [ida]
                 :key [:nick]
-                :key-value ["foo"]}))
+                :key-value ["foo"]}
+               key-desc))
         (is (= :stale reason))))
 
     (testing "attempting to release someone else's key"
@@ -229,9 +232,10 @@
 
         (is (= :ok status))
         (is (= {:uber-key (t/uber-key m)
-                :uber-key-value [ida]
+                :uber-key-value [idb]
                 :key [:nick]
-                :key-value ["foo"]}))
+                :key-value ["foo"]}
+               key-desc))
         (is (= :stale reason))))))
 
 
@@ -549,7 +553,7 @@
                 m
                 {:id id :nick "foo" :a "ana" :b "anb"}
                 (ts/default-timestamp-opt))]
-        (is (= [{:id id :nick nil :a "ana" :b "anb"} nil] r))))
+        (is (= {:id id :a "ana" :b "anb"} r))))
 
     (testing "simple insert with a timestamp & ttl"
       (let [id (uuid/v1)
@@ -567,13 +571,13 @@
                  {:columns [:id :nick :a :b
                             (h/as (h/cql-fn :ttl :a) :a_ttl)
                             (h/as (h/cql-fn :writetime :a) :a_writetime)]})]
-        (is (= [{:id id :nick nil :a "ana" :b "anb"} nil] r))
+        (is (= {:id id :a "ana" :b "anb"} r))
         (is (= {:id id :nick nil :a "ana" :b "anb"}
                (select-keys fr [:id :nick :a :b])))
         (is (some? (:a_ttl fr)))
-        (is (= (> (:a_ttl fr) 5)))
+        (is (> (:a_ttl fr) 5))
         (is (some? (:a_writetime fr)))
-        (is (= (> (:a_writetime fr) 5)))))
+        (is (> (:a_writetime fr) 5))))
 
     (testing "update existing record"
       (let [id (uuid/v1)
@@ -583,8 +587,15 @@
                 tu/*model-session*
                 m
                 {:id id :nick "foo" :a "newa"}
-                (ts/default-timestamp-opt))]
-        (is (= [{:id id :nick "blah" :a "newa" :b "oldb"} nil] r))))
+                (ts/default-timestamp-opt))
+
+            fr @(r/select-one
+                 tu/*model-session*
+                 :upsert_primary_without_unique_keys_test
+                 [:id]
+                 [id])]
+        (is (= {:id id :a "newa"} r))
+        (is (= {:id id :a "newa" :b "oldb" :nick "blah"} fr))))
 
     (testing "update existing record with a timestamp & ttl"
       (let [id (uuid/v1)
@@ -606,13 +617,13 @@
                  {:columns [:id :nick :a :b
                             (h/as (h/cql-fn :ttl :a) :a_ttl)
                             (h/as (h/cql-fn :writetime :a) :a_writetime)]})]
-        (is (= [{:id id :nick "blah" :a "newa" :b "oldb"} nil] r))
+        (is (= {:id id :a "newa"} r))
         (is (= {:id id :nick "blah" :a "newa" :b "oldb"}
                (select-keys fr [:id :nick :a :b])))
         (is (some? (:a_ttl fr)))
-        (is (= (> (:a_ttl fr) 5)))
+        (is (> (:a_ttl fr) 5))
         (is (some? (:a_writetime fr)))
-        (is (= (> (:a_writetime fr) 5)))))
+        (is (> (:a_writetime fr) 5))))
 
     (testing "with if-not-exists"
 
@@ -624,7 +635,7 @@
                     {:id id :nick "foo" :a "ana" :b "anb"}
                     (ts/default-timestamp-opt
                      {:if-not-exists true}))]
-            (is (= [{:id id :a "ana" :b "anb"} nil] r))))
+            (is (= {:id id :a "ana" :b "anb"} r))))
 
         (testing "with a TTL"
           (let [r @(uk/upsert-primary-record-without-unique-keys
@@ -640,29 +651,31 @@
                      [:id]
                      [id-b]
                      {:columns [:id :nick :a :b (h/as (h/cql-fn :ttl :a) :a_ttl)]})]
-            (is (= [{:id id-b :a "ana" :b "anb"} nil] r))
+            (is (= {:id id-b :a "ana" :b "anb"} r))
             (is (= {:id id-b :nick nil :a "ana" :b "anb"}
                    (select-keys fr [:id :nick :a :b])))
             (is (some? (:a_ttl fr)))
-            (is (= (> (:a_ttl fr) 5)))))
+            (is (> (:a_ttl fr) 5))))
 
         (testing "if it does already exist"
-          (let [r @(uk/upsert-primary-record-without-unique-keys
-                    tu/*model-session*
-                    m
-                    {:id id :nick "foo" :a "ana" :b "anb"}
-                    (ts/default-timestamp-opt
-                     {:if-not-exists true}))]
-            (is (= [nil [[:upsert/primary-record-upsert-error
-                          {:record
-                           {:id id,
-                            :nick "foo",
-                            :a "ana",
-                            :b "anb"},
-                           :if-not-exists true,
-                           :only-if nil,
-                           :tag :upsert/primary-record-upsert-error,
-                           :message "couldn't upsert primary record"}]]]
+          (let [r @(pr/catch-error
+                       (uk/upsert-primary-record-without-unique-keys
+                        tu/*model-session*
+                        m
+                        {:id id :nick "foo" :a "ana" :b "anb"}
+                        (ts/default-timestamp-opt
+                         {:if-not-exists true})))]
+            (is (= [:upsert/primary-record-upsert-error
+                    {:error-tag :upsert/primary-record-upsert-error,
+                     :message "couldn't upsert primary record"
+                     :primary-table :upsert_primary_without_unique_keys_test
+                     :uber-key-value [id]
+                     :record {:id id
+                              :nick "foo"
+                              :a "ana"
+                              :b "anb"}
+                     :if-not-exists true
+                     :only-if nil}]
                    r))))))
 
     (testing "with only-if"
@@ -676,7 +689,7 @@
                   {:id id :nick "bloogh" :a "newa" :b "newb"}
                   (ts/default-timestamp-opt
                    {:only-if [[:= :nick "bloogh"]]}))]
-          (is (= [{:id id :nick "bloogh" :a "newa" :b "newb"} nil]
+          (is (= {:id id :a "newa" :b "newb"}
                  r))))
 
       (testing "if it already exists with a TTL"
@@ -696,32 +709,33 @@
                    [:id]
                    [id]
                    {:columns [:id :nick :a :b (h/as (h/cql-fn :ttl :a) :a_ttl)]})]
-          (is (= [{:id id :nick "bloogh" :a "newa" :b "newb"} nil]
+          (is (= {:id id :a "newa" :b "newb"}
                  r))
           (is (= {:id id :nick "bloogh" :a "newa" :b "newb"}
                  (select-keys fr [:id :nick :a :b])))
           (is (some? (:a_ttl fr)))
-          (is (= (> (:a_ttl fr) 5)))))
+          (is (> (:a_ttl fr) 5))))
 
       (testing "if it doesn't already exist"
         (let [id (uuid/v1)
-              r @(uk/upsert-primary-record-without-unique-keys
-                  tu/*model-session*
-                  m
-                  {:id id :nick "foogle" :a "newa" :b "newb"}
-                  (ts/default-timestamp-opt
-                   {:only-if [[:= :nick "blah"]]}))]
-          (is (= [nil
-                  [[:upsert/primary-record-upsert-error
-                    {:record
-                     {:id id,
-                      :nick "foogle",
-                      :a "newa",
-                      :b "newb"},
-                     :if-not-exists nil,
-                     :only-if [[:= :nick "blah"]],
-                     :tag :upsert/primary-record-upsert-error,
-                     :message "couldn't upsert primary record"}]]]
+              r @(pr/catch-error
+                  (uk/upsert-primary-record-without-unique-keys
+                   tu/*model-session*
+                   m
+                   {:id id :nick "foogle" :a "newa" :b "newb"}
+                   (ts/default-timestamp-opt
+                    {:only-if [[:= :nick "blah"]]})))]
+          (is (= [:upsert/primary-record-upsert-error
+                  {:error-tag :upsert/primary-record-upsert-error
+                   :message "couldn't upsert primary record"
+                   :primary-table :upsert_primary_without_unique_keys_test
+                   :uber-key-value [id]
+                   :record {:id id
+                            :nick "foogle"
+                            :a "newa"
+                            :b "newb"}
+                   :if-not-exists nil
+                   :only-if [[:= :nick "blah"]]}]
                  r)))))))
 
 (deftest update-unique-keys-after-primary-upsert-test
@@ -896,6 +910,7 @@
              acquire-failures] @(uk/upsert-primary-record-and-update-unique-keys
                                  tu/*model-session*
                                  m
+                                 nil
                                  updated-a
                                  (ts/default-timestamp-opt))]
         (is (= updated-a record))
@@ -911,21 +926,23 @@
                        :nick "foofoo"
                        :email #{"foofoo@bar.com"}
                        :phone ["12345654321"]}
-            [record
-             errors] @(uk/upsert-primary-record-and-update-unique-keys
-                                 tu/*model-session*
-                                 m
-                                 updated-a
-                                 (ts/default-timestamp-opt
-                                  {:if-not-exists true}))]
-        (is (= nil record))
-        (is (= [[:upsert/primary-record-upsert-error
-                 {:record updated-a,
-                  :if-not-exists true,
-                  :only-if nil,
-                  :tag :upsert/primary-record-upsert-error,
-                  :message "couldn't upsert primary record"}]]
-               errors))
+            r @(pr/catch-error
+                       (uk/upsert-primary-record-and-update-unique-keys
+                        tu/*model-session*
+                        m
+                        nil
+                        updated-a
+                        (ts/default-timestamp-opt
+                         {:if-not-exists true})))]
+        (is (= [:upsert/primary-record-upsert-error
+                {:error-tag :upsert/primary-record-upsert-error
+                 :message "couldn't upsert primary record"
+                 :primary-table :mixed_unique_key_test
+                 :uber-key-value [org-id ida]
+                 :record updated-a
+                 :if-not-exists true
+                 :only-if nil}]
+               r))
         (is (= old-a (fetch-record :mixed_unique_key_test
                                    [:org_id :id] [org-id ida])))))
 
@@ -938,20 +955,23 @@
                        :nick "foofoo"
                        :email #{"foofoo@bar.com"}
                        :phone ["12345654321"]}
-            [record
-             errors] @(uk/upsert-primary-record-and-update-unique-keys
-                                 tu/*model-session*
-                                 m
-                                 updated-a
-                                 (ts/default-timestamp-opt
-                                  {:only-if [[:= :nick "bar"]]}))]
-        (is (= nil record))
-        (is (= [[:upsert/primary-record-upsert-error
-                 {:record updated-a,
-                  :if-not-exists nil,
-                  :only-if [[:= :nick "bar"]],
-                  :tag :upsert/primary-record-upsert-error,
-                  :message "couldn't upsert primary record"}]]
-               errors))
+            r @(pr/catch-error
+                       (uk/upsert-primary-record-and-update-unique-keys
+                        tu/*model-session*
+                        m
+                        nil
+                        updated-a
+                        (ts/default-timestamp-opt
+                         {:only-if [[:= :nick "bar"]]})))]
+
+        (is (= [:upsert/primary-record-upsert-error
+                {:error-tag :upsert/primary-record-upsert-error
+                 :message "couldn't upsert primary record"
+                 :primary-table :mixed_unique_key_test
+                 :uber-key-value [org-id ida]
+                 :record updated-a
+                 :if-not-exists nil
+                 :only-if [[:= :nick "bar"]]}]
+               r))
         (is (= old-a (fetch-record :mixed_unique_key_test
                                    [:org_id :id] [org-id ida])))))))

@@ -2,10 +2,8 @@
 
 (defprotocol Session
   (execute
-    [this statement]
     [this statement opts])
   (execute-buffered
-    [this statement]
     [this statement opts])
   (close [this]))
 

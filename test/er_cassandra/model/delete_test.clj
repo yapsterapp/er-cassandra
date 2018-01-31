@@ -42,6 +42,27 @@
         (is (= (into {} r-record) record-foo)) ;; record / map equivalence
         (is (= r-action :deleted))))))
 
+(deftest prepare-delete-test
+  (let [m (create-simple-entity)
+        [id-foo id-bar] [(uuid/v1) (uuid/v1)]
+        record-foo {:id id-foo :nick "foo"}
+        _ (insert-record :simple_model_delete_test record-foo)]
+
+    (testing "delete record"
+      (let [[r-code
+             r-record
+             r-action] @(m/delete
+                         tu/*model-session*
+                         m
+                         :id
+                         id-foo
+                         {:prepare? true})
+            fr (fetch-record :simple_model_delete_test :id id-foo)]
+        (is (= nil fr))
+        (is (= r-code :ok))
+        (is (= (into {} r-record) record-foo)) ;; record / map equivalence
+        (is (= r-action :deleted))))))
+
 (deftest delete-buffered-test
   (let [m (create-simple-entity)
         [id-foo id-bar] [(uuid/v1) (uuid/v1)]

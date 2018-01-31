@@ -3,6 +3,7 @@
    [cats.core :refer [mlet return >>=]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
+   [clojure.set :as set]
    [schema.core :as s]
    [clj-time.core :as t]
    [er-cassandra.util.vector :as v]
@@ -15,7 +16,7 @@
   (s/make-fn-schema s/Any [[{s/Keyword s/Any}]]))
 
 (defprotocol ICallback
-  (run-callback [_ session entity record]
+  (-run-callback [_ session entity record opts]
     "run a callback on a record of an entity returning
      updated-record or Deferred<updated-record>"))
 
@@ -55,10 +56,14 @@
 (s/defschema SecondaryKeySchema
   s/Keyword)
 
-;; just map source fields to target fields for now
-;; :source primary-key columns will always be included
+(s/defschema KeywordOrFnSchema
+  (s/conditional
+   fn? (s/pred fn?)
+   :else s/Keyword))
+
+;; a map of target fields from source fields-or-fns
 (s/defschema DenormalizeSchema
-  {s/Keyword s/Keyword})
+  {s/Keyword KeywordOrFnSchema})
 
 ;; a Relationship allows fields from a parent Entity or
 ;; one of its index tables to be
@@ -219,6 +224,16 @@
   [name entity-spec]
   `(def ~name (create-entity ~entity-spec)))
 
+(defn satisfies-entity?
+  "return true if the record has at least all columns of
+   the entity uber-key"
+  [entity record]
+  (if (map? record)
+    (let [r-cols (-> record keys set)
+          uk-cols (-> entity :primary-table :key flatten set)]
+      (empty? (set/difference uk-cols r-cols)))
+    false))
+
 (defn satisfies-primary-key?
   "return true if key is the same as the full primary-key"
   [primary-key key]
@@ -287,6 +302,11 @@
   [^Entity entity]
   (get-in entity [:primary-table :key]))
 
+(defn unique-key-tables
+  [^Entity entity]
+  (->> entity
+       :unique-key-tables))
+
 (defn mutable-secondary-tables
   [^Entity entity]
   (->> entity
@@ -304,8 +324,18 @@
   [^Entity entity]
   (distinct
    (concat (uber-key entity)
+           (mapcat :key (:unique-key-tables entity))
            (mapcat :key (:secondary-tables entity))
            (mapcat :key (:lookup-tables entity)))))
+
+(defn all-maintained-foreign-key-cols
+  "a list of all cols used in foreign keys maintained by this lib (rather than c* MVs)"
+  [^Entity entity]
+  (distinct
+   (concat
+    (->> entity :unique-key-tables (mapcat :key))
+    (->> entity :secondary-tables (filter (complement :view?)) (mapcat :key))
+    (->> entity :lookup-tables (filter (complement :view?)) (mapcat :key)))))
 
 (defn extract-uber-key-value
   [^Entity entity record]
@@ -338,7 +368,7 @@
                             (cb record)
 
                             (satisfies? ICallback cb)
-                            (run-callback cb session entity record)
+                            (-run-callback cb session entity record opts)
 
                             :else
                             (throw

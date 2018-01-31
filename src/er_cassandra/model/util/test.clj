@@ -64,10 +64,12 @@
   [table-name table-def]
   @(s/execute
     *model-session*
-    (str "drop table if exists " (name table-name)))
+    (str "drop table if exists " (name table-name))
+    {})
   @(s/execute
     *model-session*
-    (str "create table " (name table-name) " " table-def)))
+    (str "create table " (name table-name) " " table-def)
+    {}))
 
 (defn fetch-records
   [table key key-value]
@@ -93,7 +95,7 @@
   "upsert instances with a timestamp 1ms in the past by default"
   ([entity record] (upsert-instance entity record nil))
   ([entity record opts]
-   @(m/upsert *model-session* entity record (ts/past-timestamp-opt opts))))
+   @(m/select-upsert *model-session* entity record (ts/past-timestamp-opt opts))))
 
 (defn record-stream
   ([table-name] (record-stream table-name {}))

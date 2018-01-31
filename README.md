@@ -131,10 +131,10 @@ The `-buffered` operations return a `Stream` of the response records.
 
 (r/delete session :users :id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f")
 
-(s/execute session "select * from users where id=f11c0190-40de-11e5-bb66-c37b19130f2f")
+(s/execute session "select * from users where id=f11c0190-40de-11e5-bb66-c37b19130f2f" {})
 ;; returns a Deferred<record-map-seq>
 
-(s/execute-buffered session (h/select :users (h/where [[:= :id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f"]])))
+(s/execute-buffered session (h/select :users (h/where [[:= :id #uuid "f11c0190-40de-11e5-bb66-c37b19130f2f"]])) {})
 ;; returns a Stream of record maps
 
 ```

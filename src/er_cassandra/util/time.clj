@@ -3,9 +3,11 @@
    [clj-time.core :as t]
    [clj-time.coerce :as tc]
    [clj-time.format :as f]
-   [clj-uuid :as uuid])
+   [clj-uuid :as uuid]
+   [er-cassandra.uuid :as c.uuid])
   (:import
-   [java.util UUID]))
+   [java.util UUID]
+   [com.datastax.driver.core.utils UUIDs]))
 
 ;; make things work with v1 UUIDs
 (extend-protocol tc/ICoerce
@@ -38,14 +40,8 @@
     (t/to-time-zone % t/utc)
     (f/unparse timestamp-format-utc-millis %)))
 
-(defn timeuuid-comparator
-  "cassandra compares timeuuids by first comparing their
-   timestamps and if they are equal comparing their
-   binary encodings - this does the same"
-  [timeuuid-a timeuuid-b]
-  (let [ts-a (-> timeuuid-a uuid/get-timestamp)
-        ts-b (-> timeuuid-b uuid/get-timestamp)
-        tsc (compare ts-a ts-b)]
-    (if (not= tsc 0)
-      tsc
-      (compare (str timeuuid-a) (str timeuuid-b)))))
+(def time->start-of-timeuuid c.uuid/time->start-of-timeuuid)
+
+(def timeuuid-comparator c.uuid/timeuuid-comparator)
+
+(def cassandra-uuid-compare c.uuid/cassandra-uuid-compare)

@@ -56,6 +56,8 @@
   select-many-cat
   select-many-cat-buffered]
 
- [er-cassandra.model.upsert upsert upsert-many upsert-buffered]
+ [er-cassandra.model.upsert
+  change change-buffered
+  select-upsert upsert upsert-many upsert-buffered]
 
  [er-cassandra.model.delete delete delete-many delete-buffered])

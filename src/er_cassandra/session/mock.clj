@@ -18,8 +18,6 @@
 
 (defrecord MapMockSession [statement-responses statement-log-atom]
   Session
-  (execute [this statement]
-    (s/execute this statement {}))
   (execute [_ statement opts]
     (swap! statement-log-atom conj statement)
     (if (contains? statement-responses statement)
@@ -79,8 +77,6 @@
                              response-log-atom
                              print?]
   Session
-  (execute [this statement]
-    (s/execute this statement {}))
   (execute [_ statement opts]
     (swap! statement-log-atom conj statement)
 
@@ -105,8 +101,6 @@
                           {:statement statement
                            :statement-log @statement-log-atom}))))))
 
-  (execute-buffered [this statement]
-    (s/execute-buffered this statement {}))
   (execute-buffered [this statement opts]
     (throw (ex-info "not implemented" {})))
 

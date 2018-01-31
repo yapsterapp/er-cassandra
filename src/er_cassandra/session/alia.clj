@@ -8,61 +8,106 @@
    [qbits.alia.policy.load-balancing :as lb]
    [qbits.alia.manifold :as aliam]
    [qbits.hayt :as h]
-   [cats.core :refer [mlet return >>=]]
+   [cats.core :as monad :refer [mlet return >>=]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
-   [er-cassandra.session :as s])
+   [manifold.deferred :as d]
+   [er-cassandra.session :as s]
+   [prpr.promise :as pr :refer [ddo]])
   (:import
    [er_cassandra.session
     Session
     SpySession
     KeyspaceProvider]))
 
+(defn prepare-async
+  [alia-session statement]
+  (let [r (d/deferred)]
+    (debug "preparing: " statement)
+    (alia/prepare-async
+     alia-session
+     statement
+     {:success (partial d/success! r)
+      :error (partial d/error! r)})
+    r))
+
+(defn maybe-prepare
+  [alia-session
+   prepared-stmts-atom
+   str-statement]
+  (if-let [ps (get @prepared-stmts-atom
+                   str-statement)]
+    (do
+      (debug "re-using prepared-statement: " str-statement)
+      (return deferred-context ps))
+    (ddo [ps (prepare-async alia-session str-statement)]
+      (swap! prepared-stmts-atom
+             assoc
+             str-statement
+             ps)
+      ps)))
+
 (defn- execute*
   [alia-session
+   prepared-stmts-atom
    statement
-   {trace? :trace?
+   {values :values
+    trace? :trace?
+    prepare? :prepare?
     :as opts}]
-  (aliam/execute
-   alia-session
-   (let [str-statement (if (string? statement)
-                         statement
-                         (h/->raw statement))]
-     (when trace?
-       (if (true? trace?)
-         (debug str-statement)
-         (log trace? str-statement)))
-     str-statement)
-   (-> opts
-       (dissoc :trace?))))
+  (ddo [:let [str-statement (if (string? statement)
+                              statement
+                              (h/->raw statement))]
+        exec-statement (if prepare?
+                         (maybe-prepare alia-session
+                                        prepared-stmts-atom
+                                        str-statement)
+                         (return str-statement))]
+    (when trace?
+      (if (true? trace?)
+        (debug str-statement)
+        (log trace? str-statement)))
+    (aliam/execute
+     alia-session
+     exec-statement
+     (-> opts
+         (dissoc :trace? :prepare?)))))
 
 (defn- execute-buffered*
   "execute a statement returning a Deferred<Stream<record>>"
   [alia-session
+   prepared-stmts-atom
    statement
-   {trace? :trace?
+   {values :values
+    trace? :trace?
+    prepare? :prepare?
     :as  opts}]
-  (return
-   deferred-context
-   (aliam/execute-buffered
-    alia-session
-    (let [str-statement (if (string? statement)
-                          statement
-                          (h/->raw statement))]
-      (when trace?
-        (if (true? trace?)
-          (debug str-statement)
-          (log trace? str-statement)))
-      str-statement)
-    (-> opts
-        (dissoc :trace?)))))
+  (ddo [:let [str-statement (if (string? statement)
+                              statement
+                              (h/->raw statement))]
+        exec-statement (if prepare?
+                         (maybe-prepare alia-session
+                                        prepared-stmts-atom
+                                        str-statement)
+                         (return str-statement))]
+    (when trace?
+      (if (true? trace?)
+        (debug str-statement)
+        (log trace? str-statement)))
+
+    (return
+     (aliam/execute-buffered
+      alia-session
+      exec-statement
+      (-> opts
+          (dissoc :trace? :prepare?))))))
 
 (defn shutdown-session-and-cluster
   [session]
   (info "closing underlying alia session and cluster")
   (let [cluster (.getCluster session)]
     (alia/shutdown session)
-    (alia/shutdown cluster)))
+    (alia/shutdown cluster)                                                                                                                                                                                                                ))
 
 (defnk ^:private create-alia-session*
   "returns a Deferred<com.datastax.driver.core/Session>"
@@ -86,28 +131,24 @@
                    (fn [_]
                      (as-> stmt %
                        (str/replace % "${keyspace}" keyspace)
-                       (alia/execute alia-session %))
+                       (alia/execute alia-session % {}))
                      (return deferred-context true)))]
 
     (with-context deferred-context
       (mlet [_ (if (not-empty init-fns)
                  (apply >>= (return true) init-fns)
                  (return true))
-             _ (alia/execute alia-session (str "USE " keyspace ";"))]
+             _ (alia/execute alia-session (str "USE " keyspace ";") {})]
         (return alia-session)))))
 
-(defrecord AliaSession [keyspace alia-session trace?]
+(defrecord AliaSession [keyspace alia-session prepared-stmts-atom trace?]
   KeyspaceProvider
   (keyspace [_] keyspace)
   Session
-  (execute [_ statement]
-    (execute* alia-session statement {}))
   (execute [_ statement opts]
-    (execute* alia-session statement (assoc opts :trace? trace?)))
-  (execute-buffered [_ statement]
-    (execute-buffered* alia-session statement {}))
+    (execute* alia-session prepared-stmts-atom statement (assoc opts :trace? trace?)))
   (execute-buffered [_ statement opts]
-    (execute-buffered* alia-session statement (assoc opts :trace? trace?)))
+    (execute-buffered* alia-session prepared-stmts-atom statement (assoc opts :trace? trace?)))
   (close [_]
     (shutdown-session-and-cluster alia-session)))
 
@@ -116,11 +157,12 @@
   (with-context deferred-context
     (mlet
       [datastax-session (create-alia-session*
-                         (dissoc args :trace? :consistency))
+                         (dissoc args :trace?))
        :let [alia-session (map->AliaSession
                            {:keyspace keyspace
                             :alia-session datastax-session
-                            :trace? trace?})]]
+                            :trace? trace?
+                            :prepared-stmts-atom (atom {})})]]
       (return
        [alia-session
         (fn [] (s/close alia-session))]))))
@@ -136,6 +178,7 @@
                                :truncate]))
          (mapcat vals)
          (filter identity)
+         (map name) ;; coerce kw to string
          distinct
          sort
          vec)))
@@ -157,7 +200,7 @@
     (with-context deferred-context
       (mlet [:let [tfns (for [t tables]
                           (fn [_]
-                            (s/execute session (h/truncate t))
+                            (s/execute session (h/truncate t) {})
                             (return deferred-context true)))]]
         (if (not-empty tfns)
           (apply >>= (return true) tfns)
@@ -177,20 +220,17 @@
 
 (defrecord AliaSpySession [keyspace
                            alia-session
+                           prepared-stmts-atom
                            spy-log-atom
                            truncate-on-close
                            trace?]
   Session
-  (execute [this statement]
-    (s/execute this statement {}))
   (execute [_ statement opts]
     (swap! spy-log-atom conj statement)
-    (execute* alia-session statement (assoc opts :trace? trace?)))
-  (execute-buffered [this statement]
-    (s/execute-buffered this statement {}))
+    (execute* alia-session prepared-stmts-atom statement (assoc opts :trace? trace?)))
   (execute-buffered [_ statement opts]
     (swap! spy-log-atom conj statement)
-    (execute-buffered* alia-session statement (assoc opts :trace? trace?)))
+    (execute-buffered* alia-session prepared-stmts-atom statement (assoc opts :trace? trace?)))
   (close [self]
     (with-context deferred-context
       (mlet [_ (if truncate-on-close
@@ -216,14 +256,14 @@
     (mlet [datastax-session (create-alia-session*
                              (dissoc args
                                      :truncate-on-close
-                                     :trace?
-                                     :consistency))
+                                     :trace?))
            :let [spy-session (map->AliaSpySession
                               {:keyspace keyspace
                                :alia-session datastax-session
                                :spy-log-atom (atom [])
                                :truncate-on-close truncate-on-close
-                               :trace? trace?})]]
+                               :trace? trace?
+                               :prepared-stmts-atom (atom {})})]]
       (return
        [spy-session
         (fn [] (s/close spy-session))]))))
