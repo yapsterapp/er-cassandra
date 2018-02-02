@@ -54,6 +54,7 @@
 (s/defn upsert-secondaries
   [session :- ModelSession
    entity :- Entity
+   old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema
    opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema]
   (combine-responses
@@ -61,7 +62,11 @@
           :as t} (t/mutable-secondary-tables entity)]
      (when (and
             (k/has-key? k record)
-            (k/extract-key-value k record))
+            (k/extract-key-value k record)
+            ;; decided that secondaries should get upserted even if unchanged
+            ;; so that the index-tables are somewhat self-healing
+            ;; (not= record old-record)
+            )
        (insert-index-record session entity t record opts)))))
 
 (s/defn upsert-lookups-for-table
@@ -150,6 +155,7 @@
            secondary-reponses (upsert-secondaries
                                session
                                entity
+                               old-record
                                updated-record-with-keys
                                index-insert-opts)
 
