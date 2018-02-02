@@ -386,92 +386,101 @@
    returns a Deferred [upserted-record-or-nil failure-description]"
   ([session :- ModelSession
     entity :- Entity
+    old-record :- t/MaybeRecordSchema
     record :- t/MaybeRecordSchema
     {:keys [if-not-exists
             if-exists
             only-if
             using] :as opts} :- fns/UpsertOptsWithTimestampSchema]
-   (ddo [:let [primary-table-name (get-in entity [:primary-table :name])
-               primary-table-key (get-in entity [:primary-table :key])
+   (let [nok-record (without-unique-keys entity record)
+         nok-old-record (select-keys
+                         (without-unique-keys entity old-record)
+                         (keys nok-record))
+         ;; if the no-key part of the old-record
+         ;; is identical to the record we don't need
+         ;; to do anything
+         noop? (= nok-record nok-old-record)]
+     (if noop?
+       (return deferred-context nok-record)
+       (ddo [:let [primary-table-name (get-in entity [:primary-table :name])
+                   primary-table-key (get-in entity [:primary-table :key])
 
-               nok-record (without-unique-keys entity record)
+                   ;; prefer insert - because if a new record is updated
+                   ;; into existence, all it's cols being nulled will cause
+                   ;; its automatic deletion
+                   insert? (or if-not-exists
+                               (and (not if-exists) (not only-if)))]
 
-               ;; prefer insert - because if a new record is updated
-               ;; into existence, all it's cols being nulled will cause
-               ;; its automatic deletion
-               insert? (or if-not-exists
-                           (and (not if-exists) (not only-if)))]
+             insert-response (cond
+                               if-not-exists
+                               (r/insert session
+                                         primary-table-name
+                                         nok-record
+                                         (fns/opts-remove-timestamp opts))
 
-         insert-response (cond
-                           if-not-exists
-                           (r/insert session
-                                     primary-table-name
-                                     nok-record
-                                     (fns/opts-remove-timestamp opts))
+                               (and (not if-exists) (not only-if))
+                               (r/insert session
+                                         primary-table-name
+                                         nok-record
+                                         opts)
 
-                           (and (not if-exists) (not only-if))
-                           (r/insert session
-                                     primary-table-name
-                                     nok-record
-                                     opts)
+                               :else ;; only-if
+                               (return nil))
 
-                           :else ;; only-if
-                           (return nil))
+             :let [inserted? (cond
+                               if-not-exists
+                               (applied? insert-response)
 
-         :let [inserted? (cond
-                           if-not-exists
-                           (applied? insert-response)
+                               (and (not if-exists) (not only-if)) true
 
-                           (and (not if-exists) (not only-if)) true
+                               :else false)]
 
-                           :else false)]
+             update-response (cond
 
-         update-response (cond
+                               (and (not insert?)
+                                    (or if-exists only-if))
+                               (r/update
+                                session
+                                primary-table-name
+                                primary-table-key
+                                nok-record
+                                (fns/opts-remove-timestamp opts))
 
-                           (and (not insert?)
-                                (or if-exists only-if))
-                           (r/update
-                            session
-                            primary-table-name
-                            primary-table-key
-                            nok-record
-                            (fns/opts-remove-timestamp opts))
+                               insert?
+                               (return nil)
 
-                           insert?
-                           (return nil)
+                               :else
+                               (throw (ex-info
+                                       "internal error"
+                                       {:entity entity
+                                        :record record
+                                        :opts opts})))
 
-                           :else
-                           (throw (ex-info
-                                   "internal error"
-                                   {:entity entity
-                                    :record record
-                                    :opts opts})))
+             :let [updated? (applied? update-response)]
 
-         :let [updated? (applied? update-response)]
+             upserted-record (cond
+                               ;; return what was upserted or nil
+                               (or inserted? updated?)
+                               (return nok-record)
 
-         upserted-record (cond
-                           ;; return what was upserted or nil
-                           (or inserted? updated?)
-                           (return nok-record)
+                               ;; failure
+                               :else
+                               (return nil))]
 
-                           ;; failure
-                           :else
-                           (return nil))]
+         (return
+          (if (or inserted? updated?)
+            upserted-record
 
-     (return
-      (if (or inserted? updated?)
-        upserted-record
-
-        (throw
-         (pr/error-ex
-          :upsert/primary-record-upsert-error
-          {:error-tag :upsert/primary-record-upsert-error
-           :message "couldn't upsert primary record"
-           :primary-table primary-table-name
-           :uber-key-value (t/extract-uber-key-value entity record)
-           :record record
-           :if-not-exists if-not-exists
-           :only-if only-if})))))))
+            (throw
+             (pr/error-ex
+              :upsert/primary-record-upsert-error
+              {:error-tag :upsert/primary-record-upsert-error
+               :message "couldn't upsert primary record"
+               :primary-table primary-table-name
+               :uber-key-value (t/extract-uber-key-value entity record)
+               :record record
+               :if-not-exists if-not-exists
+               :only-if only-if})))))))))
 
 (s/defn update-unique-keys-after-primary-upsert
   "attempts to acquire unique keys for an owner... returns
@@ -551,6 +560,7 @@
   (ddo [_ (upsert-primary-record-without-unique-keys
                          session
                          entity
+                         old-record
                          record
                          opts)]
     (update-unique-keys-after-primary-upsert session

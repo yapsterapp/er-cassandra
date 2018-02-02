@@ -8,6 +8,8 @@
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.alia.unique-key :as uk]
+   [er-cassandra.model.model-session :as ms]
+   [er-cassandra.session :as session]
    [qbits.hayt :as h]
    [prpr.promise :as pr]))
 
@@ -546,20 +548,50 @@
            {:primary-table {:name :upsert_primary_without_unique_keys_test :key [:id]}
             :unique-key-tables [{:name :upsert_primary_without_unique_keys_test_by_nick
                                  :key [:nick]}]})]
+
     (testing "simple insert"
+      (session/reset-spy-log tu/*model-session*)
+      (ms/-reset-model-spy-log tu/*model-session*)
       (let [id (uuid/v1)
             r @(uk/upsert-primary-record-without-unique-keys
                 tu/*model-session*
                 m
+                nil
                 {:id id :nick "foo" :a "ana" :b "anb"}
                 (ts/default-timestamp-opt))]
-        (is (= {:id id :a "ana" :b "anb"} r))))
+        (is (= {:id id :a "ana" :b "anb"} r))
+
+        ;; check something actually happened
+        (is (= :upsert_primary_without_unique_keys_test
+               (->
+                (session/spy-log tu/*model-session*)
+                first
+                :insert)))
+        (is (= [] (ms/-model-spy-log tu/*model-session*)))))
+
+    (testing "does nothing if old-record is identical to record"
+      (session/reset-spy-log tu/*model-session*)
+      (ms/-reset-model-spy-log tu/*model-session*)
+      (let [id (uuid/v1)
+            record {:id id :nick "foo" :a "ana" :b "anb"}
+            r @(uk/upsert-primary-record-without-unique-keys
+                tu/*model-session*
+                m
+                record
+                record
+                (ts/default-timestamp-opt))]
+        (is (= {:id id :a "ana" :b "anb"} r))
+
+        ;; check nothing happened
+        (is (= [] (session/spy-log tu/*model-session*)))
+        (is (= [] (ms/-model-spy-log tu/*model-session*)))))
 
     (testing "simple insert with a timestamp & ttl"
       (let [id (uuid/v1)
             r @(uk/upsert-primary-record-without-unique-keys
                 tu/*model-session*
                 m
+                nil
                 {:id id :nick "foo" :a "ana" :b "anb"}
                 {:using {:ttl 10
                          :timestamp 1000}})
@@ -586,6 +618,7 @@
             r @(uk/upsert-primary-record-without-unique-keys
                 tu/*model-session*
                 m
+                nil
                 {:id id :nick "foo" :a "newa"}
                 (ts/default-timestamp-opt))
 
@@ -606,6 +639,7 @@
             r @(uk/upsert-primary-record-without-unique-keys
                 tu/*model-session*
                 m
+                nil
                 {:id id :nick "foo" :a "newa"}
                 {:using {:ttl 10
                          :timestamp 1001}})
@@ -632,6 +666,7 @@
           (let [r @(uk/upsert-primary-record-without-unique-keys
                     tu/*model-session*
                     m
+                    nil
                     {:id id :nick "foo" :a "ana" :b "anb"}
                     (ts/default-timestamp-opt
                      {:if-not-exists true}))]
@@ -641,6 +676,7 @@
           (let [r @(uk/upsert-primary-record-without-unique-keys
                     tu/*model-session*
                     m
+                    nil
                     {:id id-b :nick "foo" :a "ana" :b "anb"}
                     (ts/default-timestamp-opt
                      {:if-not-exists true
@@ -662,6 +698,7 @@
                        (uk/upsert-primary-record-without-unique-keys
                         tu/*model-session*
                         m
+                        nil
                         {:id id :nick "foo" :a "ana" :b "anb"}
                         (ts/default-timestamp-opt
                          {:if-not-exists true})))]
@@ -686,6 +723,7 @@
               r @(uk/upsert-primary-record-without-unique-keys
                   tu/*model-session*
                   m
+                  nil
                   {:id id :nick "bloogh" :a "newa" :b "newb"}
                   (ts/default-timestamp-opt
                    {:only-if [[:= :nick "bloogh"]]}))]
@@ -699,6 +737,7 @@
               r @(uk/upsert-primary-record-without-unique-keys
                   tu/*model-session*
                   m
+                  nil
                   {:id id :nick "bloogh" :a "newa" :b "newb"}
                   (ts/default-timestamp-opt
                    {:only-if [[:= :nick "bloogh"]]
@@ -722,6 +761,7 @@
                   (uk/upsert-primary-record-without-unique-keys
                    tu/*model-session*
                    m
+                   nil
                    {:id id :nick "foogle" :a "newa" :b "newb"}
                    (ts/default-timestamp-opt
                     {:only-if [[:= :nick "blah"]]})))]
