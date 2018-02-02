@@ -71,6 +71,66 @@
                 nil
                 (-> m :lookup-tables second))))))))
 
+(deftest insert-and-update-lookup-records-for-table-test
+  (let [m (t/create-entity
+           {:primary-table {:name :foos :key [:id]}
+            :lookup-tables [{:name :foos_by_bar :key [:bar]}
+                            {:name :foos_by_baz
+                             :key [:baz]
+                             :collections {:baz :set}}
+                            {:name :foos_by_blah
+                             :key [:blah]
+                             :with-columns [:bar]}]})]
+
+    (testing "ignores lookup keys when missing from new-record"
+      (is (empty?
+           @(l/insert-and-update-lookup-records-for-table
+             tu/*model-session*
+             m
+             {:id :a :bar :b}
+             {:id :a}
+             (-> m :lookup-tables first)))))
+
+    (testing "correctly identifies a new singular lookup key value"
+      (is (= [{:id :a :bar :b}]
+             @(l/insert-and-update-lookup-records-for-table
+               tu/*model-session*
+               m
+               {:id :a}
+               {:id :a :bar :b}
+               (-> m :lookup-tables first)))))
+
+    (testing "correctly identifies new collection lookup key values"
+      (is (= #{{:id :a :baz :b}
+               {:id :a :baz :d}}
+             (set
+              @(l/insert-and-update-lookup-records-for-table
+                tu/*model-session*
+                m
+                {:id :a :baz #{:c :x}}
+                {:id :a :baz #{:b :c :d}}
+                (-> m :lookup-tables second))))))
+
+    (testing "correctly ignores lookups with unchanged extra cols"
+      (is (= #{}
+             (set
+              @(l/insert-and-update-lookup-records-for-table
+                tu/*model-session*
+                m
+                {:id :a :blah :dog :bar :cat}
+                {:id :a :blah :dog :bar :cat}
+                (-> m :lookup-tables (nth 2)))))))
+
+    (testing "correctly identifies lookups with changed extra cols"
+      (is (= #{{:id :a :blah :dog :bar :crocodile}}
+             (set
+              @(l/insert-and-update-lookup-records-for-table
+                tu/*model-session*
+                m
+                {:id :a :blah :dog :bar :cat}
+                {:id :a :blah :dog :bar :crocodile}
+                (-> m :lookup-tables (nth 2)))))))))
+
 (defn generator-fn-lookup-test-generator
   [session entity table old-record
    {id :id
