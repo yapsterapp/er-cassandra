@@ -5,6 +5,8 @@
    [clojure.test :as test :refer [deftest is are testing use-fixtures]]
    [schema.test :as st]
    [clj-uuid :as uuid]
+   [er-cassandra.session :as session]
+   [er-cassandra.model.model-session :as ms]
    [er-cassandra.session.alia :as als]
    [er-cassandra.record :as r]
    [er-cassandra.model.util.timestamp :as ts]
@@ -210,17 +212,19 @@
     (is (= nnr fi2))))
 
 (deftest upsert-secondaries-test
-  (let [m (create-secondary-entity)
-        [org-id id] [(uuid/v1) (uuid/v1)]
-        r {:org_id org-id :id id :nick "bar"}
-        [status
-         record
-         reason] @(u/upsert-secondaries
-                   tu/*model-session*
-                   m
-                   r
-                   (ts/default-timestamp-opt))]
-    (is (= r (fetch-record :secondary_upsert_test_by_nick [:org_id :nick] [org-id "bar"])))))
+  (let [m (create-secondary-entity)]
+    (testing "upsert secondary"
+      (let [[org-id id] [(uuid/v1) (uuid/v1)]
+            r {:org_id org-id :id id :nick "bar"}
+            [status
+             record
+             reason] @(u/upsert-secondaries
+                       tu/*model-session*
+                       m
+                       nil
+                       r
+                       (ts/default-timestamp-opt))]
+        (is (= r (fetch-record :secondary_upsert_test_by_nick [:org_id :nick] [org-id "bar"])))))))
 
 
 (deftest upsert-lookups-test
