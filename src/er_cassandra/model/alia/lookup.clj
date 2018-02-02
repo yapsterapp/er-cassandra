@@ -101,6 +101,7 @@
     []))
 
 (s/defn stale-lookup-key-values-for-table
+  "returns key-values of stale lookups for a table - to be deleted"
   [session :- ModelSession
    entity :- Entity
    old-record :- t/MaybeRecordSchema
@@ -126,4 +127,46 @@
 
                  stale-kvs (filter identity (set/difference old-kvs new-kvs))]]
           (return stale-kvs))
+        (return nil)))))
+
+(s/defn insert-and-update-lookup-records-for-table
+  "returns lookup records which are to be inserted or require updating
+   (because some non-key column was updated)
+
+   have decided not to use this, because i think on balance it's better
+   for the collection indexes to be self-healing... i.e. if a collection
+   index row wasn't written for some reason then using this would mean
+   that it would never get written"
+  [session :- ModelSession
+   entity :- Entity
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema
+   lookup-table :- t/IndexTableSchema]
+  (with-context deferred-context
+    (let [k (:key lookup-table)]
+      (if (k/has-key? k new-record)
+        (mlet
+          [old-lookups (generate-lookup-records-for-table
+                        session entity lookup-table old-record old-record)
+           new-lookups (generate-lookup-records-for-table
+                        session entity lookup-table old-record new-record)
+           :let [new-kvs (set
+                          (map #(k/extract-key-value k %)
+                               new-lookups))
+
+                 old-lookups-by-kv (->> old-lookups
+                                        (map (fn [l]
+                                               [(k/extract-key-value k l) l]))
+                                        (into {}))
+
+                 insert-and-update-lookups
+                 (->> new-lookups
+                      (filter
+                       (fn [l]
+                         (let [kv (k/extract-key-value k l)
+                               old-l (get old-lookups-by-kv kv)]
+                           ;; the lookup must be inserted or updated
+                           ;; if it's in any way different from the old lookup
+                           (not= l old-l)))))]]
+          (return insert-and-update-lookups))
         (return nil)))))
