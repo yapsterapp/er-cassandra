@@ -16,19 +16,36 @@
   (s/make-fn-schema s/Any [[{s/Keyword s/Any}]]))
 
 (defprotocol ICallback
-  (-run-callback [_ session entity record opts]
-    "run a callback on a record of an entity returning
-     updated-record or Deferred<updated-record>"))
+  (-after-load [_ session entity record opts]
+    "an after-load callback on a record of an entity, returning
+     updated-record or Deferred<updated-record>")
+  (-before-save [_ entity old-record record opts]
+    "a before-save callback on a record of an entity, returning
+     updated-record or Deferred<updated-record>. -before-save doesn't
+     receive the session because it shouldn't do any persistence ops -
+     -before-save is used internally during upsert")
+  (-after-save [_ session entity old-record record opts]
+    "an after-save callback on a record of an entity. responses
+     are ignored")
+  (-before-delete [_ entity record opts]
+    "a before-delete callback on a record of an entity. responses
+     are ignored, but an error will prevent the delete. -before-delete
+     doesn't receive the session because it shouldn't do any persistence ops")
+  (-after-delete [_ session entity record opts]
+    "an after-delete callback on a record of an entity. responses
+     are ignored"))
 
 (s/defschema CallbackSchema
   (s/conditional
-    fn? CallbackFnSchema
-    #(satisfies? ICallback %) (s/protocol ICallback)))
+   fn? CallbackFnSchema
+   #(satisfies? ICallback %) (s/protocol ICallback)))
 
 (s/defschema CallbacksSchema
   {(s/optional-key :after-load) [CallbackSchema]
    (s/optional-key :before-save) [CallbackSchema]
-   (s/optional-key :after-save) [CallbackSchema]})
+   (s/optional-key :after-save) [CallbackSchema]
+   (s/optional-key :before-delete) [CallbackSchema]
+   (s/optional-key :after-delete) [CallbackSchema]})
 
 ;; a primary key for a cassandra table
 ;; the first entry may itself be a vector, representing
@@ -353,13 +370,11 @@
    (get-in entity [:primary-table :key])
    record))
 
-(defn run-callbacks
-  "callbacks implement ICallback and may return a modified record
-   or a Deferred thereof"
-  ([session ^Entity entity callback-key record]
-   (run-callbacks session entity callback-key record {}))
-  ([session ^Entity entity callback-key record opts]
-   (let [all-callbacks (concat (get-in entity [:callbacks callback-key])
+(defn run-save-callbacks
+  "run callbacks for an op which requires the old-record"
+  [session ^Entity entity callback-key old-record record opts]
+  (assert (#{:before-save :after-save} callback-key))
+  (let [all-callbacks (concat (get-in entity [:callbacks callback-key])
                                (get-in opts [callback-key]))
          callback-mfs (for [cb all-callbacks]
                         (fn [record]
@@ -368,7 +383,14 @@
                             (cb record)
 
                             (satisfies? ICallback cb)
-                            (-run-callback cb session entity record opts)
+                            (case callback-key
+                              ;; it's deliberate -before-save doesn't get the session -
+                              ;; it's used internally during upsert, and persistence
+                              ;; ops would be bad
+                              :before-save
+                              (-before-save cb entity old-record record opts)
+                              :after-save
+                              (-after-save cb session entity old-record record opts))
 
                             :else
                             (throw
@@ -380,7 +402,41 @@
      (with-context deferred-context
        (if (not-empty callback-mfs)
          (apply >>= (return record) callback-mfs)
-         (return record))))))
+         (return record)))))
+
+(defn run-callbacks
+  "run callbacks for an op which doesn't require the old-record"
+  [session ^Entity entity callback-key record opts]
+  (assert (#{:after-load :before-delete :after-delete} callback-key))
+  (let [all-callbacks (concat (get-in entity [:callbacks callback-key])
+                               (get-in opts [callback-key]))
+         callback-mfs (for [cb all-callbacks]
+                        (fn [record]
+                          (cond
+                            (fn? cb)
+                            (cb record)
+
+                            (satisfies? ICallback cb)
+                            (case callback-key
+                              :after-load
+                              (-after-load cb session entity record opts)
+                              ;; it's deliberate -before-delete doesn't get the session
+                              :before-delete
+                              (-before-delete cb entity record opts)
+                              :after-delete
+                              (-after-delete cb session entity record opts))
+
+                            :else
+                            (throw
+                             (ex-info
+                              "neither an fn or an ICallback"
+                              {:entity entity
+                               :callback-key callback-key
+                               :callback cb})))))]
+     (with-context deferred-context
+       (if (not-empty callback-mfs)
+         (apply >>= (return record) callback-mfs)
+         (return record)))))
 
 (defn create-protect-columns-callback
   "create a callback which will remove cols from a record
