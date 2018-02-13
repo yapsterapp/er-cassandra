@@ -13,6 +13,7 @@
    [clj-uuid :as uuid]
    [manifold.stream :as s]
    [manifold.deferred :as d]
+   [er-cassandra.model.model-session :as ms]
    [er-cassandra.record :as r]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
@@ -141,7 +142,7 @@
         _ (insert-record :simple_relationship_test sr)
         _ (upsert-instance t {:id tid :parent_id sid :nick "bar"})
 
-        resp @(rel/denormalize tu/*model-session* s sr :upsert (ts/default-timestamp-opt))
+        resp @(rel/denormalize tu/*model-session* s nil sr (ts/default-timestamp-opt))
         potr (fetch-record :simple_relationship_test_target [:id] [tid])
         potri (fetch-record :simple_relationship_test_target_by_parent_id
                             [:parent_id] [sid])
@@ -149,6 +150,24 @@
     (is (= [[:test [:ok]]] resp))
     (is (= "foo" (:nick potr)))
     (is (= "foo" (:nick potri)))))
+
+(deftest noop-update-simple-relationship-does-nothing-test
+  (let [[s t] (create-simple-relationship)
+        [sid tid] [(uuid/v1) (uuid/v1)]
+        sr {:id sid :nick "foo"}
+        _ (insert-record :simple_relationship_test sr)
+        _ (upsert-instance t {:id tid :parent_id sid :nick "bar"})
+
+        _ (ms/-reset-model-spy-log tu/*model-session*)
+        resp @(rel/denormalize tu/*model-session* s sr sr (ts/default-timestamp-opt))
+        model-spy-log (ms/-model-spy-log tu/*model-session*)
+        potr (fetch-record :simple_relationship_test_target [:id] [tid])
+        potri (fetch-record :simple_relationship_test_target_by_parent_id
+                            [:parent_id] [sid])]
+    (is (= [[:test :noop]] resp))
+    (is (= "bar" (:nick potr)))
+    (is (= "bar" (:nick potri)))
+    (is (= [] model-spy-log))))
 
 (deftest update-simple-relationship-multiple-records-test
   (let [[s t] (create-simple-relationship)
@@ -158,7 +177,7 @@
         _ (upsert-instance t {:id tida :parent_id sid :nick "bar"})
         _ (upsert-instance t {:id tidb :parent_id sid :nick "bar"})
 
-        resp @(rel/denormalize tu/*model-session* s sr :upsert (ts/default-timestamp-opt))
+        resp @(rel/denormalize tu/*model-session* s nil sr (ts/default-timestamp-opt))
         potra (fetch-record :simple_relationship_test_target [:id] [tida])
         potrai (fetch-record :simple_relationship_test_target_by_parent_id
                              [:parent_id :id] [sid tida])
@@ -239,7 +258,6 @@
         saids (repeatedly acnt uuid/v1)
         sars (for [said saids] {:ida said :factor 1})
 
-
         bcnt 1000
         ;; initial source-b record :values are drawn from 1..bcnt
         sbids (repeatedly bcnt uuid/v1)
@@ -269,17 +287,14 @@
         (is (= (* acnt (* (/ bcnt 2) (inc bcnt))) (->> ftr (map :value) (reduce +))))))
 
     (testing "inc the factors"
-      (let [isars (->> sars
-                       (map (fn [sar]
-                              (assoc sar :factor 2))))
-            cassandra tu/*model-session*
-            a-denorms (->> isars
+      (let [cassandra tu/*model-session*
+            a-denorms (->> sars
                            (s/buffer 5)
-                           (s/map (fn [isar]
+                           (s/map (fn [sar]
                                     (rel/denormalize cassandra
                                                      sa
-                                                     isar
-                                                     :upsert
+                                                     sar
+                                                     (assoc sar :factor 2)
                                                      (ts/default-timestamp-opt
                                                       {:fetch-size fetch-size}))))
                            (s/realize-each)
@@ -294,17 +309,14 @@
         (is (= (* acnt (* (/ bcnt 2) (inc bcnt))) (->> ftr (map :value) (reduce +))))))
 
     (testing "inc the values"
-      (let [isbrs (->> sbrs
-                       (map (fn [{value :value :as sbr}]
-                              (assoc sbr :value (inc value)))))
-            cassandra tu/*model-session*
-            b-denorms (->> isbrs
+      (let [cassandra tu/*model-session*
+            b-denorms (->> sbrs
                            (s/buffer 5)
-                           (s/map (fn [isbr]
+                           (s/map (fn [{value :value :as sbr}]
                                     (rel/denormalize cassandra
                                                      sb
-                                                     isbr
-                                                     :upsert
+                                                     sbr
+                                                     (assoc sbr :value (inc value))
                                                      (ts/default-timestamp-opt
                                                       {:fetch-size fetch-size}))))
                            (s/realize-each)
@@ -319,33 +331,27 @@
         (is (= (* acnt (- (* (/ (inc bcnt) 2) (+ 2 bcnt)) 1)) (->> ftr (map :value) (reduce +))))))
 
     (testing "inc the factors and the values together"
-      (let [isars (->> sars
-                       (map (fn [sar]
-                              (assoc sar :factor 3))))
-            isbrs (->> sbrs
-                       (map (fn [{value :value :as sbr}]
-                              (assoc sbr :value (+ 2 value)))))
-            cassandra tu/*model-session*
+      (let [cassandra tu/*model-session*
 
             ;; do both denormalizations together
-            a-denorms-d (->> isars
+            a-denorms-d (->> sars
                              (s/buffer 5)
-                             (s/map (fn [isar]
+                             (s/map (fn [sar]
                                       (rel/denormalize cassandra
                                                        sa
-                                                       isar
-                                                       :upsert
+                                                       sar
+                                                       (assoc sar :factor 3)
                                                        (ts/default-timestamp-opt
                                                         {:fetch-size fetch-size}))))
                              (s/realize-each)
                              (s/reduce conj []))
-            b-denorms-d (->> isbrs
+            b-denorms-d (->> sbrs
                              (s/buffer 5)
-                             (s/map (fn [isbr]
+                             (s/map (fn [{value :value :as sbr}]
                                       (rel/denormalize cassandra
                                                        sb
-                                                       isbr
-                                                       :upsert
+                                                       sbr
+                                                       (assoc sbr :value (+ 2 value))
                                                        (ts/default-timestamp-opt
                                                         {:fetch-size fetch-size}))))
                              (s/realize-each)
@@ -375,7 +381,7 @@
           _ (upsert-instance t {:id tida :parent_id sid :nick "foo"})
           _ (upsert-instance t {:id tidb :parent_id sid :nick "foo"})
 
-          resp @(rel/denormalize tu/*model-session* s sr :delete (ts/default-timestamp-opt))
+          resp @(rel/denormalize tu/*model-session* s sr nil (ts/default-timestamp-opt))
           potra (fetch-record :simple_relationship_test_target [:id] [tida])
           potrai (fetch-record :simple_relationship_test_target_by_parent_id
                                [:parent_id :id] [sid tida])
@@ -397,7 +403,7 @@
           _ (upsert-instance t {:id tida :parent_id sid :nick "foo"})
           _ (upsert-instance t {:id tidb :parent_id sid :nick "foo"})
 
-          resp @(rel/denormalize tu/*model-session* s sr :delete (ts/default-timestamp-opt))
+          resp @(rel/denormalize tu/*model-session* s sr nil (ts/default-timestamp-opt))
           potra (fetch-record :simple_relationship_test_target [:id] [tida])
           potrai (fetch-record :simple_relationship_test_target_by_parent_id
                                [:parent_id :id] [sid tida])
@@ -418,7 +424,7 @@
           _ (upsert-instance t {:id tida :parent_id sid :nick "foo"})
           _ (upsert-instance t {:id tidb :parent_id sid :nick "foo"})
 
-          resp @(rel/denormalize tu/*model-session* s sr :delete (ts/default-timestamp-opt))
+          resp @(rel/denormalize tu/*model-session* s sr nil (ts/default-timestamp-opt))
           potra (fetch-record :simple_relationship_test_target [:id] [tida])
           potrai (fetch-record :simple_relationship_test_target_by_parent_id
                                [:parent_id :id] [sid tida])
@@ -462,7 +468,7 @@
         _ (upsert-instance t {:id tid :source_ida sida :source_idb sidb
                               :target_nick "bar" :target_nock "barbar"})
 
-        resp @(rel/denormalize tu/*model-session* s ckr :upsert (ts/default-timestamp-opt))
+        resp @(rel/denormalize tu/*model-session* s nil ckr (ts/default-timestamp-opt))
         potr (fetch-record :ck_relationship_test_target [:id] [tid])
         potri (fetch-record :ck_relationship_test_target_by_source_ids
                             [:source_ida :source_idb] [sida sidb])
@@ -518,7 +524,7 @@
         _ (upsert-instance tb {:tidb tidb :source_ida sida :source_idb sidb
                                :target_nock "bar"})
 
-        resp @(rel/denormalize tu/*model-session* s sr :upsert (ts/default-timestamp-opt))
+        resp @(rel/denormalize tu/*model-session* s nil sr (ts/default-timestamp-opt))
         potra (fetch-record :multi_relationship_test_target_a [:tida] [tida])
         potrai (fetch-record :multi_relationship_test_target_a_by_source_ids
                              [:source_ida :source_idb] [sida sidb])

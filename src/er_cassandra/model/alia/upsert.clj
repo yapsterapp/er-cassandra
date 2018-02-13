@@ -54,6 +54,7 @@
 (s/defn upsert-secondaries
   [session :- ModelSession
    entity :- Entity
+   old-record :- t/MaybeRecordSchema
    record :- t/MaybeRecordSchema
    opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema]
   (combine-responses
@@ -61,7 +62,11 @@
           :as t} (t/mutable-secondary-tables entity)]
      (when (and
             (k/has-key? k record)
-            (k/extract-key-value k record))
+            (k/extract-key-value k record)
+            ;; decided that secondaries should get upserted even if unchanged
+            ;; so that the index-tables are somewhat self-healing
+            ;; (not= record old-record)
+            )
        (insert-index-record session entity t record opts)))))
 
 (s/defn upsert-lookups-for-table
@@ -150,6 +155,7 @@
            secondary-reponses (upsert-secondaries
                                session
                                entity
+                               old-record
                                updated-record-with-keys
                                index-insert-opts)
 
@@ -200,13 +206,21 @@
         ;; record so that e.g. protected cols don't get removed if they
         ;; are being updated
         old-record-ser (when old-record
-                         (t/run-callbacks
+                         (t/run-save-callbacks
                           session
                           entity
                           :before-save
                           (merge non-cassandra old-record)
+                          (merge non-cassandra old-record)
                           opts))
-        record-ser (t/run-callbacks session entity :before-save record opts)
+
+        record-ser (t/run-save-callbacks
+                    session
+                    entity
+                    :before-save
+                    old-record
+                    record
+                    opts)
 
         :let [record-keys (-> record keys set)
               record-ser-keys (-> record-ser keys set)
@@ -240,6 +254,7 @@
         response-record-raw (merge nil-removed
                                    old-record
                                    updated-record-with-keys-ser)
+
         response-record (t/run-callbacks
                          session
                          entity
@@ -248,10 +263,11 @@
                          opts)
 
         ;; do any :after-save actions
-        _ (t/run-callbacks
+        _ (t/run-save-callbacks
            session
            entity
            :after-save
+           old-record
            response-record
            opts)]
 

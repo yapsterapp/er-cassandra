@@ -103,17 +103,17 @@
         r {:id 1 :name "bar"}]
       (let [m (update-callbacks m [identity])]
     (testing "identity"
-        (is (= r @(run-callbacks s m :before-save r)))))
+        (is (= r @(run-save-callbacks s m :before-save nil r {})))))
     (testing "callback sequence"
       (let [m (update-callbacks m [#(assoc % :name "baz")
                                    #(update % :name string/upper-case)])
             exp {:id 1 :name "BAZ"}]
-        (is (= exp @(run-callbacks s m :before-save r)))))
+        (is (= exp @(run-save-callbacks s m :before-save nil r {})))))
     (testing "callback deferred"
       (let [m (update-callbacks m [(reify ICallback
-                                     (-run-callback [_ session entity record opts]
+                                     (-before-save [_ entity old-record record opts]
                                        (deferred/success-deferred
                                          (update record :name string/upper-case))))])
             exp {:id 1 :name "BAR"}]
-        (is (= exp @(run-callbacks s m :before-save r)))))
+        (is (= exp @(run-save-callbacks s m :before-save nil r {})))))
     (testing "callback error")))
