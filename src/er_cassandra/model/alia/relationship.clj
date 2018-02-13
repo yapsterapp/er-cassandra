@@ -46,6 +46,15 @@
   (let [uk-val (t/extract-uber-key-value source-entity source-record)]
     [(:foreign-key denorm-rel) uk-val]))
 
+(s/defn extract-denorm-vals
+  "extract the values to be denormalized from a source-record,
+   according to the given denorm-rel"
+  [denorm-rel source-record]
+  (->> (:denormalize denorm-rel)
+       (map (fn [[tcol scol-or-fn]]
+              [tcol (scol-or-fn source-record)]))
+       (into {})))
+
 (s/defn denormalize-fields
   "denormalize fields from source-record according to :denormalize
    of denorm-rel, returning an updated target-record"
@@ -65,10 +74,9 @@
         [fk fk-val] (foreign-key-val source-entity source-record denorm-rel)
         fk-map (into {} (map vector fk fk-val))
 
-        denorm-vals (->> (:denormalize denorm-rel)
-                         (map (fn [[tcol scol-or-fn]]
-                                [tcol (scol-or-fn source-record)]))
-                         (into {}))]
+        denorm-vals (extract-denorm-vals denorm-rel
+                                         source-record)]
+
     ;; the merge ensures that a bad denorm spec can't
     ;; change the PK/FK of the target
     (merge target-record
@@ -104,12 +112,17 @@
   [session :- ModelSession
    source-entity :- Entity
    target-entity :- Entity
-   source-record :- t/RecordSchema
+   old-source-record :- t/MaybeRecordSchema
+   source-record :- t/MaybeRecordSchema
    denorm-rel :- t/DenormalizationRelationshipSchema
    target-record :- t/RecordSchema
-   denorm-op :- DenormalizeOp
    opts :- fns/DenormalizeOptsSchema]
-  (let [target-uberkey (-> target-entity :primary-table :key flatten)
+  (assert (or old-source-record source-record))
+  (let [denorm-op (cond
+                    (nil? source-record) :delete
+                    :else :upsert)
+
+        target-uberkey (-> target-entity :primary-table :key flatten)
         target-uberkey-value (t/extract-uber-key-value
                               target-entity
                               target-record)
@@ -117,14 +130,17 @@
                                          target-uberkey
                                          target-uberkey-value))
 
-        [fk fk-val :as fk-vals] (foreign-key-val source-entity source-record denorm-rel)
+        [fk fk-val :as fk-vals] (foreign-key-val
+                                 source-entity
+                                 (or source-record old-source-record)
+                                 denorm-rel)
         fk-map (into {} (map vector fk fk-val))
 
         denorm-vals (->> (:denormalize denorm-rel)
                          (map (fn [[tcol scol-or-fn]]
                                 [tcol (scol-or-fn source-record)]))
                          (into {}))]
-
+    ;; (warn "denorm-op" denorm-op)
     (case denorm-op
 
       ;; we only upsert the uberkey, fk and denormalized cols
@@ -178,11 +194,15 @@
   [session :- ModelSession
    source-entity :- Entity
    target-entity :- Entity
-   source-record :- t/RecordSchema
+   old-source-record :- t/MaybeRecordSchema
+   source-record :- t/MaybeRecordSchema
    denorm-rel :- t/DenormalizationRelationshipSchema
    opts :- rs/SelectBufferedOptsSchema]
   (with-context deferred-context
-    (mlet [:let [[fk fk-val] (foreign-key-val source-entity source-record denorm-rel)]
+    (mlet [:let [[fk fk-val] (foreign-key-val source-entity
+                                              (or source-record
+                                                  old-source-record)
+                                              denorm-rel)]
 
           trs (m/select-buffered
                session
@@ -204,50 +224,58 @@
   [session :- ModelSession
    source-entity :- Entity
    target-entity :- Entity
-   source-record :- t/RecordSchema
+   old-source-record :- t/MaybeRecordSchema
+   source-record :- t/MaybeRecordSchema
    denorm-rel-kw :- s/Keyword
    denorm-rel :- t/DenormalizationRelationshipSchema
-   denorm-op :- DenormalizeOp
    opts :- fns/DenormalizeOptsSchema]
-  (with-context deferred-context
-    (mlet [trs (target-record-stream session
-                                     source-entity
-                                     target-entity
-                                     source-record
-                                     denorm-rel
-                                     (select-keys opts [:fetch-size]))
+  ;; don't do anything if we don't need to
+  (let [odvs (extract-denorm-vals denorm-rel old-source-record)
+        dvs  (extract-denorm-vals denorm-rel source-record)]
+    (if (= dvs odvs)
+      (return [denorm-rel-kw :noop])
 
-           ;; a (hopefully empty) stream of any errors from denormalization
-           :let [denorms (->> trs
-                              (st/map #(denormalize-to-target-record
-                                        session
-                                        source-entity
-                                        target-entity
-                                        source-record
-                                        denorm-rel
-                                        %
-                                        denorm-op
-                                        opts))
-                              (st/buffer (or (:buffer-size opts) 25)))]
+      (with-context deferred-context
+        (mlet [trs (target-record-stream session
+                                         source-entity
+                                         target-entity
+                                         old-source-record
+                                         source-record
+                                         denorm-rel
+                                         (select-keys opts [:fetch-size]))
 
-           ;; consumes the whole stream, returns the first error
-           ;; or nil if no errors
-           maybe-err (stu/keep-stream-error denorms)]
+               ;; a (hopefully empty) stream of any errors from denormalization
+               :let [denorms (->> trs
+                                  (st/map #(denormalize-to-target-record
+                                            session
+                                            source-entity
+                                            target-entity
+                                            old-source-record
+                                            source-record
+                                            denorm-rel
+                                            %
+                                            opts))
+                                  (st/buffer (or (:buffer-size opts) 25)))]
 
-      ;; if there are errors, return the first as an exemplar
-      (if (nil? maybe-err)
-        (return [denorm-rel-kw [:ok]])
-        (return [denorm-rel-kw [:fail maybe-err]])))))
+               ;; consumes the whole stream, returns the first error
+               ;; or nil if no errors
+               maybe-err (stu/keep-stream-error denorms)]
+
+          ;; if there are errors, return the first as an exemplar
+          (if (nil? maybe-err)
+            (return [denorm-rel-kw [:ok]])
+            (return [denorm-rel-kw [:fail maybe-err]])))))))
 
 (s/defn denormalize-fields-to-target
   "if you have a source *and* a target record and you want to denormalize
    any fields that should be denormalised from that source to that target, then
    this is your fn. it will consider all denorm relationships and apply
    denormalize-fields for each relationship where the target entity and
-   the source-pk/target-fk values match"
+   the source-pk/target-fk values match. only updates in-memory - doesn't
+   do any persistence"
   [source-entity :- Entity
    target-entity :- Entity
-   source-record :- t/RecordSchema
+   source-record :- t/MaybeRecordSchema
    target-record :- t/RecordSchema]
   (let [denorm-rels (matching-rels
                      source-entity
@@ -269,8 +297,8 @@
    returns Deferred<[[denorm-rel-kw [status maybe-err]]*]>"
   [session :- ModelSession
    source-entity :- Entity
-   source-record :- t/RecordSchema
-   denorm-op :- DenormalizeOp
+   old-source-record :- t/MaybeRecordSchema
+   source-record :- t/MaybeRecordSchema
    opts :- fns/DenormalizeOptsSchema]
   (let [targets (:denorm-targets source-entity)
 
@@ -281,10 +309,10 @@
                             (mlet [resp (denormalize-rel session
                                                          source-entity
                                                          (deref-target-entity (:target rel))
+                                                         old-source-record
                                                          source-record
                                                          rel-kw
                                                          rel
-                                                         denorm-op
                                                          opts)]
                               (return (conj resps resp))))))))]
 
@@ -293,16 +321,23 @@
     (apply >>= (return deferred-context []) mfs)))
 
 (s/defn denormalize-callback
-  "creates a callback with the given op and opts"
-  ([denorm-op] (denormalize-callback denorm-op {}))
-  ([denorm-op :- DenormalizeOp
-    denorm-opts :- fns/DenormalizeCallbackOptsSchema]
+  "creates a denormalize callback for :after-save and/or :after-delete"
+  ([] (denormalize-callback {}))
+  ([denorm-opts :- fns/DenormalizeCallbackOptsSchema]
    (reify
      t/ICallback
-     (-run-callback [_ session entity record opts]
+     (-after-save [_ session entity old-record record opts]
+       (denormalize
+        session
+        entity
+        old-record
+        record
+        (merge opts denorm-opts)))
+
+     (-after-delete [_ session entity record opts]
        (denormalize
         session
         entity
         record
-        denorm-op
+        nil
         (merge opts denorm-opts))))))
