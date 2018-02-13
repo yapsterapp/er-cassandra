@@ -156,7 +156,14 @@
    record :- t/RecordSchema
    opts :- fns/DeleteOptsWithTimestampSchema]
   (with-context deferred-context
-    (mlet [primary-response (delete-primary-record
+    (mlet [_ (t/run-callbacks
+              session
+              entity
+              :before-delete
+              record
+              opts)
+
+           primary-response (delete-primary-record
                              session
                              entity
                              (:primary-table entity)
@@ -184,7 +191,14 @@
                              entity
                              record
                              nil
-                             opts)]
+                             opts)
+
+           _ (t/run-callbacks
+              session
+              entity
+              :after-delete
+              record
+              opts)]
       (return
        [:ok record :deleted]))))
 

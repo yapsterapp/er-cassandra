@@ -206,13 +206,21 @@
         ;; record so that e.g. protected cols don't get removed if they
         ;; are being updated
         old-record-ser (when old-record
-                         (t/run-callbacks
+                         (t/run-save-callbacks
                           session
                           entity
                           :before-save
                           (merge non-cassandra old-record)
+                          (merge non-cassandra old-record)
                           opts))
-        record-ser (t/run-callbacks session entity :before-save record opts)
+
+        record-ser (t/run-save-callbacks
+                    session
+                    entity
+                    :before-save
+                    old-record
+                    record
+                    opts)
 
         :let [record-keys (-> record keys set)
               record-ser-keys (-> record-ser keys set)
@@ -246,6 +254,7 @@
         response-record-raw (merge nil-removed
                                    old-record
                                    updated-record-with-keys-ser)
+
         response-record (t/run-callbacks
                          session
                          entity
@@ -254,10 +263,11 @@
                          opts)
 
         ;; do any :after-save actions
-        _ (t/run-callbacks
+        _ (t/run-save-callbacks
            session
            entity
            :after-save
+           old-record
            response-record
            opts)]
 
