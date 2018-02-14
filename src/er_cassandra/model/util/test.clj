@@ -91,6 +91,11 @@
   ([entity record opts]
    @(m/select-upsert *model-session* entity record (ts/past-timestamp-opt opts))))
 
+(defn fetch-instance
+  ([entity key key-value] (fetch-instance entity key key-value {}))
+  ([entity key key-value opts]
+   @(m/select-one *model-session* entity key key-value opts)))
+
 (defn record-stream
   ([table-name] (record-stream table-name {}))
   ([table-name opts]
