@@ -329,20 +329,20 @@
                                (t/extract-uber-key-value entity record))
                               (return nil))
 
-            ;; do any :after-save actions
-            _ (t/run-callbacks
-               session
-               entity
-               :after-save
-               reselected-record
-               opts)
-
             ;; gotta make the re-selected record presentable!
             final-record (t/run-callbacks
                           session
                           entity
                           :after-load
-                          reselected-record)]
+                          reselected-record)
+
+            ;; do any :after-save actions
+            _ (t/run-callbacks
+               session
+               entity
+               :after-save
+               final-record
+               opts)]
 
        (return
         (pair final-record
