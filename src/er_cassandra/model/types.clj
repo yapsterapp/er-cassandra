@@ -471,4 +471,6 @@
   "a callback which updates a column with a function"
   [col f]
   (fn [r]
-    (update r col f)))
+    (if (contains? r col)
+      (update r col f)
+      r)))
