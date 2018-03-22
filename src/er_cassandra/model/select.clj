@@ -34,7 +34,7 @@
                         opts)
                        mi)))
             s/realize-each
-            (r.ss/maybe-sorted-stream opts)
+            ;; (r.ss/maybe-sorted-stream opts)
             return))))
 
   ;; can't provide an arity which auto-selects the uber-key, because it's
@@ -57,7 +57,7 @@
                         opts)
                        mi)))
             s/realize-each
-            (r.ss/maybe-sorted-stream opts)
+            ;; (r.ss/maybe-sorted-stream opts)
             return)))))
 
 (defn select
