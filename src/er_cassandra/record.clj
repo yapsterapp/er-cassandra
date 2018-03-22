@@ -16,7 +16,9 @@
    [cats.core :refer [return]]
    [cats.labs.manifold :refer [deferred-context]]
    [er-cassandra.record.schema :as sch]
-   [er-cassandra.record.statement :as st])
+   [er-cassandra.record.statement :as st]
+   [er-cassandra.record.sorted-stream :as r.ss]
+   [prpr.promise :refer [ddo]])
   (:import
    [er_cassandra.session Session]
    [qbits.hayt.cql CQLRaw CQLFn]))
@@ -74,22 +76,26 @@
   ([^Session session table] (select-buffered session table {}))
 
   ([^Session session table {prepare? :prepare? :as opts}]
-   (let [select-opts (select-keys opts [:columns :limit])
-         select-stmt ((if prepare?
-                        st/prepare-select-statement
-                        st/select-statement)
-                      table
-                      select-opts)
-         ps-values (when prepare?
-                     (st/prepare-select-values
-                      table
-                      select-opts))]
-     (session/execute-buffered
-      session
-      select-stmt
-      (-> opts
-          (dissoc :columns :limit)
-          (assoc-when :values ps-values)))))
+   (ddo [:let [select-opts (select-keys opts [:columns :limit])
+               select-stmt ((if prepare?
+                              st/prepare-select-statement
+                              st/select-statement)
+                            table
+                            select-opts)
+               ps-values (when prepare?
+                           (st/prepare-select-values
+                            table
+                            select-opts))]
+         r-s (session/execute-buffered
+              session
+              select-stmt
+              (-> opts
+                  (dissoc :columns :limit)
+                  (assoc-when :values ps-values)))]
+     (return
+      (r.ss/maybe-sorted-stream
+       opts
+       r-s))))
 
   ([^Session session table key record-or-key-value]
    (select session table key record-or-key-value {}))
@@ -99,26 +105,30 @@
     key
     record-or-key-value
     {prepare? :prepare? :as opts}]
-   (let [select-opts (select-keys opts [:columns :where :only-if :order-by :limit])
-         select-stmt ((if prepare?
-                        st/prepare-select-statement
-                        st/select-statement)
-                      table
-                      key
-                      record-or-key-value
-                      select-opts)
-         ps-values (when prepare?
-                     (st/prepare-select-values
-                      table
-                      key
-                      record-or-key-value
-                      select-opts))]
-     (session/execute-buffered
-      session
-      select-stmt
-      (-> opts
-          (dissoc :columns :where :only-if :order-by :limit)
-          (assoc-when :values ps-values))))))
+   (ddo [:let [select-opts (select-keys opts [:columns :where :only-if :order-by :limit])
+               select-stmt ((if prepare?
+                              st/prepare-select-statement
+                              st/select-statement)
+                            table
+                            key
+                            record-or-key-value
+                            select-opts)
+               ps-values (when prepare?
+                           (st/prepare-select-values
+                            table
+                            key
+                            record-or-key-value
+                            select-opts))]
+         r-s (session/execute-buffered
+              session
+              select-stmt
+              (-> opts
+                  (dissoc :columns :where :only-if :order-by :limit)
+                  (assoc-when :values ps-values)))]
+     (return
+      (r.ss/maybe-sorted-stream
+       opts
+       r-s)))))
 
 (defn select-one
   "select a single record"
