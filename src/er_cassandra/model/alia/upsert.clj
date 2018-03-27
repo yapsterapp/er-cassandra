@@ -322,11 +322,23 @@
               (not-empty
                (t/all-maintained-foreign-key-cols entity))]
 
+        ;; need to run :before-save on the record in case
+        ;; it defaults something in the uberkey
+        record-ser (t/run-save-callbacks
+                    session
+                    entity
+                    :before-save
+                    record
+                    record
+                    opts)
+
         raw-old-record (r/select-one
                         session
                         (get-in entity [:primary-table :name])
                         (get-in entity [:primary-table :key])
-                        (t/extract-uber-key-value entity record))
+                        (t/extract-uber-key-value
+                         entity
+                         record-ser))
 
         old-record (monad/when raw-old-record
                      (t/run-callbacks
