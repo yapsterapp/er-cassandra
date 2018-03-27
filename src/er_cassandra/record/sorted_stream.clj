@@ -24,7 +24,7 @@
   "if there is an :order-by in the select-opts
    then wrap the stream in a sorted-stream"
   [select-opts s]
-  (info "maybe-sorted-stream" select-opts s)
+  ;; (info "maybe-sorted-stream" select-opts s)
   (if-let [kfn (select-opts->key-fn select-opts)]
     (cross/sorted-stream kfn s)
     s))
