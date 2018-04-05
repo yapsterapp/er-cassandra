@@ -27,7 +27,7 @@
                  [cc.qbits/hayt "4.0.0"]
                  [environ "1.1.0"]
                  [drift "1.5.3"]
-                 [employeerepublic/deferst "0.5.0"
+                 [employeerepublic/deferst "0.6.0"
                   :exclusions [funcool/promesa
                                manifold]]
                  [employeerepublic/promisespromises "0.1"]]

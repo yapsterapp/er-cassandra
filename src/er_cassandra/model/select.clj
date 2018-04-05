@@ -8,7 +8,8 @@
             [er-cassandra.model.model-session :as ms]
             [er-cassandra.model.util
              :refer [combine-responses
-                     combine-seq-responses]])
+                     combine-seq-responses]]
+            [er-cassandra.record.sorted-stream :as r.ss])
   (:import
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
@@ -33,6 +34,7 @@
                         opts)
                        mi)))
             s/realize-each
+            ;; (r.ss/maybe-sorted-stream opts)
             return))))
 
   ;; can't provide an arity which auto-selects the uber-key, because it's
@@ -55,6 +57,7 @@
                         opts)
                        mi)))
             s/realize-each
+            ;; (r.ss/maybe-sorted-stream opts)
             return)))))
 
 (defn select

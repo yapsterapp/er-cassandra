@@ -51,6 +51,7 @@
   (conditional-upsert-schema
    (merge
     rs/PrepareOptSchema
+    UpsertConsistencySchema
     UpsertWhereSchema
     UpsertUsingSchema)))
 
@@ -65,6 +66,7 @@
   (conditional-upsert-schema
    (merge
     rs/PrepareOptSchema
+    UpsertConsistencySchema
     UpsertWhereSchema
     UpsertUsingOnlyOptsWithTimestampSchema)))
 
