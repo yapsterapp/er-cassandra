@@ -1,4 +1,4 @@
-(defproject employeerepublic/er-cassandra "0.12"
+(defproject employeerepublic/er-cassandra "0.13"
   :description "a simple cassandra conector"
   :url "https://github.com/employeerepublic/er-cassandra"
   :license {:name "Eclipse Public License"
@@ -30,7 +30,7 @@
                  [employeerepublic/deferst "0.6.0"
                   :exclusions [funcool/promesa
                                manifold]]
-                 [employeerepublic/promisespromises "0.1"]]
+                 [employeerepublic/promisespromises "0.4"]]
 
   :aliases {"test-repl" ["with-profile" "cassandra-unit,repl" "repl"]}
 
