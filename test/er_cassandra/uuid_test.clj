@@ -1,9 +1,14 @@
 (ns er-cassandra.uuid-test
   (:require
+   [er-cassandra.record :as r]
+   [er-cassandra.util.test :as tu]
    [er-cassandra.uuid :as sut]
-   [clojure.test :as t :refer [deftest testing is]]
+   [clojure.test :as t :refer [deftest testing is use-fixtures]]
    [clj-time.coerce :as tc]
-   [clj-uuid :as uuid]))
+   [clj-uuid :as uuid]
+   [manifold.stream :as stream]))
+
+(use-fixtures :each (tu/with-session-fixture))
 
 (defn same-time-timeuuids
   []
@@ -81,3 +86,53 @@
               [before "bar"]
               [before "foo"])
              0)))))
+
+(deftest -compare-mirrors-cassandra-test
+  (let [_ (tu/create-table
+           :uuid_test
+           (str
+            "(test_id uuid, seq int, uuid uuid, version int"
+            ", primary key ((test_id), uuid, seq))"))
+
+        test-id (uuid/v1)
+
+        uuids (concat
+               contradictory-lex-timeuuids
+               [(uuid/v5 uuid/+namespace-url+ "https://www.google.com/")
+                (uuid/v5 uuid/+namespace-dns+ "8.8.8.8")]
+               v4-lex-lo-time-v4-lex-hi
+               [(uuid/v0)]
+               [(uuid/v3 uuid/+namespace-dns+ "9.9.9.9")
+                (uuid/v3 uuid/+namespace-url+ "https://www.bing.com/")])
+
+        indexed-uuids (map-indexed (fn [i uuid] [i uuid]) uuids)
+
+        _ (doseq [[i uuid] indexed-uuids]
+            @(r/insert
+              tu/*session*
+              :uuid_test
+              {:test_id test-id
+               :seq i
+               :uuid uuid
+               :version (uuid/get-version uuid)}))
+
+        cassandra-sorted-uuids (->> (r/select-buffered
+                                     tu/*session*
+                                     :uuid_test
+                                     [:test_id]
+                                     [test-id]
+                                     {:order-by [[:uuid :asc]]})
+                                    deref
+                                    (stream/map #(dissoc % :test_id))
+                                    (stream/reduce conj [])
+                                    deref)
+
+        sorted-uuids (mapv
+                      (fn [[i uuid]]
+                        {:seq i
+                         :uuid uuid
+                         :version (uuid/get-version uuid)})
+                      (sort-by second sut/-compare indexed-uuids))]
+    (testing "comparison order matches Cassandra"
+      (is (= cassandra-sorted-uuids
+             sorted-uuids)))))
