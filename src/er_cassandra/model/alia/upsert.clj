@@ -21,7 +21,8 @@
    [er-cassandra.model.alia.delete :as alia.delete]
    [schema.core :as s]
    [prpr.promise :as pr :refer [ddo]]
-   [taoensso.timbre :refer [warn]])
+   [taoensso.timbre :refer [warn error]]
+   [prpr.promise :as prpr])
   (:import
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
