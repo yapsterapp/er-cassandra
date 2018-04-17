@@ -401,7 +401,7 @@
                              {:notify-s (log-notify-stream)}
                              r-s))))
                        (stream/realize-each)
-                       (stream/buffer 1)
+                       (stream/buffer 3)
                        (stream/reduce (fn [c _] (inc c)) 0))]
     (info "load-tables loaded " table-cnt "tables - FINISHED")
     (return table-cnt)))
