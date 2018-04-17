@@ -23,7 +23,7 @@
 (defn prepare-async
   [alia-session statement]
   (let [r (d/deferred)]
-    (debug "preparing: " statement)
+    (trace "preparing: " statement)
     (alia/prepare-async
      alia-session
      statement
@@ -38,7 +38,7 @@
   (if-let [ps (get @prepared-stmts-atom
                    str-statement)]
     (do
-      (debug "re-using prepared-statement: " str-statement)
+      (trace "re-using prepared-statement: " str-statement)
       (return deferred-context ps))
     (ddo [ps (prepare-async alia-session str-statement)]
       (swap! prepared-stmts-atom
