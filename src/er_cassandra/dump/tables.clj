@@ -136,7 +136,7 @@
    r-s]
   (ddo [:let [out (-> f io/file io/output-stream)
               w (transit/writer out
-                                :json
+                                :msgpack
                                 {:handlers transit-write-handler-map})
               notify-cnt (or notify-cnt 10000)
               counter-a (atom 0)
@@ -225,7 +225,7 @@
                       io/file
                       io/input-stream)
                r (transit/reader in
-                                 :json
+                                 :msgpack
                                  {:handlers transit-read-handler-map})]
 
            (prpr/catch
