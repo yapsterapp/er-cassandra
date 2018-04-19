@@ -32,25 +32,31 @@
       (compare (str timeuuid-a) (str timeuuid-b)))))
 
 (defn cassandra-uuid-compare
-  "it seems cassandra always compares timeuuids as lower than
-   non-timeuuids, so that's a thing"
+  "Per [the source][src] Cassandra sorts UUIDs using the following comparisons,
+  in order:
+
+  1. version
+  2. timestamp if both v1 UUIDs
+  3. lexically, using an unsigned msb-to-lsb comparison
+
+  [src]: https://github.com/apache/cassandra/blob/trunk/src/java/org/apache/cassandra/db/marshal/UUIDType.java"
   [a b]
-  (let [ts-a (some-> a uuid/get-timestamp)
-        ts-b (some-> b uuid/get-timestamp)]
+  (let [v-a (some-> a uuid/get-version)
+        v-b (some-> b uuid/get-version)
+        both-uuids? (and (some? v-a) (some? v-b))
+        same-uuid-version? (and both-uuids? (= v-a v-b))]
     (cond
-      (and ts-a ts-b)
+      (and same-uuid-version? (= 1 v-a))
       (timeuuid-comparator a b)
 
-      (and (nil? ts-a) (nil? ts-b))
+      same-uuid-version?
       (compare (str a) (str b))
 
-      ts-a
-      -1
+      both-uuids?
+      (compare v-a v-b)
 
-      ts-b
-      1
-
-      :else (throw (ex-info "huh?" {:a a :b b})))))
+      :else
+      (throw (ex-info "huh?" {:a a :b b})))))
 
 (defprotocol ICassandraUUIDCompare
   (-compare [a b]))

@@ -30,6 +30,7 @@
                  [employeerepublic/deferst "0.6.0"
                   :exclusions [funcool/promesa
                                manifold]]
+                 [com.cognitect/transit-clj "0.8.297"]
                  [employeerepublic/promisespromises "0.4"]]
 
   :aliases {"test-repl" ["with-profile" "cassandra-unit,repl" "repl"]}
