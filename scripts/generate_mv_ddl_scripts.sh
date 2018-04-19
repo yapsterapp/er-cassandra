@@ -15,6 +15,6 @@
 # and
 # <KEYSPACE>_create_mvs.cql
 
-cat "${1}.cql" | ./filter_drop_mvs > "${1}_drop_mvs.cql"
-cat "${1}.cql" | ./filter_create_non_mvs > "${1}_create_non_mvs.cql"
-cat "${1}.cql" | ./filter_create_mvs > "${1}_create_mvs.cql"
+cat "${1}.cql" | ./filter_ddl_drop_mvs > "${1}_drop_mvs.cql"
+cat "${1}.cql" | ./filter_ddl_create_non_mvs > "${1}_create_non_mvs.cql"
+cat "${1}.cql" | ./filter_ddl_create_mvs > "${1}_create_mvs.cql"
