@@ -15,6 +15,7 @@ TARGET_KS=yapstaging
 TARGET_CASSANDRA_USER=cassandra
 TARGET_CASSANDRA_YAML=/etc/dse/cassandra/cassandra.yaml
 TARGET_HOSTS=10.0.6.135
+IGNORE_TARGET_HOSTS=10.0.6.2,10.0.5.199,10.0.6.49
 
 # prepare a pssh/hosts file for pssh login across all the SOURCE_HOSTS
 mkdir -p pssh
@@ -45,5 +46,5 @@ find ${TARGET_DIR} -type f -path \*/snapshots/\* | xargs -I % sh -c "mv % \$(dir
 # now run the sstableloader
 for __H__ in "${__HOSTS__[@]}"
 do
-    find ${TARGET_DIR}/${__H__}/${TARGET_KS} -mindepth 1 -maxdepth 1 -type d | tail -n 1 | parallel --jobs 5 -I % "CMD=\"sudo -u ${TARGET_CASSANDRA_USER}  sstableloader -f ${TARGET_CASSANDRA_YAML} -d ${TARGET_HOSTS} %\" ; echo \${CMD} ; \${CMD}"
+    find ${TARGET_DIR}/${__H__}/${TARGET_KS} -mindepth 1 -maxdepth 1 -type d | tail -n 1 | parallel --jobs 5 -I % "CMD=\"sudo -u ${TARGET_CASSANDRA_USER}  sstableloader -f ${TARGET_CASSANDRA_YAML} -d ${TARGET_HOSTS} -i ${IGNORE_TARGET_HOSTS} %\" ; echo \${CMD} ; \${CMD}"
 done
