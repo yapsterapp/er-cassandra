@@ -2,6 +2,25 @@
 
 # requires GNU parallel and pssh
 
+# - snapshot a cassandra keyspace, SOURCE_KS, on SOURCE_HOSTS nodes
+# - retrieve the snapshots to TARGET_DIR and rename so that
+#   the SSTables can be loaded to keyspace TARGET_KS
+# - run sstableloader in parallel against nodes in the cluster
+#   seeded from TARGET_HOSTS
+#
+# NOTE: thanks to https://issues.apache.org/jira/browse/CASSANDRA-14315
+# sstableloader borks on some tables with MVs, so to get around this
+# use generate_mv_ddl_scripts.sh on a <KEYSPACE>.cql DDL script
+# which will generate scripts to drop/create all the MVs in the keyspace,
+# as well as a script which creates all non-mv objects. use the
+# scripts to drop all MVs in the keyspace before restoring
+#
+# the full <KEYSPACE>.cql DDL script must be in the same dir as this script
+# because it is needed to filter the list of SSTables so that only
+# non-MV SSTables get restored (since MVs have been dropped)
+#
+# once the restore is complete, recreate the MVs with the generated script
+
 SNAPSHOT=`date "+%Y%m%d%H%M"`
 SOURCE_HOSTS=52.215.83.105,52.18.63.227
 SOURCE_USER=mccraig
