@@ -1,0 +1,18 @@
+#!/usr/bin/env python2
+
+import sys
+import re
+
+ddl = sys.stdin.read()
+
+patt = re.compile(r"^(CREATE\s+(?:.*?)\n\n)", re.MULTILINE | re.DOTALL)
+creates = patt.findall(ddl)
+
+def non_mv (mv):
+  mv_patt = re.compile(r"^CREATE MATERIALIZED VIEW\s+.*$", re.MULTILINE | re.DOTALL)
+  return not mv_patt.match(mv)
+
+non_mv_creates = filter(non_mv, creates)
+
+for cr in non_mv_creates:
+    print(cr)
