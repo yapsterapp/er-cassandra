@@ -45,5 +45,5 @@ find ${TARGET_DIR} -type f -path \*/snapshots/\* | xargs -I % sh -c "mv % \$(dir
 # now run the sstableloader
 for __H__ in "${__HOSTS__[@]}"
 do
-    find ${TARGET_DIR}/${__H__}/${TARGET_KS} -mindepth 1 -maxdepth 1 -type d | parallel --jobs 5 -I % sudo -u ${TARGET_CASSANDRA_USER}  sstableloader -f ${TARGET_CASSANDRA_YAML} -d ${TARGET_HOSTS} %
+    find ${TARGET_DIR}/${__H__}/${TARGET_KS} -mindepth 1 -maxdepth 1 -type d | tail -n 1 | parallel --jobs 5 -I % "CMD=\"sudo -u ${TARGET_CASSANDRA_USER}  sstableloader -f ${TARGET_CASSANDRA_YAML} -d ${TARGET_HOSTS} %\" ; echo \${CMD} ; \${CMD}"
 done
