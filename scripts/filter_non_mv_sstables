@@ -1,0 +1,30 @@
+#!/usr/bin/env python2
+
+import sys, re, sets
+
+if len(sys.argv) != 2:
+   raise ValueError("first arg should be <keyspace> for <keyspace>.cql DDL file")
+
+# read the DDL and turn into a set of MV "keyspace/mv_name-" path patterns
+
+with open(sys.argv[1] + '.cql') as x: ddl = x.read()
+
+patt = re.compile(r"^(CREATE MATERIALIZED VIEW (?:.*?)\n\n)", re.MULTILINE | re.DOTALL)
+mvs = patt.findall(ddl)
+
+def ks_mv_path (mv):
+  mvn_patt = re.compile(r"^CREATE MATERIALIZED VIEW\s+([^\s\.]+)\.([^\s\.]+)\s+(?:.*?)$", re.MULTILINE | re.DOTALL)
+  [ks, mv] = list(mvn_patt.findall(mv)[0])
+  path = "/" + ks + "/" + mv + "-"
+  return re.compile("^.*" + path + ".*$")
+
+mv_path_patts = map(ks_mv_path, mvs)
+
+def mv_line(l):
+    return any(patt.match(l) for patt in mv_path_patts)
+
+lines = sys.stdin.readlines()
+
+for l in lines:
+    if not mv_line(l):
+       sys.stdout.write(l)
