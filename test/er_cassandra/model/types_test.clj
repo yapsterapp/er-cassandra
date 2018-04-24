@@ -93,6 +93,70 @@
            (set
             (t/all-maintained-foreign-key-cols m))))))
 
+(defn foos-all-table-types-entity
+  []
+  (t/create-entity
+   {:primary-table {:name :foos :key [:id]}
+    :unique-key-tables [{:name :foos_by_email :key [:email]}]
+    :secondary-tables [{:name :foos_by_bar
+                        :key [[:bar] :id]}
+                       {:name :foos_by_stuff
+                        :key [[:stuff] :id]
+                        :view? true}]
+    :lookup-tables [{:name :foos_by_baz
+                     :key [[:baz] :id]}
+                    {:name :foos_by_thing
+                     :key [[:thing] :id]
+                     :view? true}]}))
+
+(deftest all-entity-tables-test
+  (let [{pt :primary-table
+         ukts :unique-key-tables
+         sts :secondary-tables
+         lts :lookup-tables
+         :as m} (foos-all-table-types-entity)]
+    (is (= (->> (apply concat [[pt] ukts sts lts])
+                (map :name)
+                set)
+           (->>
+            (t/all-entity-tables m)
+            (map :name)
+            set)))))
+
+(deftest contains-key-cols-for-table?-test
+  (let [{pt :primary-table
+         [foos-by-email
+          :as ukts] :unique-key-tables
+         [foos-by-bar
+          :as sts] :secondary-tables
+         lts :lookup-tables
+         :as m} (foos-all-table-types-entity)]
+    (testing "contains single-col key cols"
+      (is
+       (= true
+          (t/contains-key-cols-for-table?
+           m {:email "foo@bar.com"} foos-by-email)))
+      (is
+       (= true
+          (t/contains-key-cols-for-table?
+           m {:email nil} foos-by-email)))
+      (is
+       (= false
+          (t/contains-key-cols-for-table?
+           m {} foos-by-email))))
+    (testing "contains multi-col key"
+      (is
+       (= true
+          (t/contains-key-cols-for-table?
+           m {:id 10 :bar "blah"} foos-by-bar)))
+      (is
+       (= true
+          (t/contains-key-cols-for-table?
+           m {:id 10 :bar nil} foos-by-bar)))
+      (is
+       (= false
+          (t/contains-key-cols-for-table?
+           m {} foos-by-bar))))))
 
 (deftest test-run-callbacks
   (let [s nil
@@ -101,8 +165,8 @@
         update-callbacks (fn [m cbs]
                            (assoc-in m [:callbacks :before-save] cbs))
         r {:id 1 :name "bar"}]
-      (let [m (update-callbacks m [identity])]
-    (testing "identity"
+    (let [m (update-callbacks m [identity])]
+      (testing "identity"
         (is (= r @(run-save-callbacks s m :before-save nil r {})))))
     (testing "callback sequence"
       (let [m (update-callbacks m [#(assoc % :name "baz")

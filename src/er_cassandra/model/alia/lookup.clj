@@ -8,7 +8,9 @@
    [schema.core :as s]
    [cats.core :refer [mlet return]]
    [cats.context :refer [with-context]]
-   [cats.labs.manifold :refer [deferred-context]])
+   [cats.labs.manifold :refer [deferred-context]]
+   [er-cassandra.model.types]
+   [er-cassandra.model.model-session])
   (:import
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))

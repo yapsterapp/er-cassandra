@@ -340,19 +340,37 @@
   "a list of all cols used in keys across all tables for the entity"
   [^Entity entity]
   (distinct
-   (concat (uber-key entity)
-           (mapcat :key (:unique-key-tables entity))
-           (mapcat :key (:secondary-tables entity))
-           (mapcat :key (:lookup-tables entity)))))
+   (flatten
+    (concat (uber-key entity)
+            (mapcat :key (:unique-key-tables entity))
+            (mapcat :key (:secondary-tables entity))
+            (mapcat :key (:lookup-tables entity))))))
 
 (defn all-maintained-foreign-key-cols
   "a list of all cols used in foreign keys maintained by this lib (rather than c* MVs)"
   [^Entity entity]
   (distinct
-   (concat
-    (->> entity :unique-key-tables (mapcat :key))
-    (->> entity :secondary-tables (filter (complement :view?)) (mapcat :key))
-    (->> entity :lookup-tables (filter (complement :view?)) (mapcat :key)))))
+   (flatten
+    (concat
+     (->> entity :unique-key-tables (mapcat :key))
+     (->> entity :secondary-tables (filter (complement :view?)) (mapcat :key))
+     (->> entity :lookup-tables (filter (complement :view?)) (mapcat :key))))))
+
+(defn all-entity-tables
+  "returns a list of all tables from an entity"
+  [^Entity entity]
+  (concat
+   [(:primary-table entity)]
+   (:secondary-tables entity)
+   (:lookup-tables entity)
+   (:unique-key-tables entity)))
+
+(defn contains-key-cols-for-table?
+  "true if the record has an entry for
+   every column of the table's key"
+  [^Entity entity record table]
+  (let [kcols (flatten (:key table))]
+    (every? #(contains? record %) kcols)))
 
 (defn extract-uber-key-value
   [^Entity entity record]
