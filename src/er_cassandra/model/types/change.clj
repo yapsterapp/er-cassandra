@@ -136,14 +136,19 @@
                            :old-record old-record
                            :new-record new-record})))
 
-    (->> tables
-         (mapcat (partial change-contribution
-                          entity
-                          old-record
-                          new-record
-                          changed-cols-set))
-         set
-         (into uberkey-cols-set))))
+    (let [;; these are the non-uberkey cols required to effect the change
+          mc-cols (mapcat (partial change-contribution
+                                   entity
+                                   old-record
+                                   new-record
+                                   changed-cols-set)
+                          tables)]
+
+      ;; if there are no non-uberkey cols required, then there is
+      ;; no change
+      (if (not-empty mc-cols)
+        (into uberkey-cols-set mc-cols)
+        nil))))
 
 (defn minimal-change
   "return a record which is the minimal change for the
@@ -157,6 +162,9 @@
    - changes to a part of any index-table key where the whole
      index-table key is not present
    - columns missing from old-record (which are present on new-record)
+   - columns missing from the new-record such as lookup or secondary
+     table key columns which are required because a changed column
+     would be denormalized to that table
 
    the minimal upsert contains all changed columns, plus any key columns
    and denorm columns from any index tables which have any key or denorm
