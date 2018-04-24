@@ -177,87 +177,57 @@
        (re-matches #"\p{Alpha}[_\p{Alnum}]+")
        boolean))
 
-(s/defn serialize-upsert-deserialize
-  "upsert a single instance given the previous value of the instance"
+(s/defn upsert-minimal-changes
+  "after callbacks have been run, upsert a minimal change"
   [session :- ModelSession
    entity :- Entity
    old-record :- t/MaybeRecordSchema
    record :- t/RecordSchema
-   opts :- fns/UpsertOptsSchema
-   ;; these are invalid cassandra columns (usually with a - in their key)
-   ;; stripped from the record. they will be applied to the record
-   ;; and old-record before running :before-save callbacks
-   non-cassandra-record :- t/MaybeRecordSchema]
-  (ddo [:let [old-record (not-empty old-record)]
-        old-record-ser (when old-record
-                         (t/run-save-callbacks
-                          session
-                          entity
-                          :before-save
-                          (merge non-cassandra-record old-record )
-                          (merge non-cassandra-record old-record)
-                          opts))
-
-        record-ser (t/run-save-callbacks
-                    session
+   opts :- fns/UpsertOptsSchema]
+  (let [;; remove any columns which would do nothing but
+        ;; create tombstones or other garbage
+        min-change (t.change/minimal-change
                     entity
-                    :before-save
                     old-record
-                    (merge non-cassandra-record record)
-                    opts)
+                    record)]
 
-        :let [record-keys (-> record keys set)
-              record-ser-keys (-> record-ser keys set)
-              removed-keys (set/difference record-keys record-ser-keys)
+    (if min-change
+      (ddo [:let [;; keep the removed columns to add back to the response
+                  ;; record, since they are valid columns and the
+                  ;; general contract is that the response record
+                  ;; will resemble the request record excepting
+                  ;; necessary changes (such as removal of failed key acquisitions)
+                  removed-cols (filter
+                                (->> min-change keys set complement)
+                                (keys record))
+                  removed-record (select-keys record removed-cols)]
 
-              ;; if the op is an insert, then old-record will be nil,
-              ;; and we will need to return nil values for any removed keys
-              ;; to preserve schema
-              nil-removed (->> removed-keys
-                               (filter cassandra-column-name?)
-                               (map (fn [k]
-                                      [k nil]))
-                               (into {}))
+            [updated-record-with-keys
+             acquire-failures] (unique-key/upsert-primary-record-and-update-unique-keys
+                                session
+                                entity
+                                old-record
+                                min-change
+                                opts)
 
-              ;; _ (warn "serialize-upsert-deserialize"
-              ;;         {:old-record old-record
-              ;;          :old-record-ser old-record-ser
-              ;;          :record record
-              ;;          :record-ser record-ser
-              ;;          :record-keys record-keys
-              ;;          :record-ser-keys record-ser-keys
-              ;;          :removed-keys removed-keys
-              ;;          :nil-removed nil-removed})
-              ]
+            _ (monad/when updated-record-with-keys
+                (update-secondaries-and-lookups session
+                                                entity
+                                                old-record
+                                                min-change
+                                                opts))
 
-        [updated-record-with-keys-ser
-         acquire-failures] (unique-key/upsert-primary-record-and-update-unique-keys
-                            session
-                            entity
-                            old-record-ser
-                            record-ser
-                            opts)
+            ;; add columns which weren't needed for the upsert back in to the response
+            :let [updated-record-with-keys (merge updated-record-with-keys
+                                                  removed-record)]]
 
-        _ (monad/when updated-record-with-keys-ser
-            (update-secondaries-and-lookups session
-                                            entity
-                                            old-record-ser
-                                            updated-record-with-keys-ser
-                                            opts))
+        (return
+         (pair updated-record-with-keys
+               acquire-failures)))
 
-        ;; construct the response and deserialise
-        response-record-raw (merge nil-removed
-                                   old-record
-                                   updated-record-with-keys-ser)
-
-        response-record (t/run-callbacks
-                         session
-                         entity
-                         :after-load
-                         response-record-raw
-                         opts)]
-    (return
-     [response-record acquire-failures])))
+      ;; no upsert required
+      (return deferred-context
+              (pair record nil)))))
 
 
 (s/defn upsert-changes*
@@ -278,64 +248,79 @@
               (= (t/extract-uber-key-value entity old-record)
                  (t/extract-uber-key-value entity record))))
 
-  (let [opts (ts/default-timestamp-opt opts)
+  (ddo [:let [opts (ts/default-timestamp-opt opts)
 
-        ;; separate the tru cassandra columns from non-cassandra
-        ;; columns which will be removed by callbacks
-        {cassandra-cols true
-         non-cassandra-cols false} (->> record
-                                        keys
-                                        (group-by cassandra-column-name?))
-        cassandra-record (select-keys record cassandra-cols)
-        non-cassandra-record (select-keys record non-cassandra-cols)
+              ;; separate the tru cassandra columns from non-cassandra
+              ;; columns which will be removed by callbacks
+              {cassandra-cols true
+               non-cassandra-cols false} (->> record
+                                              keys
+                                              (group-by cassandra-column-name?))
+              non-cassandra-record (select-keys record non-cassandra-cols)
 
-        ;; remove any columns which would do nothing but
-        ;; create tombstones or other garbage
-        min-change (t.change/minimal-change
+              old-record (not-empty old-record)]
+
+        old-record-ser (when old-record
+                         (t/run-save-callbacks
+                          session
+                          entity
+                          :before-save
+                          old-record
+                          (merge non-cassandra-record old-record)
+                          opts))
+
+        record-ser (t/run-save-callbacks
+                    session
                     entity
+                    :before-save
                     old-record
-                    cassandra-record)]
+                    record
+                    opts)
 
-    (if min-change
-      (ddo [:let [;; keep the removed columns to add back to the response
-                  ;; record, since they are valid columns and the
-                  ;; general contract is that the response record
-                  ;; will resemble the request record excepting
-                  ;; necessary changes (such as removal of failed key acquisitions)
-                  removed-cols (filter
-                                (->> min-change keys set complement)
-                                cassandra-cols)
-                  removed-record (select-keys record removed-cols)]
+        :let [record-keys (-> record keys set)
+              record-ser-keys (-> record-ser keys set)
+              removed-keys (set/difference record-keys record-ser-keys)
 
-            [response-record
-             acquire-failures] (serialize-upsert-deserialize
-                                session
-                                entity
-                                old-record
-                                min-change
-                                opts
-                                non-cassandra-record)
+              ;; if the op is an insert, then old-record will be nil,
+              ;; and we will need to return nil values for any removed keys
+              ;; to preserve schema
+              nil-removed (->> removed-keys
+                               (filter cassandra-column-name?)
+                               (map (fn [k]
+                                      [k nil]))
+                               (into {}))]
 
-            ;; add columns which weren't needed for the upsert back in to the response
-            :let [response-record (merge response-record
-                                         removed-record)]
+        [updated-record-with-keys-ser
+         acquire-failures] (upsert-minimal-changes
+                            session
+                            entity
+                            old-record-ser
+                            record-ser
+                            opts)
 
-            ;; do any :after-save actions
-            _ (t/run-save-callbacks
-               session
-               entity
-               :after-save
-               old-record
-               response-record
-               opts)]
+        ;; construct the response and deserialise
+        response-record-raw (merge nil-removed
+                                   old-record
+                                   updated-record-with-keys-ser)
 
-        (return
-         (pair response-record
-               acquire-failures)))
+        response-record (t/run-callbacks
+                         session
+                         entity
+                         :after-load
+                         response-record-raw
+                         opts)
 
-      ;; no change required
-      (return deferred-context
-              (pair record nil)))))
+        _ (t/run-save-callbacks
+           session
+           entity
+           :after-save
+           old-record
+           response-record
+           opts)]
+
+    (return
+     (pair response-record
+           acquire-failures))))
 
 (s/defn upsert*
   "upsert a single instance
