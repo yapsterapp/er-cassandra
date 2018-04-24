@@ -246,6 +246,13 @@
                           (ex-data x)))]
         (is (= ::sut/uberkey-changed ex-tag))))
 
+    (testing "returns nil if there are no changes"
+      (let [mcc (sut/minimal-change-cols
+                 m
+                 {:id 10 :foo 20}
+                 {:id 10 :foo 20})]
+        (is (= nil mcc))))
+
     (testing "combines change contributions for non-key col not specifically denormed"
       ;; should contain key cols from
       ;; - primary table
@@ -317,6 +324,14 @@
                           (ex-data x)))]
         (is (= ::sut/missing-columns x-tag))
         (is (= #{:phone} (:missing-cols x-value)))))
+
+    (testing "returns nil if there is no change"
+      (let [mc (sut/minimal-change
+                m
+                {:id 10 :bar 10 :box 20 :flag 10 :thing 10 :phone "123"}
+                {:id 10 :bar 10 :box 20 :flag 10 :thing 10 :phone "123"})]
+        (is (= mc
+               nil))))
 
     (testing "selects columns for minimal change"
       (let [mc (sut/minimal-change
