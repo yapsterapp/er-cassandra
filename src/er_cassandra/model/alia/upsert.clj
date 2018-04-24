@@ -19,6 +19,7 @@
     [unique-key :as unique-key]]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.alia.delete :as alia.delete]
+   [er-cassandra.model.types.change :as t.change]
    [schema.core :as s]
    [prpr.promise :as pr :refer [ddo]]
    [taoensso.timbre :refer [warn error]]
@@ -173,46 +174,28 @@
   [k]
   (->> k
        name
-       (re-matches #"\p{Alpha}[_\p{Alnum}]+")))
+       (re-matches #"\p{Alpha}[_\p{Alnum}]+")
+       boolean))
 
-(s/defn upsert-changes*
-  "upsert a single instance given the previous value of the instance. if the
-   previous value is nil then it's an insert. if the new value is nil then
-   it's a delete. otherwise key changes will be computed using the old-record
-   and without requiring any select
-
-   returns a Deferred<Pair[record key-failures]> where key-failures describes
-   unique keys which were requested but could not be acquired"
+(s/defn serialize-upsert-deserialize
+  "upsert a single instance given the previous value of the instance"
   [session :- ModelSession
    entity :- Entity
    old-record :- t/MaybeRecordSchema
    record :- t/RecordSchema
-   opts :- fns/UpsertOptsSchema]
-
-  (assert (or (nil? old-record)
-              (nil? record)
-              (= (t/extract-uber-key-value entity old-record)
-                 (t/extract-uber-key-value entity record))))
-
-  (ddo [:let [opts (ts/default-timestamp-opt opts)
-
-              ;; get the non-cassandra key-vals to use on the :before-save
-              ;; callback on the old-record
-              non-cassandra-cols (->> record
-                                      keys
-                                      (filter (complement cassandra-column-name?)))
-              non-cassandra (select-keys record non-cassandra-cols)]
-
-        ;; serialize the old-record... give it the non-cassandra cols from the
-        ;; record so that e.g. protected cols don't get removed if they
-        ;; are being updated
+   opts :- fns/UpsertOptsSchema
+   ;; these are invalid cassandra columns (usually with a - in their key)
+   ;; stripped from the record. they will be applied to the record
+   ;; and old-record before running :before-save callbacks
+   non-cassandra-record :- t/MaybeRecordSchema]
+  (ddo [:let [old-record (not-empty old-record)]
         old-record-ser (when old-record
                          (t/run-save-callbacks
                           session
                           entity
                           :before-save
-                          (merge non-cassandra old-record)
-                          (merge non-cassandra old-record)
+                          (merge non-cassandra-record old-record )
+                          (merge non-cassandra-record old-record)
                           opts))
 
         record-ser (t/run-save-callbacks
@@ -220,7 +203,7 @@
                     entity
                     :before-save
                     old-record
-                    record
+                    (merge non-cassandra-record record)
                     opts)
 
         :let [record-keys (-> record keys set)
@@ -234,7 +217,18 @@
                                (filter cassandra-column-name?)
                                (map (fn [k]
                                       [k nil]))
-                               (into {}))]
+                               (into {}))
+
+              ;; _ (warn "serialize-upsert-deserialize"
+              ;;         {:old-record old-record
+              ;;          :old-record-ser old-record-ser
+              ;;          :record record
+              ;;          :record-ser record-ser
+              ;;          :record-keys record-keys
+              ;;          :record-ser-keys record-ser-keys
+              ;;          :removed-keys removed-keys
+              ;;          :nil-removed nil-removed})
+              ]
 
         [updated-record-with-keys-ser
          acquire-failures] (unique-key/upsert-primary-record-and-update-unique-keys
@@ -261,28 +255,92 @@
                          entity
                          :after-load
                          response-record-raw
-                         opts)
-
-        ;; do any :after-save actions
-        _ (t/run-save-callbacks
-           session
-           entity
-           :after-save
-           old-record
-           response-record
-           opts)]
-
+                         opts)]
     (return
-     ;; merge the updated-record-with-keys with the old-record, so any
-     ;; cols not included in the update are in the response
-     (pair response-record
-           acquire-failures))))
+     [response-record acquire-failures])))
+
+
+(s/defn upsert-changes*
+  "upsert a single instance given the previous value of the instance. if the
+   previous value is nil then it's an insert. if the new value is nil then
+   it's a delete. otherwise key changes will be computed using the old-record
+   and without requiring any select
+
+   returns a Deferred<Pair[record key-failures]> where key-failures describes
+   unique keys which were requested but could not be acquired"
+  [session :- ModelSession
+   entity :- Entity
+   old-record :- t/MaybeRecordSchema
+   record :- t/RecordSchema
+   opts :- fns/UpsertOptsSchema]
+
+  (assert (or (nil? old-record)
+              (= (t/extract-uber-key-value entity old-record)
+                 (t/extract-uber-key-value entity record))))
+
+  (let [opts (ts/default-timestamp-opt opts)
+
+        ;; separate the tru cassandra columns from non-cassandra
+        ;; columns which will be removed by callbacks
+        {cassandra-cols true
+         non-cassandra-cols false} (->> record
+                                        keys
+                                        (group-by cassandra-column-name?))
+        cassandra-record (select-keys record cassandra-cols)
+        non-cassandra-record (select-keys record non-cassandra-cols)
+
+        ;; remove any columns which would do nothing but
+        ;; create tombstones or other garbage
+        min-change (t.change/minimal-change
+                    entity
+                    old-record
+                    cassandra-record)]
+
+    (if min-change
+      (ddo [:let [;; keep the removed columns to add back to the response
+                  ;; record, since they are valid columns and the
+                  ;; general contract is that the response record
+                  ;; will resemble the request record excepting
+                  ;; necessary changes (such as removal of failed key acquisitions)
+                  removed-cols (filter
+                                (->> min-change keys set complement)
+                                cassandra-cols)
+                  removed-record (select-keys record removed-cols)]
+
+            [response-record
+             acquire-failures] (serialize-upsert-deserialize
+                                session
+                                entity
+                                old-record
+                                min-change
+                                opts
+                                non-cassandra-record)
+
+            ;; add columns which weren't needed for the upsert back in to the response
+            :let [response-record (merge response-record
+                                         removed-record)]
+
+            ;; do any :after-save actions
+            _ (t/run-save-callbacks
+               session
+               entity
+               :after-save
+               old-record
+               response-record
+               opts)]
+
+        (return
+         (pair response-record
+               acquire-failures)))
+
+      ;; no change required
+      (return deferred-context
+              (pair record nil)))))
 
 (s/defn upsert*
   "upsert a single instance
 
-   convenience fn - if the entity has any foreign keys it first selects
-                    the instance from the db, then calls upsert-changes*"
+   convenience fn - if the entity has any maintained foreign keys it borks"
   [session :- ModelSession
    entity :- Entity
    record :- t/MaybeRecordSchema
@@ -313,8 +371,9 @@
 (s/defn select-upsert*
   "upsert a single instance
 
-   convenience fn - if the entity has any foreign keys it first selects
-                    the instance from the db, then calls upsert-changes*"
+   convenience fn - if the entity has any maintained foreign keys it first
+                    selects the instance from the db,
+                    then calls upsert-changes*"
   [session :- ModelSession
    entity :- Entity
    record :- t/MaybeRecordSchema

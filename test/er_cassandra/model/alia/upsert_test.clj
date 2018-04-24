@@ -353,7 +353,11 @@
     (testing "result includes columns from old-record not in update"
       (let [new-record {:org_id org-id
                         :id id
-                        :nick "bar"}
+                        :nick "bar"
+                        ;; we have to include :thing
+                        ;; because it's in a secondary table key
+                        ;; and secondary tables will denorm :nick
+                        :thing "blah"}
             [r acqf] @(u/upsert-changes* tu/*model-session*
                                          m
                                          record
@@ -447,7 +451,7 @@
       (let [[r e] @(u/upsert-changes*
                     tu/*model-session*
                     m
-                    (dissoc record-foo :nick)
+                    (assoc record-foo :nick nil)
                     record-foo
                     (ts/default-timestamp-opt
                      {:if-exists true}))
@@ -461,7 +465,7 @@
                     (u/upsert-changes*
                      tu/*model-session*
                      m
-                     (dissoc record-bar :nick)
+                     (assoc record-bar :nick nil)
                      record-bar
                      (ts/default-timestamp-opt
                       {:if-exists true})))
@@ -483,7 +487,7 @@
       (let [[r e] @(u/upsert-changes*
                     tu/*model-session*
                     m
-                    (dissoc record-foo :nick)
+                    (assoc record-foo :nick nil)
                     record-foo
                     (ts/default-timestamp-opt
                      {:only-if [[:= :nick "bar"]]}))
@@ -495,7 +499,7 @@
                     (u/upsert-changes*
                      tu/*model-session*
                      m
-                     (dissoc record-bar :nick)
+                     (assoc record-bar :nick nil)
                      record-bar
                      (ts/default-timestamp-opt
                       {:only-if [[:= :nick "bar"]]})))

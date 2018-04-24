@@ -233,7 +233,7 @@
         f2-nick (tu/fetch-record :delete_mixed_lookup_test_by_nick
                                  [:org_id :nick] [org-id "foo"])
         f2-thing (tu/fetch-record :delete_mixed_lookup_test_by_thing
-                                 [:org_id :thing] [org-id "Thang"])
+                                  [:org_id :thing] [org-id "Thang"])
         f2-email-bar (tu/fetch-record :delete_mixed_lookup_test_by_email
                                       :email "foo@bar.com")
         f2-email-baz (tu/fetch-record :delete_mixed_lookup_test_by_email
@@ -241,7 +241,8 @@
         f2-phone-0 (tu/fetch-record :delete_mixed_lookup_test_by_phone
                                     :phone "01234")
         f2-phone-5 (tu/fetch-record :delete_mixed_lookup_test_by_phone
-                                    :phone "5678")]
+                                    :phone "5678")
+        ]
 
     (is (= f-r r))
     (is (= f-nick r))
