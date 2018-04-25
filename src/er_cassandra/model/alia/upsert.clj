@@ -177,7 +177,7 @@
        (re-matches #"\p{Alpha}[_\p{Alnum}]+")
        boolean))
 
-(s/defn upsert-minimal-changes
+(s/defn ^:deprecated upsert-minimal-changes
   "after callbacks have been run, upsert a minimal change"
   [session :- ModelSession
    entity :- Entity
@@ -264,15 +264,15 @@
                          (t/run-save-callbacks
                           session
                           entity
-                          :before-save
+                          :serialize
                           old-record
-                          (merge non-cassandra-record old-record)
+                          old-record
                           opts))
 
-        record-ser (t/run-save-callbacks
+        record-ser (t/chain-save-callbacks
                     session
                     entity
-                    :before-save
+                    [:before-save :serialize]
                     old-record
                     record
                     opts)
@@ -291,22 +291,37 @@
                                (into {}))]
 
         [updated-record-with-keys-ser
-         acquire-failures] (upsert-minimal-changes
+         acquire-failures] (unique-key/upsert-primary-record-and-update-unique-keys
                             session
                             entity
                             old-record-ser
                             record-ser
                             opts)
 
+        _ (monad/when updated-record-with-keys-ser
+            (update-secondaries-and-lookups session
+                                            entity
+                                            old-record-ser
+                                            updated-record-with-keys-ser
+                                            opts))
+
+        ;; [updated-record-with-keys-ser
+        ;;  acquire-failures] (upsert-minimal-changes
+        ;;                     session
+        ;;                     entity
+        ;;                     old-record-ser
+        ;;                     record-ser
+        ;;                     opts)
+
         ;; construct the response and deserialise
         response-record-raw (merge nil-removed
                                    old-record
                                    updated-record-with-keys-ser)
 
-        response-record (t/run-callbacks
+        response-record (t/chain-callbacks
                          session
                          entity
-                         :after-load
+                         [:deserialize :after-load]
                          response-record-raw
                          opts)
 
@@ -386,10 +401,10 @@
                          record-ser))
 
         old-record (monad/when raw-old-record
-                     (t/run-callbacks
+                     (t/chain-callbacks
                       session
                       entity
-                      :after-load
+                      [:deserialize :after-load]
                       raw-old-record
                       opts))]
 
