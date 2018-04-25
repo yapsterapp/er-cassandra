@@ -47,34 +47,67 @@
           key-cols (->> (:key table)
                         flatten
                         (filter (comp not uberkey-cols-set)))
+
           extra-cols (additional-cols-for-table entity table)
 
-          key-changes? (some
-                        #(contains? changed-cols-set %)
-                        key-cols)]
+          key-changes? (some changed-cols-set key-cols)
 
-      ;; if any part of a key is updated then all parts must be available
-      (when (and key-changes?
-                 (not (every? #(contains? new-record %) key-cols))
-                 (or
-                  (nil? old-record)
-                  (not (every? #(contains? old-record %) key-cols))))
-        (throw
-         (pr/error-ex ::partial-key-change
-                      {:entity entity
-                       :old-record old-record
-                       :new-record new-record
-                       :table table})))
+          ;; key cols with nil values in the old-record
+          old-key-nil-col-set (->> key-cols
+                                   (filter
+                                    #(nil? (get old-record %)))
+                                   set)
+
+          ;; key cols with nil values in the new-record
+          new-key-nil-col-set (->> key-cols
+                                   (filter
+                                    #(nil? (get new-record %)))
+                                   set)]
 
       (cond
         (empty? changed-cols-set)
         nil
 
+        ;; if there are nils in the old-record key and new-record-key
+        ;; then this table will have no changes
+        (and (not-empty old-key-nil-col-set)
+             (not-empty new-key-nil-col-set))
+        nil
+
+        ;; if the key is changed then denorm cols will be required
+        key-changes?
+        (if (= :all extra-cols)
+          ;; everything is denormed. this is impossible to guarantee
+          ;; since we don't know the full column set of the entity,
+          ;; but if the old-record has more fields
+          ;; than the new record, something is definitely wrong
+          ;; TODO query all table columns into the entity model
+          ;; for use in this situation
+          (do
+            (when (> (count old-record) (count new-record))
+              (throw
+               (pr/error-ex ::all-entity-cols-required-for-denorm
+                            {:entity entity
+                             :old-record old-record
+                             :new-record new-record
+                             :table table})))
+            (set
+             (filter
+              (complement uberkey-cols-set)
+              (keys new-record))))
+
+          ;; only selected cols are denormed
+          (set (concat
+                key-cols
+                extra-cols)))
+
+        ;; no key change, only denorm changes
         (= :all extra-cols)
         (->> (into changed-cols-set key-cols)
              not-empty)
 
-        (some changed-cols-set (concat key-cols extra-cols))
+        ;; no key change, only denorm changes
+        (some changed-cols-set extra-cols)
         (->> (filter changed-cols-set extra-cols)
              (into key-cols)
              set
