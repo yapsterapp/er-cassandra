@@ -17,7 +17,8 @@
     [lookup :as l]]
    [prpr.promise :as pr :refer [ddo]]
    [schema.core :as s]
-   [taoensso.timbre :refer [info warn]])
+   [taoensso.timbre :refer [info warn]]
+   [er-cassandra.model.alia.minimal-change :as min.ch])
   (:import
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
@@ -396,11 +397,24 @@
          nok-old-record (select-keys
                          (without-unique-keys entity old-record)
                          (keys nok-record))
-         ;; if the no-key part of the old-record
-         ;; is identical to the record we don't need
-         ;; to do anything
-         noop? (= nok-record nok-old-record)]
-     (if noop?
+
+         ;; we will actually upsert the minimum change, with
+         ;; any unchanged cols removed
+         min-change (min.ch/minimal-change-for-table
+                     (:primary-table entity)
+                     nok-old-record
+                     nok-record)
+
+         ;; (warn "upsert-primary-record-without-unique-keys"
+         ;;       {:primary-table (:primary-table entity)
+         ;;        :old-record old-record
+         ;;        :record record
+         ;;        :nok-old-record nok-old-record
+         ;;        :nok-record nok-record
+         ;;        :min-change min-change})
+
+         ]
+     (if (nil? min-change)
        (return deferred-context nok-record)
        (ddo [:let [primary-table-name (get-in entity [:primary-table :name])
                    primary-table-key (get-in entity [:primary-table :key])
@@ -415,13 +429,13 @@
                                if-not-exists
                                (r/insert session
                                          primary-table-name
-                                         nok-record
+                                         min-change
                                          (fns/opts-remove-timestamp opts))
 
                                (and (not if-exists) (not only-if))
                                (r/insert session
                                          primary-table-name
-                                         nok-record
+                                         min-change
                                          opts)
 
                                :else ;; only-if
@@ -443,7 +457,7 @@
                                 session
                                 primary-table-name
                                 primary-table-key
-                                nok-record
+                                min-change
                                 (fns/opts-remove-timestamp opts))
 
                                insert?
