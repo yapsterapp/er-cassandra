@@ -59,9 +59,9 @@
   (let [m (t/create-entity
            {:primary-table {:name :foos :key [:id]}
             :lookup-tables [{:name :foos_by_bar :key [:bar]}
-                                {:name :foos_by_baz
-                                 :key [:baz]
-                                 :view? true}]})]
+                            {:name :foos_by_baz
+                             :key [:baz]
+                             :view? true}]})]
     (is (= (->> m :lookup-tables (take 1))
            (t/mutable-lookup-tables m)))))
 
