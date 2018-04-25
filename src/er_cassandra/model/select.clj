@@ -26,10 +26,10 @@
        (->> strm
             (s/map (fn [mi]
                      (if (ms/entity-instance? mi)
-                       (t/run-callbacks
+                       (t/chain-callbacks
                         session
                         entity
-                        :after-load
+                        [:deserialize :after-load]
                         mi
                         opts)
                        mi)))
@@ -49,10 +49,10 @@
        (->> strm
             (s/map (fn [mi]
                      (if (ms/entity-instance? mi)
-                       (t/run-callbacks
+                       (t/chain-callbacks
                         session
                         entity
-                        :after-load
+                        [:deserialize :after-load]
                         mi
                         opts)
                        mi)))
