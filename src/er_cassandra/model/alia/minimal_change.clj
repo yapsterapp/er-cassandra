@@ -42,3 +42,21 @@
              (empty? ch-cols))
       nil
       (select-keys record (concat key-col-set ch-cols)))))
+
+(defn avoid-tombstone-change-for-table
+  [{t-k :key
+    :as table}
+   old-record
+   record]
+  (let [tombstone-cols (->> (keys record)
+                            (filter
+                             (fn [k]
+                               (and (nil? (get old-record k))
+                                    (nil? (get record k))))))]
+    (apply dissoc record tombstone-cols)))
+
+
+;; TODO
+;; change the secondary and lookup maintenance to not use
+;; minimal-change-for-table... instead to always write
+;; and use avoid-tombstone-change-for-table
