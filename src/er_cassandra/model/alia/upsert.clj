@@ -407,59 +407,6 @@
        (re-matches #"\p{Alpha}[_\p{Alnum}]+")
        boolean))
 
-(s/defn ^:deprecated upsert-minimal-changes
-  "after callbacks have been run, upsert a minimal change"
-  [session :- ModelSession
-   entity :- Entity
-   old-record :- t/MaybeRecordSchema
-   record :- t/RecordSchema
-   opts :- fns/UpsertOptsSchema]
-  (let [;; remove any columns which would do nothing but
-        ;; create tombstones or other garbage
-        min-change (t.change/minimal-change
-                    entity
-                    old-record
-                    record)]
-
-    (if min-change
-      (ddo [:let [;; keep the removed columns to add back to the response
-                  ;; record, since they are valid columns and the
-                  ;; general contract is that the response record
-                  ;; will resemble the request record excepting
-                  ;; necessary changes (such as removal of failed key acquisitions)
-                  removed-cols (filter
-                                (->> min-change keys set complement)
-                                (keys record))
-                  removed-record (select-keys record removed-cols)]
-
-            [updated-record-with-keys
-             acquire-failures] (unique-key/upsert-primary-record-and-update-unique-keys
-                                session
-                                entity
-                                old-record
-                                min-change
-                                opts)
-
-            _ (monad/when updated-record-with-keys
-                (change-secondaries-and-lookups session
-                                                entity
-                                                old-record
-                                                min-change
-                                                opts))
-
-            ;; add columns which weren't needed for the upsert back in to the response
-            :let [updated-record-with-keys (merge updated-record-with-keys
-                                                  removed-record)]]
-
-        (return
-         (pair updated-record-with-keys
-               acquire-failures)))
-
-      ;; no upsert required
-      (return deferred-context
-              (pair record nil)))))
-
-
 (s/defn upsert-changes*
   "upsert a single instance given the previous value of the instance. if the
    previous value is nil then it's an insert. if the new value is nil then
@@ -534,14 +481,6 @@
                                             old-record-ser
                                             updated-record-with-keys-ser
                                             opts))
-
-        ;; [updated-record-with-keys-ser
-        ;;  acquire-failures] (upsert-minimal-changes
-        ;;                     session
-        ;;                     entity
-        ;;                     old-record-ser
-        ;;                     record-ser
-        ;;                     opts)
 
         ;; construct the response and deserialise
         response-record-raw (merge nil-removed
