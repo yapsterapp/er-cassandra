@@ -131,6 +131,79 @@
                 {:id :a :blah :dog :bar :crocodile}
                 (-> m :lookup-tables (nth 2)))))))))
 
+(deftest generate-secondary-changes-for-table-test
+  (let [m (t/create-entity
+           {:primary-table {:name :foos :key [:id]}
+            :secondary-tables [{:name :foos_by_bar :key [:bar]}]})]
+    (testing "ignores lookup keys when missing from new record"
+      (is (empty?
+           @(l/generate-secondary-changes-for-table
+             tu/*model-session*
+             m
+             (-> m :secondary-tables first)
+             {:id :a :bar :b}
+             {:id :a}))))
+
+    (testing "nil key in old-record and new-record is empty"
+      (is (= nil
+             @(l/generate-secondary-changes-for-table
+               tu/*model-session*
+               m
+               (-> m :secondary-tables first)
+               {:id :a :bar nil}
+               {:id :a :bar nil}))))
+
+    (testing "nil key in old-record but not in new-record is delete"
+      (is (= #{[{:id :a :bar :b} nil]}
+             (set
+              @(l/generate-secondary-changes-for-table
+                tu/*model-session*
+                m
+                (-> m :secondary-tables first)
+                {:id :a :bar :b}
+                {:id :a :bar nil})))))
+
+    (testing "nil key in new-record but not in old-record is create"
+      (is (= #{[nil {:id :a :bar :c}]}
+             (set
+              @(l/generate-secondary-changes-for-table
+                tu/*model-session*
+                m
+                (-> m :secondary-tables first)
+                {:id :a :bar nil}
+                {:id :a :bar :c})))))
+
+    (testing "extra cols in create"
+      (is (= #{[nil {:id :a :bar :c :foo 10}]}
+             (set
+              @(l/generate-secondary-changes-for-table
+                tu/*model-session*
+                m
+                (-> m :secondary-tables first)
+                {:id :a :bar nil}
+                {:id :a :bar :c :foo 10})))))
+
+    (testing "different key in old-record and new-record is delete and create"
+      (is (= #{[{:id :a :bar :b} nil]
+               [nil {:id :a :bar :c :foo 10}]}
+             (set
+              @(l/generate-secondary-changes-for-table
+                tu/*model-session*
+                m
+                (-> m :secondary-tables first)
+                {:id :a :bar :b}
+                {:id :a :bar :c :foo 10})))))
+
+    (testing "same key in new-record and old-record is update"
+      (is (= #{[{:id :a :bar :b :foo 10} {:id :a :bar :b :foo 20}]}
+             (set
+              @(l/generate-secondary-changes-for-table
+                tu/*model-session*
+                m
+                (-> m :secondary-tables first)
+                {:id :a :bar :b :foo 10}
+                {:id :a :bar :b :foo 20})))))))
+
 (deftest generate-lookup-changes-for-table-test
   (let [m (t/create-entity
            {:primary-table {:name :foos :key [:id]}
@@ -245,8 +318,6 @@
                 (-> m :lookup-tables (nth 2))
                 {:id :a :blah :dog :bar :cat}
                 {:id :a :blah :dog :bar :crocodile})))))))
-
-
 
 (defn generator-fn-lookup-test-generator
   [session entity table old-record
