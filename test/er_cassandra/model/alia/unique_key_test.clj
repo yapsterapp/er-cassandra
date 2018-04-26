@@ -11,7 +11,8 @@
    [er-cassandra.model.model-session :as ms]
    [er-cassandra.session :as session]
    [qbits.hayt :as h]
-   [prpr.promise :as pr]))
+   [prpr.promise :as pr]
+   [taoensso.timbre :refer [warn]]))
 
 (use-fixtures :once st/validate-schemas)
 (use-fixtures :each (tu/with-model-session-fixture))
@@ -173,6 +174,74 @@
                 :key-value ["foo"]} key-desc))
         (is (= :key/notunique reason))))))
 
+(deftest update-unique-key-test
+  (let [_ (tu/create-table :update_unique_key_test
+                           "(id timeuuid primary key, nick text, foo text)")
+        _ (tu/create-table :update_unique_key_test_by_nick
+                           "(nick text primary key, id timeuuid, foo text)")
+        m (t/create-entity
+           {:primary-table {:name :update_unique_key_test :key [:id]}
+            :unique-key-tables [{:name :update_unique_key_test_by_nick
+                                 :key [:nick]
+                                 :with-columns [:foo]}]})
+
+        [ida idb] [(uuid/v1) (uuid/v1)]
+        _ (warn "update-unique-key-test"
+                {:ida ida
+                 :idb idb})
+
+        initial-record {:id ida :nick "foo" :foo "foofoo"}
+        _ (tu/insert-record :update_unique_key_test initial-record)
+        _ (tu/insert-record :update_unique_key_test_by_nick initial-record)]
+
+    (testing "noop on an already owned unique key"
+      (let [[status key-desc reason] @(uk/update-unique-key
+                                       tu/*model-session*
+                                       m
+                                       (-> m :unique-key-tables first)
+                                       [ida]
+                                       initial-record
+                                       initial-record
+                                       (ts/default-timestamp-opt))]
+        (is (= :ok status))
+        (is (= {:uber-key (t/uber-key m)
+                :uber-key-value [ida]
+                :key [:nick]
+                :key-value ["foo"]} key-desc))
+        (is (= :key/nochange reason))))
+
+    (testing "updating an already owned unique key"
+      (let [[status key-desc reason] @(uk/update-unique-key
+                                       tu/*model-session*
+                                       m
+                                       (-> m :unique-key-tables first)
+                                       [ida]
+                                       initial-record
+                                       {:id ida :nick "foo" :foo "bar"}
+                                       (ts/default-timestamp-opt))]
+        (is (= :ok status))
+        (is (= {:uber-key (t/uber-key m)
+                :uber-key-value [ida]
+                :key [:nick]
+                :key-value ["foo"]} key-desc))
+        (is (= :key/updated reason))))
+
+    (testing "failing to update"
+      (let [[status key-desc reason] @(uk/update-unique-key
+                                       tu/*model-session*
+                                       m
+                                       (-> m :unique-key-tables first)
+                                       [idb]
+                                       {:id idb :nick "foo" :foo "foo"}
+                                       {:id idb :nick "foo" :foo "bar"}
+                                       (ts/default-timestamp-opt))]
+        (is (= :fail status))
+        (is (= {:uber-key (t/uber-key m)
+                :uber-key-value [idb]
+                :key [:nick]
+                :key-value ["foo"]} key-desc))
+        (is (= :key/notunique reason))))))
+
 (deftest release-unique-key-test
   (let [_ (tu/create-table :unique_key_test
                            "(id timeuuid primary key, nick text)")
@@ -241,7 +310,7 @@
         (is (= :stale reason))))))
 
 
-(deftest release-stale-unique-keys-test
+(deftest change-unique-keys-release-test
   (testing "singular unique key"
     (let [sm (create-singular-unique-key-entity)
           [ida idb] [(uuid/v1) (uuid/v1)]
@@ -251,12 +320,13 @@
                               {:nick "foo" :id ida})]
 
       (testing "release singular stale unique key"
-        (let [[[status key-desc reason]] @(uk/release-stale-unique-keys
-                                           tu/*model-session*
-                                           sm
-                                           {:id ida :nick "foo"}
-                                           {:id ida :nick nil}
-                                           (ts/default-timestamp-opt))]
+        (let [{[[status key-desc reason]] :release-key-responses}
+              @(uk/change-unique-keys
+                tu/*model-session*
+                sm
+                {:id ida :nick "foo"}
+                {:id ida :nick nil}
+                (ts/default-timestamp-opt))]
           (is (= :ok status))
           (is (= {:uber-key [:id] :uber-key-value [ida]
                   :key [:nick] :key-value ["foo"]} key-desc))
@@ -274,12 +344,13 @@
                               {:nick "bar" :id ida})]
 
       (testing "release set stale unique key values"
-        (let [r @(uk/release-stale-unique-keys
-                  tu/*model-session*
-                  cm
-                  {:id ida :nick #{"foo" "bar" "baz"}}
-                  {:id ida :nick #{"foo"}}
-                  (ts/default-timestamp-opt))]
+        (let [{release-key-responses :release-key-responses}
+              @(uk/change-unique-keys
+                tu/*model-session*
+                cm
+                {:id ida :nick #{"foo" "bar" "baz"}}
+                {:id ida :nick #{"foo"}}
+                (ts/default-timestamp-opt))]
           (is (= #{[:ok
                     {:uber-key [:id] :uber-key-value [ida]
                      :key [:nick] :key-value ["bar"]}
@@ -288,9 +359,9 @@
                     {:uber-key [:id] :uber-key-value [ida]
                      :key [:nick] :key-value ["baz"]}
                     :stale]}
-                 (set r))))))))
+                 (set release-key-responses))))))))
 
-(deftest acquire-unique-keys-test
+(deftest change-unique-keys-acquire-test
   (testing "acquire singular unique key"
     (let [sm (create-singular-unique-key-entity)
           [ida idb] [(uuid/v1) (uuid/v1)]
@@ -299,24 +370,26 @@
                               {:id ida :nick "foo"})]
 
       (testing "acquire a singular unique key"
-        (let [[[status key-desc reason]] @(uk/acquire-unique-keys
-                                           tu/*model-session*
-                                           sm
-                                           nil
-                                           {:id ida :nick "foo"}
-                                           (ts/default-timestamp-opt))]
+        (let [{[[status key-desc reason]] :acquire-key-responses}
+              @(uk/change-unique-keys
+                tu/*model-session*
+                sm
+                nil
+                {:id ida :nick "foo"}
+                (ts/default-timestamp-opt))]
           (is (= :ok status))
           (is (= {:uber-key [:id] :uber-key-value [ida]
                   :key [:nick] :key-value ["foo"]} key-desc))
           (is (= :key/inserted reason))))
 
       (testing "failing to acquire a singular unique key"
-        (let [[[status key-desc reason]] @(uk/acquire-unique-keys
-                                           tu/*model-session*
-                                           sm
-                                           nil
-                                           {:id idb :nick "foo"}
-                                           (ts/default-timestamp-opt))]
+        (let [{[[status key-desc reason]] :acquire-key-responses}
+              @(uk/change-unique-keys
+                tu/*model-session*
+                sm
+                nil
+                {:id idb :nick "foo"}
+                (ts/default-timestamp-opt))]
           (is (= :fail status))
           (is (= {:uber-key [:id] :uber-key-value [idb]
                   :key [:nick] :key-value ["foo"]} key-desc))
@@ -331,7 +404,8 @@
           _ (tu/insert-record :set_unique_key_test_by_nick
                               {:nick "foo" :id ida})]
       (testing "acquire values from a set of unique keys"
-        (let [r @(uk/acquire-unique-keys
+        (let [{acquire-key-responses :acquire-key-responses}
+              @(uk/change-unique-keys
                   tu/*model-session*
                   cm
                   nil
@@ -345,9 +419,9 @@
                     {:uber-key [:id] :uber-key-value [ida]
                      :key [:nick] :key-value ["bar"]}
                     :key/inserted]}
-                 (set r))))))))
+                 (set acquire-key-responses))))))))
 
-(deftest acquire-unique-keys-with-additional-cols-test
+(deftest change-unique-keys-with-additional-cols-test
   (testing "acquire singular unique key with additional cols"
     (let [sm (create-singular-unique-key-entity-with-additional-cols)
           [ida idb] [(uuid/v1) (uuid/v1)]
@@ -356,12 +430,13 @@
                               {:id ida :nick "foo" :stuff "blah"})]
 
       (testing "acquire a singular unique key with additional cols"
-        (let [[[status key-desc reason]] @(uk/acquire-unique-keys
-                                           tu/*model-session*
-                                           sm
-                                           nil
-                                           {:id ida :nick "foo" :stuff "bloop"}
-                                           (ts/default-timestamp-opt))
+        (let [{[[status key-desc reason]] :acquire-key-responses}
+              @(uk/change-unique-keys
+                tu/*model-session*
+                sm
+                nil
+                {:id ida :nick "foo" :stuff "bloop"}
+                (ts/default-timestamp-opt))
               r (tu/fetch-record :singular_unique_key_with_cols_test_by_nick
                                  :nick "foo")]
           (is (= :ok status))
@@ -371,12 +446,13 @@
           (is (= r {:id ida :nick "foo" :stuff "bloop"}))))
 
       (testing "update a singular unique key with additional cols"
-        (let [[[status key-desc reason]] @(uk/acquire-unique-keys
-                                           tu/*model-session*
-                                           sm
-                                           nil
-                                           {:id ida :nick "foo" :stuff "moop"}
-                                           (ts/default-timestamp-opt))
+        (let [{[[status key-desc reason]] :acquire-key-responses}
+              @(uk/change-unique-keys
+                tu/*model-session*
+                sm
+                nil
+                {:id ida :nick "foo" :stuff "moop"}
+                (ts/default-timestamp-opt))
               r (tu/fetch-record :singular_unique_key_with_cols_test_by_nick
                                  :nick "foo")]
           (is (= :ok status))
@@ -386,12 +462,13 @@
           (is (= r {:id ida :nick "foo" :stuff "moop"}))))
 
       (testing "failing to acquire a singular unique key with additional cols"
-        (let [[[status key-desc reason]] @(uk/acquire-unique-keys
-                                           tu/*model-session*
-                                           sm
-                                           nil
-                                           {:id idb :nick "foo" :stuff "blargh"}
-                                           (ts/default-timestamp-opt))
+        (let [{[[status key-desc reason]] :acquire-key-responses}
+              @(uk/change-unique-keys
+                tu/*model-session*
+                sm
+                nil
+                {:id idb :nick "foo" :stuff "blargh"}
+                (ts/default-timestamp-opt))
               r (tu/fetch-record :singular_unique_key_with_cols_test_by_nick
                                  :nick "foo")]
           (is (= :fail status))

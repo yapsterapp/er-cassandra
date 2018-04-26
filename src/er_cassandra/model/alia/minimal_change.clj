@@ -24,7 +24,9 @@
           #(not= (get old-record %) (get record %))))))
 
 (defn minimal-change-for-table
-  "return a minimal change record for a table
+  "return a minimal change record for a table - removing columns
+   that do not need to be written. if nil is returned then nothing
+   needs to be written.
    - if there are changes it contains the key cols and changed cols
    - if there are no changes and there was an old record it is nil
    - if there are no changes and there was no old record it contains

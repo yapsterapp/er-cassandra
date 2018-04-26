@@ -172,7 +172,7 @@
                               record)
                              opts)
 
-           unique-responses (unique-key/release-stale-unique-keys
+           unique-responses (unique-key/change-unique-keys
                              session
                              entity
                              record

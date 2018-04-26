@@ -11,6 +11,8 @@
 
 (s/defschema RecordSchema {s/Keyword s/Any})
 (s/defschema MaybeRecordSchema (s/maybe RecordSchema))
+(s/defschema ChangeSchema [(s/one MaybeRecordSchema :old-record)
+                           (s/one MaybeRecordSchema :new-record)])
 
 (s/defschema CallbackFnSchema
   (s/make-fn-schema s/Any [[{s/Keyword s/Any}]]))

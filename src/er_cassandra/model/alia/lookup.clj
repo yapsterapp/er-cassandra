@@ -138,11 +138,11 @@
    it's a (non-key column) change"
   [session :- ModelSession
    entity :- Entity
-   old-record :- t/MaybeRecordSchema
-   new-record :- t/MaybeRecordSchema
    {t-key :key
     t-generator-fn :generator-fn
-    :as lookup-table}:- t/IndexTableSchema]
+    :as lookup-table} :- t/IndexTableSchema
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema]
   ;; only if we are deleting the record, or have sufficient
   ;; key components to update the table
   (if (or (nil? new-record)
