@@ -186,9 +186,6 @@
                                  :with-columns [:foo]}]})
 
         [ida idb] [(uuid/v1) (uuid/v1)]
-        _ (warn "update-unique-key-test"
-                {:ida ida
-                 :idb idb})
 
         initial-record {:id ida :nick "foo" :foo "foofoo"}
         _ (tu/insert-record :update_unique_key_test initial-record)

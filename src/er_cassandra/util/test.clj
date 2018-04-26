@@ -13,7 +13,9 @@
 (def alia-test-session-config
   {:timbre {:level :warn}
    :config {:alia-session
-            {:keyspace "er_cassandra_test"}}})
+            {:keyspace "er_cassandra_test"
+             ;; set to false to preserve db contents after test
+             :truncate-on-close true}}})
 
 (def alia-test-session-system-def
   [[:logging logconf/configure-timbre [:timbre]]

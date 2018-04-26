@@ -324,29 +324,6 @@
            (fetch-record :upsert_mixed_lookup_test_by_phone
                          [:phone] "456")))))
 
-(deftest copy-unique-keys-test
-  (let [m (t/create-entity
-           {:primary-table {:name :upsert_copy_unique_keys_test :key [:org_id :id]}
-            :unique-key-tables [{:name :upsert_copy_unique_keys_test_by_nick
-                                 :key [:org_id :nick]}
-                                {:name :upsert_copy_unique_keys_test_by_email
-                                 :key [:email]
-                                 :collections {:email :set}}
-                                {:name :upsert_copy_unique_keys_test_by_phone
-                                 :key [:phone]
-                                 :collections {:phone :list}}]})
-        [org-id id] [(clj-uuid/v1) (clj-uuid/v1)]
-        r {:org_id org-id
-           :id id
-           :nick "foo"
-           :email #{"foo@bar.com" "foo@baz.com"}
-           :phone ["123" "456"]}]
-    (is (= (select-keys r [:nick :email :phone])
-           (u/copy-unique-keys
-            m
-            r
-            {})))))
-
 (deftest update-secondaries-and-lookups-test
   (let [m (create-lookup-and-secondaries-entity)
         [org-id id] [(uuid/v1) (uuid/v1)]]

@@ -277,6 +277,7 @@
    [old-lookup-record
     new-lookup-record
     :as lookup-change] :- t/ChangeSchema]
+
   (cond
     (and (nil? old-lookup-record)
          (nil? new-lookup-record))
@@ -294,7 +295,7 @@
                   session
                   entity
                   table
-                  t-k
+                  kv
                   (-> opts
                       fns/upsert-opts->using-only
                       fns/upsert-opts->delete-opts))]
