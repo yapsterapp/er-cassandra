@@ -40,9 +40,9 @@
 (defn create-secondary-entity
   []
   (tu/create-table :secondary_upsert_test
-                   "(org_id timeuuid, id timeuuid, nick text, primary key (org_id, id))")
+                   "(org_id timeuuid, id timeuuid, nick text, foo text, primary key (org_id, id))")
   (tu/create-table :secondary_upsert_test_by_nick
-                   "(org_id timeuuid, nick text, id timeuuid, primary key (org_id, nick))")
+                   "(org_id timeuuid, nick text, id timeuuid, foo text, primary key (org_id, nick))")
   (t/create-entity
    {:primary-table {:name :secondary_upsert_test :key [:org_id :id]}
     :secondary-tables [{:name :secondary_upsert_test_by_nick
@@ -155,20 +155,18 @@
                          :key [:dept]
                          :collections {:dept :list}}]}))
 
-(deftest insert-index-record-test
+(deftest upsert-index-record-test
   (let [m (create-simple-entity)
         id (uuid/v1)
         r {:id id :nick "foo"}
-        [status
-         record
-         reason] @(u/insert-index-record tu/*model-session*
+        [action
+         record] @(u/upsert-index-record tu/*model-session*
                                          m
                                          (:primary-table m)
                                          r
                                          (ts/default-timestamp-opt))]
-    (is (= :ok status))
+    (is (= :upserted action))
     (is (= r record))
-    (is (= :upserted reason))
     (is (= r (fetch-record :simple_upsert_test :id id)))))
 
 
@@ -211,20 +209,85 @@
     (is (= nnr f2))
     (is (= nnr fi2))))
 
-(deftest upsert-secondaries-test
-  (let [m (create-secondary-entity)]
-    (testing "upsert secondary"
-      (let [[org-id id] [(uuid/v1) (uuid/v1)]
-            r {:org_id org-id :id id :nick "bar"}
-            [status
-             record
-             reason] @(u/upsert-secondaries
+(deftest change-secondaries-test
+  (let [m (create-secondary-entity)
+        [org-id id] [(uuid/v1) (uuid/v1)]
+        initial-r {:org_id org-id :id id :nick "bar" :foo "boo"}
+        update-1 {:org_id org-id :id id :nick "bar" :foo "boohoo"}
+        update-2 {:org_id org-id :id id :nick "barbar" :foo "boohoo"}
+        update-3 {:org_id org-id :id id :nick nil :foo nil}]
+
+    (testing "create secondary"
+      (let [[[action
+              record]] @(u/change-secondaries
+                         tu/*model-session*
+                         m
+                         nil
+                         initial-r
+                         (ts/default-timestamp-opt))]
+        (is (= initial-r (fetch-record
+                          :secondary_upsert_test_by_nick
+                          [:org_id :nick]
+                          [org-id "bar"])))
+        (is (= :upserted action))
+        (is (= record initial-r))))
+
+    (testing "update secondary"
+      (let [r {:org_id org-id :id id :nick "barbar"}
+            [r-a] @(u/change-secondaries
                        tu/*model-session*
                        m
-                       nil
-                       r
+                       initial-r
+                       update-1
                        (ts/default-timestamp-opt))]
-        (is (= r (fetch-record :secondary_upsert_test_by_nick [:org_id :nick] [org-id "bar"])))))))
+        (is (= update-1 (fetch-record
+                         :secondary_upsert_test_by_nick
+                         [:org_id :nick]
+                         [org-id "bar"])))
+        (is (= [:upserted
+                update-1] r-a))))
+
+    (testing "create-update secondary"
+      (let [[r-a r-b] @(u/change-secondaries
+                         tu/*model-session*
+                         m
+                         update-1
+                         update-2
+                         (ts/default-timestamp-opt))]
+        (is (= nil (fetch-record
+                         :secondary_upsert_test_by_nick
+                         [:org_id :nick]
+                         [org-id "bar"])))
+        (is (= update-2 (fetch-record
+                         :secondary_upsert_test_by_nick
+                         [:org_id :nick]
+                         [org-id "barbar"])))
+        (is (= [:deleted
+                {:table :secondary_upsert_test_by_nick
+                 :key [:org_id :nick]
+                 :key-value [org-id "bar"]}] r-a))
+        (is (= [:upserted update-2] r-b))))
+
+    (testing "delete secondary"
+      (let [[r-a] @(u/change-secondaries
+                    tu/*model-session*
+                    m
+                    update-2
+                    update-3
+                    (ts/default-timestamp-opt))]
+        (is (= nil (fetch-record
+                    :secondary_upsert_test_by_nick
+                    [:org_id :nick]
+                    [org-id "bar"])))
+        (is (= nil (fetch-record
+                    :secondary_upsert_test_by_nick
+                    [:org_id :nick]
+                    [org-id "barbar"])))
+        (is (= [:deleted
+                {:table :secondary_upsert_test_by_nick
+                 :key [:org_id :nick]
+                 :key-value [org-id "barbar"]}]
+               r-a))))))
 
 
 (deftest upsert-lookups-test
@@ -235,7 +298,7 @@
 
         [status
          record
-         reason] @(u/upsert-lookups
+         reason] @(u/change-lookups
                    tu/*model-session*
                    m
                    nil
@@ -296,7 +359,7 @@
                     :thing "innit"
                     :email #{"foo@bar.com" "foo@baz.com"}
                     :phone ["123" "456"]}
-            r @(u/update-secondaries-and-lookups
+            r @(u/change-secondaries-and-lookups
                 tu/*model-session*
                 m
                 nil
