@@ -60,7 +60,9 @@
    :timestamp s/Int})
 
 (s/defschema UpsertUsingOnlyOptsWithTimestampSchema
-  {:using UpsertUsingWithTimestampSchema})
+  (merge
+   rs/PrepareOptSchema
+   {:using UpsertUsingWithTimestampSchema}))
 
 (s/defschema UpsertOptsWithTimestampSchema
   (conditional-upsert-schema

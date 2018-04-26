@@ -147,9 +147,9 @@
            @(l/generate-lookup-changes-for-table
              tu/*model-session*
              m
+             (-> m :lookup-tables first)
              {:id :a :bar :b}
-             {:id :a}
-             (-> m :lookup-tables first)))))
+             {:id :a}))))
 
     (testing "treats nil new-record as deletion for singular key values"
       (is (= #{[{:id :a :bar :b} nil]}
@@ -157,18 +157,18 @@
               @(l/generate-lookup-changes-for-table
                 tu/*model-session*
                 m
+                (-> m :lookup-tables first)
                 {:id :a :bar :b}
-                nil
-                (-> m :lookup-tables first))))))
+                nil)))))
 
     (testing "correctly identifies a stale singular lookup key values"
       (is (= #{[{:id :a :bar :b} nil]}
              (set @(l/generate-lookup-changes-for-table
                    tu/*model-session*
                    m
+                   (-> m :lookup-tables first)
                    {:id :a :bar :b}
-                   {:id :a :bar nil}
-                   (-> m :lookup-tables first))))))
+                   {:id :a :bar nil})))))
 
     (testing "correctly identifiers stale collection lookup key values"
       (is (= #{[{:id :a :baz :b} nil]
@@ -178,9 +178,9 @@
               @(l/generate-lookup-changes-for-table
                 tu/*model-session*
                 m
+                (-> m :lookup-tables second)
                 {:id :a :baz #{:b :c :d}}
-                {:id :a :baz #{:c}}
-                (-> m :lookup-tables second))))))
+                {:id :a :baz #{:c}})))))
 
     (testing "correctly identifiers stale collection lookup key values on delete"
       (is (= #{[{:id :a :baz :b} nil]
@@ -190,18 +190,18 @@
               @(l/generate-lookup-changes-for-table
                 tu/*model-session*
                 m
+                (-> m :lookup-tables second)
                 {:id :a :baz #{:b :c :d}}
-                nil
-                (-> m :lookup-tables second))))))
+                nil)))))
 
     (testing "ignores lookup keys when missing from new-record"
       (is (empty?
            @(l/generate-lookup-changes-for-table
              tu/*model-session*
              m
+             (-> m :lookup-tables first)
              {:id :a :bar :b}
-             {:id :a}
-             (-> m :lookup-tables first)))))
+             {:id :a}))))
 
     (testing "correctly identifies a new singular lookup key value"
       (is (= #{[nil {:id :a :bar :b}]}
@@ -209,9 +209,9 @@
               @(l/generate-lookup-changes-for-table
                 tu/*model-session*
                 m
+                (-> m :lookup-tables first)
                 {:id :a}
-                {:id :a :bar :b}
-                (-> m :lookup-tables first))))))
+                {:id :a :bar :b})))))
 
     (testing "correctly identifies new collection lookup key values"
       (is (= #{[{:id :a :baz :c} {:id :a :baz :c}]
@@ -222,9 +222,9 @@
               @(l/generate-lookup-changes-for-table
                 tu/*model-session*
                 m
+                (-> m :lookup-tables second)
                 {:id :a :baz #{:c :x}}
-                {:id :a :baz #{:b :c :d}}
-                (-> m :lookup-tables second))))))
+                {:id :a :baz #{:b :c :d}})))))
 
     (testing "correctly identifies lookups with unchanged extra cols"
       (is (= #{[{:id :a :blah :dog :bar :cat} {:id :a :blah :dog :bar :cat}]}
@@ -232,9 +232,9 @@
               @(l/generate-lookup-changes-for-table
                 tu/*model-session*
                 m
+                (-> m :lookup-tables (nth 2))
                 {:id :a :blah :dog :bar :cat}
-                {:id :a :blah :dog :bar :cat}
-                (-> m :lookup-tables (nth 2)))))))
+                {:id :a :blah :dog :bar :cat})))))
 
     (testing "correctly identifies lookups with changed extra cols"
       (is (= #{[{:id :a :blah :dog :bar :cat} {:id :a :blah :dog :bar :crocodile}]}
@@ -242,9 +242,9 @@
               @(l/generate-lookup-changes-for-table
                 tu/*model-session*
                 m
+                (-> m :lookup-tables (nth 2))
                 {:id :a :blah :dog :bar :cat}
-                {:id :a :blah :dog :bar :crocodile}
-                (-> m :lookup-tables (nth 2)))))))))
+                {:id :a :blah :dog :bar :crocodile})))))))
 
 
 
