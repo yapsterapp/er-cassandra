@@ -77,11 +77,17 @@
               key-desc {:uber-key uber-key
                         :uber-key-value uber-key-value
                         :key uq-key
-                        :key-value key-value}]
+                        :key-value key-value}
+
+              ;; never nil, since old-unique-key-record is nil
+              min-change (min.ch/minimal-change-for-table
+                          unique-key-table
+                          nil ;; always nil for acquire
+                          unique-key-record)]
 
         insert-response (r/insert session
                                   (:name unique-key-table)
-                                  unique-key-record
+                                  min-change
                                   (merge (fns/opts-remove-timestamp opts)
                                          {:if-not-exists true}))
 
@@ -109,7 +115,7 @@
                            session
                            (:name unique-key-table)
                            (:key unique-key-table)
-                           unique-key-record
+                           min-change
                            (merge
                             (fns/opts-remove-timestamp opts)
                             {:only-if
@@ -122,7 +128,7 @@
                            session
                            (:name unique-key-table)
                            (:key unique-key-table)
-                           unique-key-record
+                           min-change
                            (merge
                             (fns/opts-remove-timestamp opts)
                             {:only-if
@@ -527,10 +533,7 @@
                 entity
                 table
                 ukv
-                (min.ch/minimal-change-for-table
-                 table
-                 nil
-                 new-unique-key-record)
+                new-unique-key-record
                 opts)]
       (return
        {:acquire-key-responses [aukr]}))
