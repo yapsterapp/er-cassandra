@@ -214,3 +214,38 @@
                            (not= l old-l)))))]]
           (return insert-and-update-lookups))
         (return nil)))))
+
+(s/defn generate-secondary-changes-for-table
+  "this is pretty simple, but makes secondary tables behave in the
+   same way as lookups"
+  [session :- ModelSession
+   entity :- Entity
+   {t-key :key
+    :as secondary-table} :- t/SecondaryTableSchema
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema]
+  (if (or (nil? new-record)
+          (k/has-key? t-key new-record))
+    (ddo [old-key-value (k/extract-key-value t-key old-record)
+          new-key-value (k/extract-key-value t-key new-record)]
+      (return
+       (cond
+
+         (and (nil? old-key-value)
+              (nil? new-key-value))
+         nil
+
+         (nil? old-key-value)
+         [[nil new-record]]
+
+         (nil? new-key-value)
+
+         [[old-record nil]]
+
+         (= old-key-value new-key-value)
+         [[old-record new-record]]
+
+         :else
+         [[old-record nil]
+          [nil new-record]])))
+    (return deferred-context nil)))
