@@ -48,11 +48,20 @@
     :as table}
    old-record
    record]
-  (let [tombstone-cols (->> (keys record)
+  (let [;; find columns which will create tombstones
+        tombstone-cols (->> (keys record)
                             (filter
                              (fn [k]
-                               (and (nil? (get old-record k))
-                                    (nil? (get record k))))))]
+                               (let [ov (get old-record k)
+                                     nv (get record k)]
+                                 (or
+                                  ;; nil -> nil
+                                  (and (nil? ov) (nil? nv))
+
+                                  ;; unmodified collection
+                                  (and (coll? ov)
+                                       (coll? nv)
+                                       (= ov nv)))))))]
     (apply dissoc record tombstone-cols)))
 
 
