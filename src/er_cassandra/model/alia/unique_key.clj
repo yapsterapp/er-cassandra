@@ -80,7 +80,7 @@
                         :key-value key-value}
 
               ;; never nil, since old-unique-key-record is nil
-              min-change (min.ch/minimal-change-for-table
+              min-change (min.ch/avoid-tombstone-change-for-table
                           unique-key-table
                           nil ;; always nil for acquire
                           unique-key-record)]
@@ -189,6 +189,11 @@
                         :key uq-key
                         :key-value key-value}
 
+              ;; we're using minimal-change-for-table here because
+              ;; unique-keys are "safer" than other keys, because they
+              ;; aren't added to the primary-table record until after
+              ;; they have been acquired, so the risk of inconsistency is
+              ;; small.
               min-change (min.ch/minimal-change-for-table
                           unique-key-table
                           old-unique-key-record
@@ -391,7 +396,10 @@
                          (keys nok-record))
 
          ;; we will actually upsert the minimum change, with
-         ;; any unchanged cols removed
+         ;; any unchanged cols removed... this is safe for
+         ;; the primary table, less safe for the (non-unique)
+         ;; index tables (so we use avoid-tombstone-change-for-table
+         ;; for those tables)
          min-change (min.ch/minimal-change-for-table
                      (:primary-table entity)
                      nok-old-record

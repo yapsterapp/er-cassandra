@@ -88,7 +88,7 @@
        [:deleted dr]))
 
     (nil? old-secondary-record)
-    (ddo [:let [min-secondary-change (min.ch/minimal-change-for-table
+    (ddo [:let [min-secondary-change (min.ch/avoid-tombstone-change-for-table
                             table
                             old-secondary-record
                             new-secondary-record)]
@@ -103,7 +103,7 @@
        [:upserted new-secondary-record]))
 
     :else
-    (ddo [:let [min-secondary-change (min.ch/minimal-change-for-table
+    (ddo [:let [min-secondary-change (min.ch/avoid-tombstone-change-for-table
                             table
                             old-secondary-record
                             new-secondary-record)]
@@ -204,7 +204,7 @@
        [:deleted dr]))
 
     (nil? old-lookup-record)
-    (ddo [:let [min-change (min.ch/minimal-change-for-table
+    (ddo [:let [min-change (min.ch/avoid-tombstone-change-for-table
                             table
                             nil
                             new-lookup-record)]
@@ -218,7 +218,7 @@
       (return [:upserted new-lookup-record]))
 
     :else
-    (ddo [:let [min-change (min.ch/minimal-change-for-table
+    (ddo [:let [min-change (min.ch/avoid-tombstone-change-for-table
                             table
                             old-lookup-record
                             new-lookup-record)]
