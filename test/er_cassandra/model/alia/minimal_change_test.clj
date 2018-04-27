@@ -81,4 +81,46 @@
             {:org_id 0 :id 10 :foo 10}
             {:org_id 0 :id 10 :foo nil}))))
 
-  )
+  (testing "removes unmodified collections"
+    (is (= {:org_id 0 :id 10}
+           (sut/avoid-tombstone-change-for-table
+            {:key [[:org_id] :id]}
+            {:org_id 0 :id 10 :foo #{:foofoo}}
+            {:org_id 0 :id 10 :foo #{:foofoo}})))
+    (is (= {:org_id 0 :id 10}
+           (sut/avoid-tombstone-change-for-table
+            {:key [[:org_id] :id]}
+            {:org_id 0 :id 10 :foo [:foofoo]}
+            {:org_id 0 :id 10 :foo [:foofoo]})))
+    (is (= {:org_id 0 :id 10}
+           (sut/avoid-tombstone-change-for-table
+            {:key [[:org_id] :id]}
+            {:org_id 0 :id 10 :foo {:foofoo 10}}
+            {:org_id 0 :id 10 :foo {:foofoo 10}})))
+    (is (= {:org_id 0 :id 10}
+           (sut/avoid-tombstone-change-for-table
+            {:key [[:org_id] :id]}
+            {:org_id 0 :id 10 :foo '(:foofoo)}
+            {:org_id 0 :id 10 :foo '(:foofoo)}))))
+
+  (testing "doesn't remove modified collections"
+    (is (= {:org_id 0 :id 10 :foo #{:foofoo}}
+           (sut/avoid-tombstone-change-for-table
+            {:key [[:org_id] :id]}
+            {:org_id 0 :id 10 :foo #{}}
+            {:org_id 0 :id 10 :foo #{:foofoo}})))
+    (is (= {:org_id 0 :id 10 :foo [:foofoo]}
+           (sut/avoid-tombstone-change-for-table
+            {:key [[:org_id] :id]}
+            {:org_id 0 :id 10 :foo []}
+            {:org_id 0 :id 10 :foo [:foofoo]})))
+    (is (= {:org_id 0 :id 10 :foo {:foofoo 10}}
+           (sut/avoid-tombstone-change-for-table
+            {:key [[:org_id] :id]}
+            {:org_id 0 :id 10 :foo {}}
+            {:org_id 0 :id 10 :foo {:foofoo 10}})))
+    (is (= {:org_id 0 :id 10 :foo '(:foofoo)}
+           (sut/avoid-tombstone-change-for-table
+            {:key [[:org_id] :id]}
+            {:org_id 0 :id 10 :foo '()}
+            {:org_id 0 :id 10 :foo '(:foofoo)})))))
