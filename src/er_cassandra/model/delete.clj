@@ -35,11 +35,11 @@
     {:keys [buffer-size] :as opts}]
    (with-context deferred-context
      (->> record-stream
-          (s/map #(delete session entity key % (dissoc opts :buffer-size)))
           ((fn [s]
              (if buffer-size
                (s/buffer buffer-size s)
                s)))
+          (s/map #(delete session entity key % (dissoc opts :buffer-size)))
           return))))
 
 (defn delete-many
