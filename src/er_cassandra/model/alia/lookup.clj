@@ -8,7 +8,10 @@
    [schema.core :as s]
    [cats.core :refer [mlet return]]
    [cats.context :refer [with-context]]
-   [cats.labs.manifold :refer [deferred-context]])
+   [cats.labs.manifold :refer [deferred-context]]
+   [er-cassandra.model.types]
+   [er-cassandra.model.model-session]
+   [prpr.promise :as pr :refer [ddo]])
   (:import
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
@@ -129,6 +132,47 @@
           (return stale-kvs))
         (return nil)))))
 
+(s/defn generate-lookup-changes-for-table
+  "generates a list of [[old-lookup new-lookup]] changes. if old-lookup is nil,
+   then it's a new record, if new-lookup is nil then it's a deletion, otherwise
+   it's a (non-key column) change"
+  [session :- ModelSession
+   entity :- Entity
+   {t-key :key
+    t-generator-fn :generator-fn
+    :as lookup-table} :- t/IndexTableSchema
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema]
+  ;; only if we are deleting the record, or have sufficient
+  ;; key components to update the table
+  (if (or (nil? new-record)
+          (k/has-key? t-key new-record))
+    (ddo
+      [old-lookups (generate-lookup-records-for-table
+                    session entity lookup-table old-record old-record)
+       new-lookups (generate-lookup-records-for-table
+                    session entity lookup-table old-record new-record)
+       :let [old-k-lookups (->> old-lookups
+                                (map
+                                 (fn [l]
+                                   [(k/extract-key-value t-key l) l]))
+                                (into {}))
+             new-k-lookups (->> new-lookups
+                                (map
+                                 (fn [l]
+                                   [(k/extract-key-value t-key l) l]))
+                                (into {}))
+
+             all-lookup-keys (set (concat (keys old-k-lookups)
+                                      (keys new-k-lookups)))
+
+             lookup-changes (->> all-lookup-keys
+                                 (map (fn [k]
+                                        [(get old-k-lookups k)
+                                         (get new-k-lookups k)])))]]
+      (return lookup-changes))
+    (return deferred-context nil)))
+
 (s/defn insert-and-update-lookup-records-for-table
   "returns lookup records which are to be inserted or require updating
    (because some non-key column was updated)
@@ -170,3 +214,38 @@
                            (not= l old-l)))))]]
           (return insert-and-update-lookups))
         (return nil)))))
+
+(s/defn generate-secondary-changes-for-table
+  "this is pretty simple, but makes secondary tables behave in the
+   same way as lookups"
+  [session :- ModelSession
+   entity :- Entity
+   {t-key :key
+    :as secondary-table} :- t/SecondaryTableSchema
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema]
+  (if (or (nil? new-record)
+          (k/has-key? t-key new-record))
+    (ddo [old-key-value (k/extract-key-value t-key old-record)
+          new-key-value (k/extract-key-value t-key new-record)]
+      (return
+       (cond
+
+         (and (nil? old-key-value)
+              (nil? new-key-value))
+         nil
+
+         (nil? old-key-value)
+         [[nil new-record]]
+
+         (nil? new-key-value)
+
+         [[old-record nil]]
+
+         (= old-key-value new-key-value)
+         [[old-record new-record]]
+
+         :else
+         [[old-record nil]
+          [nil new-record]])))
+    (return deferred-context nil)))

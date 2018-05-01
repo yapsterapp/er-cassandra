@@ -246,6 +246,7 @@
 
                ;; a (hopefully empty) stream of any errors from denormalization
                :let [denorms (->> trs
+                                  (st/buffer (or (:buffer-size opts) 25))
                                   (st/map #(denormalize-to-target-record
                                             session
                                             source-entity
@@ -254,8 +255,7 @@
                                             source-record
                                             denorm-rel
                                             %
-                                            opts))
-                                  (st/buffer (or (:buffer-size opts) 25)))]
+                                            opts)))]
 
                ;; consumes the whole stream, returns the first error
                ;; or nil if no errors

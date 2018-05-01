@@ -11,6 +11,8 @@
 
 (s/defschema RecordSchema {s/Keyword s/Any})
 (s/defschema MaybeRecordSchema (s/maybe RecordSchema))
+(s/defschema ChangeSchema [(s/one MaybeRecordSchema :old-record)
+                           (s/one MaybeRecordSchema :new-record)])
 
 (s/defschema CallbackFnSchema
   (s/make-fn-schema s/Any [[{s/Keyword s/Any}]]))
@@ -41,8 +43,10 @@
    #(satisfies? ICallback %) (s/protocol ICallback)))
 
 (s/defschema CallbacksSchema
-  {(s/optional-key :after-load) [CallbackSchema]
+  {(s/optional-key :deserialize) [CallbackSchema]
+   (s/optional-key :after-load) [CallbackSchema]
    (s/optional-key :before-save) [CallbackSchema]
+   (s/optional-key :serialize) [CallbackSchema]
    (s/optional-key :after-save) [CallbackSchema]
    (s/optional-key :before-delete) [CallbackSchema]
    (s/optional-key :after-delete) [CallbackSchema]})
@@ -340,19 +344,37 @@
   "a list of all cols used in keys across all tables for the entity"
   [^Entity entity]
   (distinct
-   (concat (uber-key entity)
-           (mapcat :key (:unique-key-tables entity))
-           (mapcat :key (:secondary-tables entity))
-           (mapcat :key (:lookup-tables entity)))))
+   (flatten
+    (concat (uber-key entity)
+            (mapcat :key (:unique-key-tables entity))
+            (mapcat :key (:secondary-tables entity))
+            (mapcat :key (:lookup-tables entity))))))
 
 (defn all-maintained-foreign-key-cols
   "a list of all cols used in foreign keys maintained by this lib (rather than c* MVs)"
   [^Entity entity]
   (distinct
-   (concat
-    (->> entity :unique-key-tables (mapcat :key))
-    (->> entity :secondary-tables (filter (complement :view?)) (mapcat :key))
-    (->> entity :lookup-tables (filter (complement :view?)) (mapcat :key)))))
+   (flatten
+    (concat
+     (->> entity :unique-key-tables (mapcat :key))
+     (->> entity :secondary-tables (filter (complement :view?)) (mapcat :key))
+     (->> entity :lookup-tables (filter (complement :view?)) (mapcat :key))))))
+
+(defn all-entity-tables
+  "returns a list of all tables from an entity"
+  [^Entity entity]
+  (concat
+   [(:primary-table entity)]
+   (:secondary-tables entity)
+   (:lookup-tables entity)
+   (:unique-key-tables entity)))
+
+(defn contains-key-cols-for-table?
+  "true if the record has an entry for
+   every column of the table's key"
+  [^Entity entity record table]
+  (let [kcols (flatten (:key table))]
+    (every? #(contains? record %) kcols)))
 
 (defn extract-uber-key-value
   [^Entity entity record]
@@ -373,70 +395,101 @@
 (defn run-save-callbacks
   "run callbacks for an op which requires the old-record"
   [session ^Entity entity callback-key old-record record opts]
-  (assert (#{:before-save :after-save} callback-key))
+  (assert (#{:serialize :before-save :after-save} callback-key))
   (let [all-callbacks (concat (get-in entity [:callbacks callback-key])
-                               (get-in opts [callback-key]))
-         callback-mfs (for [cb all-callbacks]
-                        (fn [record]
-                          (cond
-                            (fn? cb)
-                            (cb record)
+                              (get-in opts [callback-key]))
+        callback-mfs (for [cb all-callbacks]
+                       (fn [record]
+                         (cond
+                           (fn? cb)
+                           (cb record)
 
-                            (satisfies? ICallback cb)
-                            (case callback-key
-                              ;; it's deliberate -before-save doesn't get the session -
-                              ;; it's used internally during upsert, and persistence
-                              ;; ops would be bad
-                              :before-save
-                              (-before-save cb entity old-record record opts)
-                              :after-save
-                              (-after-save cb session entity old-record record opts))
+                           (satisfies? ICallback cb)
+                           (case callback-key
+                             ;; it's deliberate -before-save doesn't get the session -
+                             ;; it's used internally during upsert, and persistence
+                             ;; ops would be bad
+                             :before-save
+                             (-before-save cb entity old-record record opts)
+                             :after-save
+                             (-after-save cb session entity old-record record opts))
 
-                            :else
-                            (throw
-                             (ex-info
-                              "neither an fn or an ICallback"
-                              {:entity entity
-                               :callback-key callback-key
-                               :callback cb})))))]
-     (with-context deferred-context
-       (if (not-empty callback-mfs)
-         (apply >>= (return record) callback-mfs)
-         (return record)))))
+                           :else
+                           (throw
+                            (ex-info
+                             "neither an fn or an ICallback"
+                             {:entity entity
+                              :callback-key callback-key
+                              :callback cb})))))]
+    (with-context deferred-context
+      (if (not-empty callback-mfs)
+        (apply >>= (return record) callback-mfs)
+        (return record)))))
+
+(defn chain-save-callbacks
+  [session ^Entity entity callback-keys old-record record opts]
+  (let [rsf-mfs (for [cbk callback-keys]
+                  (fn [record]
+                    (run-save-callbacks
+                     session
+                     entity
+                     cbk
+                     old-record
+                     record
+                     opts)))]
+    (with-context deferred-context
+      (if (not-empty rsf-mfs)
+        (apply >>= (return record) rsf-mfs)
+        (return record)))))
 
 (defn run-callbacks
   "run callbacks for an op which doesn't require the old-record"
   [session ^Entity entity callback-key record opts]
-  (assert (#{:after-load :before-delete :after-delete} callback-key))
+  (assert (#{:deserialize :after-load :before-delete :after-delete} callback-key))
   (let [all-callbacks (concat (get-in entity [:callbacks callback-key])
-                               (get-in opts [callback-key]))
-         callback-mfs (for [cb all-callbacks]
-                        (fn [record]
-                          (cond
-                            (fn? cb)
-                            (cb record)
+                              (get-in opts [callback-key]))
+        callback-mfs (for [cb all-callbacks]
+                       (fn [record]
+                         (cond
+                           (fn? cb)
+                           (cb record)
 
-                            (satisfies? ICallback cb)
-                            (case callback-key
-                              :after-load
-                              (-after-load cb session entity record opts)
-                              ;; it's deliberate -before-delete doesn't get the session
-                              :before-delete
-                              (-before-delete cb entity record opts)
-                              :after-delete
-                              (-after-delete cb session entity record opts))
+                           (satisfies? ICallback cb)
+                           (case callback-key
+                             :after-load
+                             (-after-load cb session entity record opts)
+                             ;; it's deliberate -before-delete doesn't get the session
+                             :before-delete
+                             (-before-delete cb entity record opts)
+                             :after-delete
+                             (-after-delete cb session entity record opts))
 
-                            :else
-                            (throw
-                             (ex-info
-                              "neither an fn or an ICallback"
-                              {:entity entity
-                               :callback-key callback-key
-                               :callback cb})))))]
-     (with-context deferred-context
-       (if (not-empty callback-mfs)
-         (apply >>= (return record) callback-mfs)
-         (return record)))))
+                           :else
+                           (throw
+                            (ex-info
+                             "neither an fn or an ICallback"
+                             {:entity entity
+                              :callback-key callback-key
+                              :callback cb})))))]
+    (with-context deferred-context
+      (if (not-empty callback-mfs)
+        (apply >>= (return record) callback-mfs)
+        (return record)))))
+
+(defn chain-callbacks
+  [session ^Entity entity callback-keys record opts]
+  (let [rc-mfs (for [cbk callback-keys]
+                 (fn [record]
+                   (run-callbacks
+                    session
+                    entity
+                    cbk
+                    record
+                    opts)))]
+    (with-context deferred-context
+      (if (not-empty rc-mfs)
+        (apply >>= (return record) rc-mfs)
+        (return record)))))
 
 (defn create-protect-columns-callback
   "create a callback which will remove cols from a record

@@ -84,6 +84,7 @@
                   m
                   [record-foo record-bar])
             r @(->> r-s
+                    (stream/realize-each)
                     (stream/map first)
                     (stream/reduce conj []))
             f-foo (fetch-record :simple_model_upsert_test :id id-foo)

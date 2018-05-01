@@ -1,33 +1,30 @@
 (ns er-cassandra.model.alia.upsert
   (:require
-   [cats
-    [context :refer [with-context]]
-    [core :as monad :refer [mlet return]]
-    [data :refer [pair]]]
+   [cats.context :refer [with-context]]
+   [cats.core :as monad :refer [mlet return]]
+   [cats.data :refer [pair]]
    [cats.labs.manifold :refer [deferred-context]]
-   [clojure.set :as set]
    [clojure.pprint :refer [pprint]]
-   [er-cassandra
-    [key :as k]
-    [record :as r]]
-   [er-cassandra.model
-    [types :as t]
-    [util :as util :refer [combine-responses create-lookup-record]]]
-   [er-cassandra.model.alia
-    [fn-schema :as fns]
-    [lookup :as l]
-    [unique-key :as unique-key]]
-   [er-cassandra.model.util.timestamp :as ts]
+   [clojure.set :as set]
+   [er-cassandra.key :as k]
    [er-cassandra.model.alia.delete :as alia.delete]
-   [schema.core :as s]
+   [er-cassandra.model.alia.fn-schema :as fns]
+   [er-cassandra.model.alia.lookup :as l]
+   [er-cassandra.model.alia.minimal-change :as min.ch]
+   [er-cassandra.model.alia.unique-key :as unique-key]
+   [er-cassandra.model.types :as t]
+   [er-cassandra.model.types.change :as t.change]
+   [er-cassandra.model.util :as util :refer [combine-responses]]
+   [er-cassandra.model.util.timestamp :as ts]
+   [er-cassandra.record :as r]
+   [manifold.stream :as stream]
    [prpr.promise :as pr :refer [ddo]]
-   [taoensso.timbre :refer [warn error]]
-   [prpr.promise :as prpr])
-  (:import
-   [er_cassandra.model.types Entity]
-   [er_cassandra.model.model_session ModelSession]))
+   [schema.core :as s]
+   [er-cassandra.model.alia.lookup :as lookup])
+  (:import er_cassandra.model.model_session.ModelSession
+           er_cassandra.model.types.Entity))
 
-(s/defn insert-index-record
+(s/defn upsert-index-record
   "insert an index record - doesn't support LWTs, :where etc
    which only apply to the primary record
 
@@ -50,130 +47,266 @@
                                    record
                                    opts)]
       (return
-       [:ok record :upserted]))))
+       [:upserted record]))))
 
-(s/defn upsert-secondaries
+(s/defn change-secondary
+  [session :- ModelSession
+   entity :- Entity
+   {t-k :key
+    :as table} :- t/SecondaryTableSchema
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsWithTimestampSchema
+   [old-secondary-record
+    new-secondary-record
+    :as secondary-change] :- t/ChangeSchema]
+
+  (cond
+    (and (nil? old-secondary-record)
+         (nil? new-secondary-record))
+    (throw
+     (pr/error-ex ::secondary-change-both-nil
+                  {:entity entity
+                   :table table
+                   :old-record old-record
+                   :new-record new-record
+                   :old-secondary-record old-secondary-record
+                   :new-secondary-record new-secondary-record
+                   :change secondary-change}))
+
+    (nil? new-secondary-record)
+    (ddo [:let [kv (k/extract-key-value t-k old-secondary-record)]
+          [_ dr] (alia.delete/delete-index-record
+                  session
+                  entity
+                  table
+                  kv
+                  (-> opts
+                      fns/upsert-opts->using-only
+                      fns/upsert-opts->delete-opts))]
+      (return
+       [:deleted dr]))
+
+    (nil? old-secondary-record)
+    (ddo [:let [min-secondary-change (min.ch/avoid-tombstone-change-for-table
+                            table
+                            old-secondary-record
+                            new-secondary-record)]
+          _ (upsert-index-record
+             session
+             entity
+             table
+             min-secondary-change
+             (-> opts
+                 fns/upsert-opts->using-only))]
+      (return
+       [:upserted new-secondary-record]))
+
+    :else
+    (ddo [:let [min-secondary-change (min.ch/avoid-tombstone-change-for-table
+                            table
+                            old-secondary-record
+                            new-secondary-record)]
+
+          _ (monad/when min-secondary-change
+              (upsert-index-record
+               session
+               entity
+               table
+               min-secondary-change
+               (-> opts
+                   fns/upsert-opts->using-only)))]
+      (if min-secondary-change
+        (return [:upserted new-secondary-record])
+        (return [:nochange new-secondary-record])))))
+
+(s/defn change-secondaries-for-table
+  [session :- ModelSession
+   entity :- Entity
+   table :- t/SecondaryTableSchema
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsWithTimestampSchema]
+  (ddo [s-changes (l/generate-secondary-changes-for-table
+                   session
+                   entity
+                   table
+                   old-record
+                   new-record)]
+    (if s-changes
+      (->> s-changes
+           (stream/->source)
+           (stream/map (partial
+                        change-secondary
+                        session
+                        entity
+                        table
+                        old-record
+                        new-record
+                        opts))
+           (stream/realize-each)
+           (stream/reduce conj []))
+      (return []))))
+
+(s/defn change-secondaries
+  "insert a minimal change for each secondary"
   [session :- ModelSession
    entity :- Entity
    old-record :- t/MaybeRecordSchema
-   record :- t/MaybeRecordSchema
-   opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema]
-  (combine-responses
-   (for [{k :key
-          :as t} (t/mutable-secondary-tables entity)]
-     (when (and
-            (k/has-key? k record)
-            (k/extract-key-value k record)
-            ;; decided that secondaries should get upserted even if unchanged
-            ;; so that the index-tables are somewhat self-healing
-            ;; (not= record old-record)
-            )
-       (insert-index-record session entity t record opts)))))
+   new-record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsWithTimestampSchema]
+  (->> (t/mutable-secondary-tables entity)
+       (stream/->source)
+       (stream/map #(change-secondaries-for-table
+                     session
+                     entity
+                     %
+                     old-record
+                     new-record
+                     opts))
+       (stream/realize-each)
+       (stream/reduce into [])))
 
-(s/defn upsert-lookups-for-table
+(s/defn change-lookup
+  [session :- ModelSession
+   entity :- Entity
+   {t-k :key
+    :as table} :- t/LookupTableSchema
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsWithTimestampSchema
+   [old-lookup-record
+    new-lookup-record
+    :as lookup-change] :- t/ChangeSchema]
+
+  (cond
+    (and (nil? old-lookup-record)
+         (nil? new-lookup-record))
+    (throw
+     (pr/error-ex ::lookup-change-both-nil
+                  {:entity entity
+                   :table table
+                   :old-record old-record
+                   :new-record new-record
+                   :change lookup-change}))
+
+    (nil? new-lookup-record)
+    (ddo [:let [kv (k/extract-key-value t-k old-lookup-record)]
+          [_ dr] (alia.delete/delete-index-record
+                  session
+                  entity
+                  table
+                  kv
+                  (-> opts
+                      fns/upsert-opts->using-only
+                      fns/upsert-opts->delete-opts))]
+      (return
+       [:deleted dr]))
+
+    (nil? old-lookup-record)
+    (ddo [:let [min-change (min.ch/avoid-tombstone-change-for-table
+                            table
+                            nil
+                            new-lookup-record)]
+          _ (upsert-index-record
+             session
+             entity
+             table
+             new-lookup-record
+             (-> opts
+                 fns/upsert-opts->using-only))]
+      (return [:upserted new-lookup-record]))
+
+    :else
+    (ddo [:let [min-change (min.ch/avoid-tombstone-change-for-table
+                            table
+                            old-lookup-record
+                            new-lookup-record)]
+          _ (monad/when min-change
+              (upsert-index-record
+               session
+               entity
+               table
+               min-change
+               (-> opts
+                   fns/upsert-opts->using-only)))]
+      (if min-change
+        (return [:upserted new-lookup-record])
+        (return [:nochange new-lookup-record])))))
+
+(s/defn change-lookups-for-table
   [session :- ModelSession
    entity :- Entity
    table :- t/LookupTableSchema
    old-record :- t/MaybeRecordSchema
-   record :- t/MaybeRecordSchema
-   opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema]
-  (with-context deferred-context
-    (mlet
-      [:let [uber-key (t/uber-key entity)
-             uber-key-value (t/extract-uber-key-value entity record)]
-       lookup-records (->> (l/generate-lookup-records-for-table
-                            session entity table old-record record)
-                           combine-responses)
-       acquire-responses (->> (for [lr lookup-records]
-                                (insert-index-record
-                                 session
-                                 entity
-                                 table
-                                 lr
-                                 opts))
-                              combine-responses)]
-      (return acquire-responses))))
-
-(s/defn upsert-lookups
-  [session :- ModelSession
-   entity :- Entity
-   old-record :- t/MaybeRecordSchema
-   record :- t/MaybeRecordSchema
-   opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema]
-  (with-context deferred-context
-    (mlet [all-acquire-responses (->> (for [t (t/mutable-lookup-tables entity)]
-                                        (upsert-lookups-for-table
-                                         session
-                                         entity
-                                         t
-                                         old-record
-                                         record
-                                         opts))
-                                      combine-responses)]
-      (return
-       (apply concat all-acquire-responses)))))
-
-(s/defn copy-unique-keys
-  [entity :- Entity
-   from :- t/MaybeRecordSchema
-   to :- t/MaybeRecordSchema]
-  (let [unique-key-tables (:unique-key-tables entity)]
-    (reduce (fn [r t]
-              (let [key-col (last (:key t))]
-                (assoc r key-col (get from key-col))))
-            to
-            unique-key-tables)))
-
-(s/defn update-secondaries-and-lookups
-  "update non-LWT secondary and lookup entries"
-
-  [session :- ModelSession
-   entity :- Entity
-   old-record :- t/MaybeRecordSchema
-   updated-record-with-keys :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema
    opts :- fns/UpsertOptsWithTimestampSchema]
-  (with-context deferred-context
-    (mlet [:let [index-delete-opts (-> opts
-                                       fns/upsert-opts->using-only
-                                       fns/upsert-opts->delete-opts)
-                 index-insert-opts (-> opts
-                                       fns/upsert-opts->using-only)]
+  (ddo [l-changes (lookup/generate-lookup-changes-for-table
+                   session
+                   entity
+                   table
+                   old-record
+                   new-record)]
+    (if l-changes
+      (->> l-changes
+           (stream/->source)
+           (stream/map (partial
+                        change-lookup
+                        session
+                        entity
+                        table
+                        old-record
+                        new-record
+                        opts))
+           (stream/realize-each)
+           (stream/reduce conj []))
+      (return []))))
 
-           stale-secondary-responses (alia.delete/delete-stale-secondaries
-                                      session
-                                      entity
-                                      old-record
-                                      updated-record-with-keys
-                                      index-delete-opts)
+(s/defn change-lookups
+  [session :- ModelSession
+   entity :- Entity
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsWithTimestampSchema]
+  (->> (t/mutable-lookup-tables entity)
+       (stream/->source)
+       (stream/map #(change-lookups-for-table
+                     session
+                     entity
+                     %
+                     old-record
+                     new-record
+                     opts))
+       (stream/realize-each)
+       (stream/reduce into [])))
 
-           stale-lookup-responses (alia.delete/delete-stale-lookups
-                                   session
-                                   entity
-                                   old-record
-                                   updated-record-with-keys
-                                   index-delete-opts)
-
-           secondary-reponses (upsert-secondaries
-                               session
-                               entity
-                               old-record
-                               updated-record-with-keys
-                               index-insert-opts)
-
-           lookup-responses (upsert-lookups
-                             session
-                             entity
-                             old-record
-                             updated-record-with-keys
-                             index-insert-opts)]
-
-      (return updated-record-with-keys))))
+(s/defn change-secondaries-and-lookups
+  [session :- ModelSession
+   entity :- Entity
+   old-record :- t/MaybeRecordSchema
+   new-record :- t/MaybeRecordSchema
+   opts :- fns/UpsertOptsWithTimestampSchema]
+  (ddo [_ (change-lookups
+           session
+           entity
+           old-record
+           new-record
+           opts)
+        _ (change-secondaries
+           session
+           entity
+           old-record
+           new-record
+           opts)]
+    (return
+     new-record)))
 
 (s/defn cassandra-column-name?
   [k]
   (->> k
        name
-       (re-matches #"\p{Alpha}[_\p{Alnum}]+")))
+       (re-matches #"\p{Alpha}[_\p{Alnum}]+")
+       boolean))
 
 (s/defn upsert-changes*
   "upsert a single instance given the previous value of the instance. if the
@@ -190,35 +323,34 @@
    opts :- fns/UpsertOptsSchema]
 
   (assert (or (nil? old-record)
-              (nil? record)
               (= (t/extract-uber-key-value entity old-record)
                  (t/extract-uber-key-value entity record))))
 
   (ddo [:let [opts (ts/default-timestamp-opt opts)
 
-              ;; get the non-cassandra key-vals to use on the :before-save
-              ;; callback on the old-record
-              non-cassandra-cols (->> record
-                                      keys
-                                      (filter (complement cassandra-column-name?)))
-              non-cassandra (select-keys record non-cassandra-cols)]
+              ;; separate the tru cassandra columns from non-cassandra
+              ;; columns which will be removed by callbacks
+              {cassandra-cols true
+               non-cassandra-cols false} (->> record
+                                              keys
+                                              (group-by cassandra-column-name?))
+              non-cassandra-record (select-keys record non-cassandra-cols)
 
-        ;; serialize the old-record... give it the non-cassandra cols from the
-        ;; record so that e.g. protected cols don't get removed if they
-        ;; are being updated
+              old-record (not-empty old-record)]
+
         old-record-ser (when old-record
                          (t/run-save-callbacks
                           session
                           entity
-                          :before-save
-                          (merge non-cassandra old-record)
-                          (merge non-cassandra old-record)
+                          :serialize
+                          old-record
+                          old-record
                           opts))
 
-        record-ser (t/run-save-callbacks
+        record-ser (t/chain-save-callbacks
                     session
                     entity
-                    :before-save
+                    [:before-save :serialize]
                     old-record
                     record
                     opts)
@@ -245,7 +377,7 @@
                             opts)
 
         _ (monad/when updated-record-with-keys-ser
-            (update-secondaries-and-lookups session
+            (change-secondaries-and-lookups session
                                             entity
                                             old-record-ser
                                             updated-record-with-keys-ser
@@ -256,14 +388,13 @@
                                    old-record
                                    updated-record-with-keys-ser)
 
-        response-record (t/run-callbacks
+        response-record (t/chain-callbacks
                          session
                          entity
-                         :after-load
+                         [:deserialize :after-load]
                          response-record-raw
                          opts)
 
-        ;; do any :after-save actions
         _ (t/run-save-callbacks
            session
            entity
@@ -273,16 +404,13 @@
            opts)]
 
     (return
-     ;; merge the updated-record-with-keys with the old-record, so any
-     ;; cols not included in the update are in the response
      (pair response-record
            acquire-failures))))
 
 (s/defn upsert*
   "upsert a single instance
 
-   convenience fn - if the entity has any foreign keys it first selects
-                    the instance from the db, then calls upsert-changes*"
+   convenience fn - if the entity has any maintained foreign keys it borks"
   [session :- ModelSession
    entity :- Entity
    record :- t/MaybeRecordSchema
@@ -313,8 +441,9 @@
 (s/defn select-upsert*
   "upsert a single instance
 
-   convenience fn - if the entity has any foreign keys it first selects
-                    the instance from the db, then calls upsert-changes*"
+   convenience fn - if the entity has any maintained foreign keys it first
+                    selects the instance from the db,
+                    then calls upsert-changes*"
   [session :- ModelSession
    entity :- Entity
    record :- t/MaybeRecordSchema
@@ -342,10 +471,10 @@
                          record-ser))
 
         old-record (monad/when raw-old-record
-                     (t/run-callbacks
+                     (t/chain-callbacks
                       session
                       entity
-                      :after-load
+                      [:deserialize :after-load]
                       raw-old-record
                       opts))]
 
