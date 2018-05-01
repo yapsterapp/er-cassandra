@@ -70,6 +70,10 @@
     {:keys [buffer-size] :as opts}]
    (with-context deferred-context
      (->> record-stream
+          ((fn [s]
+             (if buffer-size
+               (s/buffer buffer-size s)
+               s)))
           (s/map
            (fn [[o-r r]]
              (change session
@@ -77,10 +81,6 @@
                      o-r
                      r
                      (dissoc opts :buffer-size))))
-          ((fn [s]
-             (if buffer-size
-               (s/buffer buffer-size s)
-               s)))
           return))))
 
 (defn ^:deprecated upsert-buffered
@@ -97,11 +97,11 @@
     {:keys [buffer-size] :as opts}]
    (with-context deferred-context
      (->> record-stream
-          (s/map #(select-upsert session entity % (dissoc opts :buffer-size)))
           ((fn [s]
              (if buffer-size
                (s/buffer buffer-size s)
                s)))
+          (s/map #(select-upsert session entity % (dissoc opts :buffer-size)))
           return))))
 
 (defn ^:deprecated upsert-many
