@@ -67,7 +67,7 @@
     directory :directory
     skip :skip
     :as opts}]
-  (tables/dump-tables
+  (tables/dump-all-keyspace-tables
    cassandra
    keyspace
    directory
@@ -93,7 +93,7 @@
     directory :directory
     skip :skip
     :as opts}]
-  (tables/load-tables
+  (tables/load-all-tables-from-directory
    cassandra
    keyspace
    directory
