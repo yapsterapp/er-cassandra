@@ -187,13 +187,13 @@
      r-s)))
 
 (defn dump-tables
-  "dump cassandra tables from a keyspace to EDN files in a directory"
   [cassandra
    keyspace
    directory
-   skip]
-  (ddo [table-s (keyspace-table-name-s cassandra keyspace skip)
+   tables]
+  (ddo [:let [table-s (stream/->source tables)]
         table-cnt (->> table-s
+                       (stream/buffer 5)
                        (stream/map
                         (fn [t]
                           (ddo [r-s (table->record-s
@@ -207,10 +207,22 @@
                               :notify-s (log-notify-stream)}
                              r-s))))
                        (stream/realize-each)
-                       (stream/buffer 5)
                        (stream/reduce (fn [c _] (inc c)) 0))]
     (info "dump-tables dumped" table-cnt "tables - FINISHED")
     (return table-cnt)))
+
+(defn dump-all-keyspace-tables
+  "dump cassandra tables from a keyspace to EDN files in a directory"
+  [cassandra
+   keyspace
+   directory
+   skip]
+  (ddo [table-s (keyspace-table-name-s cassandra keyspace skip)]
+    (dump-tables
+     cassandra
+     keyspace
+     directory
+     table-s)))
 
 (defn file->record-s
   "uses a thread to read EDN from a file and return a stream of records
@@ -325,6 +337,7 @@
             (keyspace-table-name keyspace table)) {})
 
         total-cnt (->> r-s
+                       (stream/buffer 50)
                        (stream/map
                         (fn [r]
                           (swap! counter-a update-counter-fn)
@@ -343,7 +356,6 @@
                              table
                              r))))
                        (stream/realize-each)
-                       (stream/buffer 250)
                        (stream/reduce (fn [c _] (inc c)) 0))]
 
     (when notify-s
@@ -352,17 +364,22 @@
 
     (return total-cnt)))
 
+(defn table->record-s
+  [keyspace
+   directory
+   table]
+  (ddo [:let [table (keyword table)
+              directory (-> directory io/file)
+              f (io/file directory (str (name table) ".transit"))]]
+    (file->record-s f)))
+
 (defn load-table
   "load a single table"
   [cassandra
    keyspace
    directory
    table]
-  (ddo [
-        :let [table (keyword table)
-              directory (-> directory io/file)
-              f (io/file directory (str (name table) ".transit"))]
-        r-s (file->record-s f)]
+  (ddo [r-s (table->record-s keyspace directory table)]
     (load-record-s->table
      cassandra
      keyspace
@@ -372,6 +389,28 @@
      r-s)))
 
 (defn load-tables
+  [cassandra
+   keyspace
+   directory
+   tables]
+  (ddo [:let [table-s (stream/->source tables)]
+        table-cnt (->> table-s
+                       (stream/buffer 3)
+                       (stream/map
+                        (fn [[t-n f]]
+                          (ddo [r-s (file->record-s f)]
+                            (load-record-s->table
+                             cassandra
+                             keyspace
+                             t-n
+                             {:notify-s (log-notify-stream)}
+                             r-s))))
+                       (stream/realize-each)
+                       (stream/reduce (fn [c _] (inc c)) 0))]
+    (info "load-tables loaded " table-cnt "tables - FINISHED")
+    (return table-cnt)))
+
+(defn load-all-tables-from-directory
   "load tables from EDN files in a directory to a cassandra keyspace"
   [cassandra
    keyspace
@@ -383,25 +422,16 @@
                          .listFiles
                          seq
                          stream/->source)]
-        table-cnt (->> file-s
+        table-s (->> file-s
                        (stream/map
                         (fn [f]
                           (let [[_ t-n] (re-matches #"^([^\.]+)(?:\..*)?$" (.getName f))]
                             [(keyword t-n) f])))
                        (stream/filter
                         (fn [[t-n f]]
-                          (not (skip-set t-n))))
-                       (stream/map
-                        (fn [[t-n f]]
-                          (ddo [r-s (file->record-s f)]
-                            (load-record-s->table
-                             cassandra
-                             keyspace
-                             t-n
-                             {:notify-s (log-notify-stream)}
-                             r-s))))
-                       (stream/realize-each)
-                       (stream/buffer 3)
-                       (stream/reduce (fn [c _] (inc c)) 0))]
-    (info "load-tables loaded " table-cnt "tables - FINISHED")
-    (return table-cnt)))
+                          (not (skip-set t-n)))))]
+    (load-tables
+     cassandra
+     keyspace
+     directory
+     table-s)))
