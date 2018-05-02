@@ -9,6 +9,7 @@
    [er-cassandra.model :as cass.m]
    [er-cassandra.session :as cass.session]
    [er-cassandra.schema :as cass.schema]
+   [er-cassandra.model.types :as cass.t]
    [prpr.promise :as prpr :refer [ddo]]
    [prpr.stream :as prpr.stream]
    [manifold.deferred :as d]
@@ -19,13 +20,15 @@
    [er-cassandra.dump.tables :as dump.tables]
    [prpr.stream :as prpr.stream]))
 
+
+
 (defn dump-entity
   "dump the primary tables for an entity"
   [cassandra
-   keyspace
    directory
    entity]
-  (let [table (-> entity :primary-table :name)]
+  (let [keyspace (cass.session/keyspace cassandra)
+        table (-> entity :primary-table :name)]
     (dump.tables/dump-table
      cassandra
      keyspace
@@ -35,10 +38,10 @@
 (defn dump-entities
   "dump the primary tables for a list of entities"
   [cassandra
-   keyspace
    directory
    entities]
-  (let [tables (map #(get-in % [:primary-table :name]) entities)]
+  (let [keyspace (cass.session/keyspace cassandra)
+        tables (map #(get-in % [:primary-table :name]) entities)]
     (dump.tables/dump-tables
      cassandra
      keyspace
@@ -49,7 +52,7 @@
   "truncate all tables of an entity"
   [cassandra
    entity]
-  (ddo [:let [keyspace (-> cassandra :alia-session :keyspace)
+  (ddo [:let [keyspace (cass.session/keyspace cassandra)
               entity-table-s (-> [(get-in entity [:primary-table :name])]
                                  (into (->> (:secondary-tables entity)
                                             (remove :view?)
@@ -67,7 +70,8 @@
                         cassandra
                         (h/truncate
                          (dump.tables/keyspace-table-name keyspace table)) {})))
-         (prpr.stream/count-all-throw))))
+         (prpr.stream/count-all-throw
+          ::truncate-all-entity-tables))))
 
 (defn load-record-s->entity
   "load a stream of records to an entity"
@@ -107,9 +111,11 @@
                           (cass.m/change
                            cassandra
                            entity
-                           [nil r])))
+                           nil
+                           r)))
                        (stream/realize-each)
-                       (prpr.stream/count-all-throw))]
+                       (prpr.stream/count-all-throw
+                        ::load-record-s->entity))]
 
     (when notify-s
       (stream/put! notify-s [primary-table total-cnt :drained])
@@ -122,12 +128,21 @@
   [cassandra
    directory
    entity]
-  (let [table (-> entity :primary-table :name)
-        keyspace (-> cassandra :alia-session :keyspace)
-        r-s (dump.tables/table->record-s
-             keyspace
-             directory
-             table)]
+  (ddo [:let [keyspace (cass.session/keyspace cassandra)
+              table (-> entity :primary-table :name)]
+        raw-s (dump.tables/transit-file->record-s
+               keyspace
+               directory
+               table)
+        :let [r-s (->> raw-s
+                       (stream/map
+                        (fn [r]
+                          (cass.t/chain-callbacks
+                           cassandra
+                           entity
+                           [:deserialize :after-load]
+                           r
+                           {}))))]]
     (load-record-s->entity
      cassandra
      entity
@@ -147,4 +162,4 @@
                      directory
                      %))
        (prpr.stream/count-all-throw
-        "er-cassandra.model.dump/load-entities")))
+        ::load-entities)))

@@ -8,7 +8,8 @@
    [er-cassandra.record :as cass.r]
    [er-cassandra.session :as cass.session]
    [er-cassandra.schema :as cass.schema]
-   [prpr.promise :as prpr :refer [ddo]]
+   [prpr.promise :as pr :refer [ddo]]
+   [prpr.stream :as pr.st]
    [manifold.deferred :as d]
    [manifold.stream :as stream]
    [qbits.hayt :as h]
@@ -160,7 +161,8 @@
                         (fn [r]
                           (swap! counter-a update-counter-fn)
                           (transit/write w (remove-nil-values r))))
-                       (stream/reduce (fn [c _] (inc c)) 0))]
+                       (pr.st/count-all-throw
+                        ::dump-record-s->transit))]
 
     (.close out)
     (when notify-s
@@ -207,7 +209,8 @@
                               :notify-s (log-notify-stream)}
                              r-s))))
                        (stream/realize-each)
-                       (stream/reduce (fn [c _] (inc c)) 0))]
+                       (pr.st/count-all-throw
+                        ::dump-tables))]
     (info "dump-tables dumped" table-cnt "tables - FINISHED")
     (return table-cnt)))
 
@@ -230,7 +233,7 @@
   [f]
   (let [s (stream/stream 5000)]
     (d/finally
-      (prpr/catch-error-log
+      (pr/catch-error-log
        (str "file->record-s: " (pr-str f))
        (d/future
          (let [in (-> f
@@ -240,11 +243,11 @@
                                  :msgpack
                                  {:handlers transit-read-handler-map})]
 
-           (prpr/catch
+           (pr/catch
                (fn [x]
                  ;; transit throws a RuntimeException on EOF!
                  (.close in)
-                 (prpr/success-pr true))
+                 (pr/success-pr true))
 
                (d/loop [v (transit/read r)]
                  (ddo [_ (stream/put! s v)]
@@ -297,7 +300,7 @@
         ;; :any not supported for prepared counter tables
         ;; :consistency :any
         })
-      (prpr/success-pr nil))))
+      (pr/success-pr nil))))
 
 (defn load-record-s->table
   "load a stream of records to a table"
@@ -356,7 +359,8 @@
                              table
                              r))))
                        (stream/realize-each)
-                       (stream/reduce (fn [c _] (inc c)) 0))]
+                       (pr.st/count-all-throw
+                        ::load-record-s->table))]
 
     (when notify-s
       (stream/put! notify-s [table total-cnt :drained])
@@ -364,7 +368,7 @@
 
     (return total-cnt)))
 
-(defn table->record-s
+(defn transit-file->record-s
   [keyspace
    directory
    table]
@@ -379,7 +383,7 @@
    keyspace
    directory
    table]
-  (ddo [r-s (table->record-s keyspace directory table)]
+  (ddo [r-s (transit-file->record-s keyspace directory table)]
     (load-record-s->table
      cassandra
      keyspace
@@ -406,7 +410,8 @@
                              {:notify-s (log-notify-stream)}
                              r-s))))
                        (stream/realize-each)
-                       (stream/reduce (fn [c _] (inc c)) 0))]
+                       (pr.st/count-all-throw
+                        ::load-table))]
     (info "load-tables loaded " table-cnt "tables - FINISHED")
     (return table-cnt)))
 
