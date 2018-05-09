@@ -21,20 +21,31 @@
 #
 # once the restore is complete, recreate the MVs with the generated script
 
-SNAPSHOT=`date "+%Y%m%d%H%M"`
-SOURCE_HOSTS=52.215.83.105,52.18.63.227
+# on a cassandra node (the sstableloader needs to be run as a cassandra user)
+# - dump the desired restore schema to a <keyspace>.cql file
+# - use the generate_mv_ddl_scripts.sh script to split out non-MV creation DDL
+#   and MV create/drop DDL
+# - drop all MVs from the keyspace
+# - set the env-vars below
+# - run the script below
+
+# these will need changing
 SOURCE_USER=mccraig
-CP=cp
+SOURCE_HOSTS=52.215.83.105,52.18.63.227
 SOURCE_KS=yapster_1_18_0
+TARGET_HOSTS=10.0.6.135
+IGNORE_TARGET_HOSTS=10.0.6.2,10.0.5.199,10.0.6.49
+TARGET_KS=yapstaging_20180509
+
+# these may not need changing
+SNAPSHOT=`date "+%Y%m%d%H%M"`
+CP=cp
 SOURCE_DATA_DIR=/var/lib/cassandra/data
 SOURCE_CASSANDRA_USER=cassandra
 SOURCE_COPY_DIR=/tmp
 TARGET_DIR=${SNAPSHOT}
-TARGET_KS=yapstaging
 TARGET_CASSANDRA_USER=cassandra
 TARGET_CASSANDRA_YAML=/etc/dse/cassandra/cassandra.yaml
-TARGET_HOSTS=10.0.6.135
-IGNORE_TARGET_HOSTS=10.0.6.2,10.0.5.199,10.0.6.49
 
 # prepare a pssh/hosts file for pssh login across all the SOURCE_HOSTS
 mkdir -p pssh
