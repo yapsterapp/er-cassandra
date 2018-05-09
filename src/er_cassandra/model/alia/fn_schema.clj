@@ -2,7 +2,8 @@
   (:require
    [clojure.set :as set]
    [schema.core :as s]
-   [er-cassandra.record.schema :as rs]))
+   [er-cassandra.record.schema :as rs]
+   [manifold.deferred :as d]))
 
 (s/defschema UpsertConsistencySchema
   {(s/optional-key :consistency)
@@ -20,6 +21,9 @@
 (s/defschema UpsertUpdateSchema
   {(s/optional-key :only-if) rs/WhereSchema
    (s/optional-key :if-exists) s/Bool})
+
+(s/defschema UpsertSkipProtectSchema
+  {(s/optional-key :er-cassandra.model.types/skip-protect) s/Bool})
 
 (defn has-some-key?
   "returns an fn which tests whether its argument
@@ -53,7 +57,8 @@
     rs/PrepareOptSchema
     UpsertConsistencySchema
     UpsertWhereSchema
-    UpsertUsingSchema)))
+    UpsertUsingSchema
+    UpsertSkipProtectSchema)))
 
 (s/defschema UpsertUsingWithTimestampSchema
   {(s/optional-key :ttl) s/Int
