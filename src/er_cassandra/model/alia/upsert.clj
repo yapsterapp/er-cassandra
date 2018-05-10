@@ -509,8 +509,11 @@
                                   opts)]
       (return [:delete old-record]))
 
-    (= old-record record)
-    (return deferred-context [:noop record])
+    ;; don't :noop here - there may be callbacks which
+    ;; synthesize a key. anti-tombstone protection will
+    ;; catch true noops later
+    ;; (= old-record record)
+    ;; (return deferred-context [:noop record])
 
     :else
     (ddo [[ur acquire-failures] (upsert-changes*

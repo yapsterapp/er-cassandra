@@ -671,7 +671,9 @@
                   record-foo
                   {})
           fr (fetch-record :simple_upsert_test :id id)]
-      (is (= :noop k))
+      ;; no longer check for no-op at the top-level
+      ;; anti-tombstone does it lower down
+      ;; (is (= :noop k))
       (is (= record-foo r))
       (is (= nil fr))))
   (testing "deletes if record is nil"

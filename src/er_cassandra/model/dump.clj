@@ -82,7 +82,7 @@
     :as opts}
    r-s]
   (ddo [:let [primary-table (get-in entity [:primary-table :name])
-              notify-cnt (or notify-cnt 10000)
+              notify-cnt (or notify-cnt 1000)
               counter-a (atom 0)
 
               update-counter-fn (fn [cnt]
