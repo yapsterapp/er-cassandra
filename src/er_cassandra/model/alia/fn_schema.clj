@@ -25,6 +25,14 @@
 (s/defschema UpsertSkipProtectSchema
   {(s/optional-key :er-cassandra.model.types/skip-protect) s/Bool})
 
+(s/defschema UpsertSkipDenormalizeSchema
+  {(s/optional-key :er-cassandra.model.types/skip-denormalize) #{s/Keyword}})
+
+(s/defschema UpsertSkipSchema
+  (merge
+   UpsertSkipProtectSchema
+   UpsertSkipDenormalizeSchema))
+
 (defn has-some-key?
   "returns an fn which tests whether its argument
    is a map with one or more keys from key-seq"
@@ -58,16 +66,19 @@
     UpsertConsistencySchema
     UpsertWhereSchema
     UpsertUsingSchema
-    UpsertSkipProtectSchema)))
+    UpsertSkipSchema)))
 
 (s/defschema UpsertUsingWithTimestampSchema
-  {(s/optional-key :ttl) s/Int
-   :timestamp s/Int})
+  (merge
+   UpsertSkipSchema
+   {(s/optional-key :ttl) s/Int
+    :timestamp s/Int}))
 
 (s/defschema UpsertUsingOnlyOptsWithTimestampSchema
   (merge
    rs/PrepareOptSchema
-   {:using UpsertUsingWithTimestampSchema}))
+   {:using UpsertUsingWithTimestampSchema}
+   UpsertSkipSchema))
 
 (s/defschema UpsertOptsWithTimestampSchema
   (conditional-upsert-schema
@@ -75,7 +86,8 @@
     rs/PrepareOptSchema
     UpsertConsistencySchema
     UpsertWhereSchema
-    UpsertUsingOnlyOptsWithTimestampSchema)))
+    UpsertUsingOnlyOptsWithTimestampSchema
+    UpsertSkipSchema)))
 
 (s/defschema DeleteUsingWithTimestampSchema
   {:timestamp s/Int})
@@ -116,8 +128,10 @@
   (update-in opts [:using] (fn [u] (dissoc u :timestamp))))
 
 (s/defschema DenormalizeCallbackOptsSchema
-  {(s/optional-key :fetch-size) s/Int
-   (s/optional-key :buffer-size) s/Int})
+  (merge
+   UpsertSkipDenormalizeSchema
+   {(s/optional-key :fetch-size) s/Int
+    (s/optional-key :buffer-size) s/Int}))
 
 (s/defschema DenormalizeOptsSchema
   (merge
