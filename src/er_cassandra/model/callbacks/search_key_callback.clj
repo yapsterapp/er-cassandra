@@ -26,10 +26,11 @@
   "create a callback which splits values from source-cols
    into words and assocs a set of those words to search-col"
   [search-col & source-cols]
-  (fn [r]
-    (let [search-keys (->> source-cols
-                           (filter #(contains? r %))
-                           (map #(get r %))
-                           (mapcat extract-search-keys)
-                           set)]
-      (assoc r search-col search-keys))))
+  (let [contains-all-source-cols? (fn [r] (every? #(contains? r %) source-cols))]
+    (fn [r]
+      (if (contains-all-source-cols? r)
+        (assoc r search-col
+               (->> (map #(get r %) source-cols)
+                    (mapcat extract-search-keys)
+                    set))
+        r))))
