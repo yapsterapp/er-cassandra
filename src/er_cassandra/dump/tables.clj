@@ -157,6 +157,7 @@
               _ (stream/connect r-s no-buffer-s)]
 
         total-cnt (->> no-buffer-s
+                       (stream/realize-each)
                        (stream/map
                         (fn [r]
                           (swap! counter-a update-counter-fn)
