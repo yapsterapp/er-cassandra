@@ -112,7 +112,8 @@
                            cassandra
                            entity
                            nil
-                           r)))
+                           r
+                           {::cass.t/skip-protect true})))
                        (stream/realize-each)
                        (prpr.stream/count-all-throw
                         ::load-record-s->entity))]

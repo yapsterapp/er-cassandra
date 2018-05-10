@@ -355,7 +355,10 @@
                     record
                     opts)
 
-        :let [record-keys (-> record keys set)
+        :let [;; don't need the ::t/skip-protect opt any more
+              opts (dissoc opts ::t/skip-protect)
+
+              record-keys (-> record keys set)
               record-ser-keys (-> record-ser keys set)
               removed-keys (set/difference record-keys record-ser-keys)
 
