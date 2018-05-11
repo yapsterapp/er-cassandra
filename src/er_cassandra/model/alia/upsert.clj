@@ -322,10 +322,16 @@
    record :- t/RecordSchema
    opts :- fns/UpsertOptsSchema]
 
-  (assert (or (nil? old-record)
-              (= (t/extract-uber-key-value entity old-record)
-                 (t/extract-uber-key-value entity record))))
-
+  (when (and (some? old-record)
+             (not= (t/extract-uber-key-value entity old-record)
+                   (t/extract-uber-key-value entity record)))
+    (throw (pr/error-ex ::uber-key-mismatch
+                        {:entity (-> entity :primary-table :name)
+                         :old-record-uberkey (t/extract-uber-key-value entity old-record)
+                         :record-uberkey (t/extract-uber-key-value entity record)
+                         :old-record old-record
+                         :record record
+                         :opts opts})))
   (ddo [:let [opts (ts/default-timestamp-opt opts)
 
               ;; separate the tru cassandra columns from non-cassandra
