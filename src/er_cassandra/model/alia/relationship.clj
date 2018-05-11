@@ -304,11 +304,30 @@
     :as opts} :- fns/DenormalizeOptsSchema]
   (let [opts (dissoc opts ::t/skip-denormalize)
         targets (:denorm-targets source-entity)
+        target-kw-set (->> targets (map first) set)
+        skip-denorm-rels-set (set skip-denorm-rels)
+
+        bad-skips (set/difference skip-denorm-rels-set
+                                  (conj target-kw-set
+                                        ::t/skip-all-denormalize))
+
+        _ (when (not-empty bad-skips)
+            (throw (pr/error-ex
+                    ::denormalize-bad-skip
+                    {:source-entity (-> source-entity :primary-table :name)
+                     :old-source-record old-source-record
+                     :source-record source-record
+                     :opts opts
+                     :bad-skips bad-skips})))
 
           mfs (->> targets
                    (map (fn [[rel-kw rel]]
                           (fn [resps]
-                            (if (contains? skip-denorm-rels rel-kw)
+                            (if (or
+                                 (contains? skip-denorm-rels
+                                            ::t/skip-all-denormalize)
+                                 (contains? skip-denorm-rels
+                                            rel-kw))
                               (return
                                deferred-context
                                (conj resps [rel-kw [:skip]]))
