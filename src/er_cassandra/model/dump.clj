@@ -80,6 +80,7 @@
    {notify-s :notify-s
     notify-cnt :notify-cnt
     :as opts}
+   cassandra-opts
    r-s]
   (ddo [:let [primary-table (get-in entity [:primary-table :name])
               notify-cnt (or notify-cnt 1000)
@@ -113,7 +114,9 @@
                            entity
                            nil
                            r
-                           {::cass.t/skip-protect true})))
+                           (merge
+                            {::cass.t/skip-protect true}
+                            cassandra-opts))))
                        (stream/realize-each)
                        (prpr.stream/count-all-throw
                         ::load-record-s->entity))]
@@ -128,6 +131,7 @@
   "load an entity from a dump of its primary table"
   [cassandra
    directory
+   cassandra-opts
    entity]
   (ddo [:let [keyspace (cass.session/keyspace cassandra)
               table (-> entity :primary-table :name)]
@@ -148,12 +152,14 @@
      cassandra
      entity
      {:notify-s (dump.tables/log-notify-stream)}
+     cassandra-opts
      r-s)))
 
 (defn load-entities
   "load a list of entities from dumps of their primary tables"
   [cassandra
    directory
+   cassandra-opts
    entities]
   (->> entities
        (stream/->source)
@@ -161,6 +167,7 @@
        (stream/map #(load-entity
                      cassandra
                      directory
+                     cassandra-opts
                      %))
        (prpr.stream/count-all-throw
         ::load-entities)))
