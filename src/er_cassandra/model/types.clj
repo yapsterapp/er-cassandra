@@ -496,10 +496,13 @@
    unless the confirm-col is set and non-nil. always
    removes confirm-col"
   [confirm-col & cols]
-  (fn [r]
-    (if (get r confirm-col)
-      (dissoc r confirm-col)
-      (apply dissoc r confirm-col cols))))
+  (reify
+    ICallback
+    (-before-save [_ entity old-record record opts]
+      (cond
+        (::skip-protect opts) (dissoc record confirm-col)
+        (get record confirm-col) (dissoc record confirm-col)
+        :else (apply dissoc record confirm-col cols)))))
 
 (defn create-updated-at-callback
   "create a callback which will add an :updated_at column

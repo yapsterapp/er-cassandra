@@ -18,7 +18,8 @@
    [er-cassandra.model.error :as e]
    [er-cassandra.model.alia.fn-schema :as fns]
    [er-cassandra.model.util :refer [combine-responses create-lookup-record]]
-   [taoensso.timbre :refer [info warn]])
+   [taoensso.timbre :refer [info warn]]
+   [prpr.promise :as pr :refer [ddo]])
   (:import
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
@@ -299,25 +300,31 @@
    source-entity :- Entity
    old-source-record :- t/MaybeRecordSchema
    source-record :- t/MaybeRecordSchema
-   opts :- fns/DenormalizeOptsSchema]
-  (let [targets (:denorm-targets source-entity)
+   {skip-denorm-rels ::t/skip-denormalize
+    :as opts} :- fns/DenormalizeOptsSchema]
+  (let [opts (dissoc opts ::t/skip-denormalize)
+        targets (:denorm-targets source-entity)
 
-        mfs (->> targets
-                 (map (fn [[rel-kw rel]]
-                        (fn [resps]
-                          (with-context deferred-context
-                            (mlet [resp (denormalize-rel session
-                                                         source-entity
-                                                         (deref-target-entity (:target rel))
-                                                         old-source-record
-                                                         source-record
-                                                         rel-kw
-                                                         rel
-                                                         opts)]
-                              (return (conj resps resp))))))))]
+          mfs (->> targets
+                   (map (fn [[rel-kw rel]]
+                          (fn [resps]
+                            (if (contains? skip-denorm-rels rel-kw)
+                              (return
+                               deferred-context
+                               (conj resps [rel-kw [:skip]]))
+                              (ddo [resp (denormalize-rel
+                                          session
+                                          source-entity
+                                          (deref-target-entity (:target rel))
+                                          old-source-record
+                                          source-record
+                                          rel-kw
+                                          rel
+                                          opts)]
+                                (return (conj resps resp))))))))]
 
-    ;; process one relationship at a time, otherwise the buffer-size is
-    ;; uncontrolled
+      ;; process one relationship at a time, otherwise the buffer-size is
+      ;; uncontrolled
     (apply >>= (return deferred-context []) mfs)))
 
 (s/defn denormalize-callback

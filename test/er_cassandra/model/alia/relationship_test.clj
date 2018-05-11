@@ -515,30 +515,67 @@
     [source target-a target-b]))
 
 (deftest update-multi-relationship-test
-  (let [[s ta tb] (create-multi-relationship)
-        [sida sidb tida tidb] [(uuid/v1) (uuid/v1) (uuid/v1) (uuid/v1)]
-        sr {:ida sida :idb sidb :nick "foo" :nock "foofoo"}
-        _ (insert-record :multi_relationship_test sr)
-        _ (upsert-instance ta {:tida tida :source_ida sida :source_idb sidb
-                               :target_nick "bar"})
-        _ (upsert-instance tb {:tidb tidb :source_ida sida :source_idb sidb
-                               :target_nock "bar"})
+  (testing "denorming over multiple relationships"
+    (let [[s ta tb] (create-multi-relationship)
+          [sida sidb tida tidb] [(uuid/v1) (uuid/v1) (uuid/v1) (uuid/v1)]
+          sr {:ida sida :idb sidb :nick "foo" :nock "foofoo"}
+          _ (insert-record :multi_relationship_test sr)
+          _ (upsert-instance ta {:tida tida :source_ida sida :source_idb sidb
+                                 :target_nick "bar"})
+          _ (upsert-instance tb {:tidb tidb :source_ida sida :source_idb sidb
+                                 :target_nock "bar"})
 
-        resp @(rel/denormalize tu/*model-session* s nil sr (ts/default-timestamp-opt))
-        potra (fetch-record :multi_relationship_test_target_a [:tida] [tida])
-        potrai (fetch-record :multi_relationship_test_target_a_by_source_ids
-                             [:source_ida :source_idb] [sida sidb])
-        potrb (fetch-record :multi_relationship_test_target_b [:tidb] [tidb])
-        potrbi (fetch-record :multi_relationship_test_target_b_by_source_ids
-                             [:source_ida :source_idb] [sida sidb])
-        ]
-    (is (= [[:test-a [:ok]]
-            [:test-b [:ok]]] resp))
-    (is (= {:tida tida :source_ida sida :source_idb sidb
-            :target_nick "foo"} potra))
-    (is (= {:tida tida :source_ida sida :source_idb sidb
-            :target_nick "foo"} potrai))
-    (is (= {:tidb tidb :source_ida sida :source_idb sidb
-            :target_nock "foofoo"} potrb))
-    (is (= {:tidb tidb :source_ida sida :source_idb sidb
-            :target_nock "foofoo"} potrbi))))
+          resp @(rel/denormalize tu/*model-session* s nil sr (ts/default-timestamp-opt))
+          potra (fetch-record :multi_relationship_test_target_a [:tida] [tida])
+          potrai (fetch-record :multi_relationship_test_target_a_by_source_ids
+                               [:source_ida :source_idb] [sida sidb])
+          potrb (fetch-record :multi_relationship_test_target_b [:tidb] [tidb])
+          potrbi (fetch-record :multi_relationship_test_target_b_by_source_ids
+                               [:source_ida :source_idb] [sida sidb])
+          ]
+      (is (= [[:test-a [:ok]]
+              [:test-b [:ok]]] resp))
+      (is (= {:tida tida :source_ida sida :source_idb sidb
+              :target_nick "foo"} potra))
+      (is (= {:tida tida :source_ida sida :source_idb sidb
+              :target_nick "foo"} potrai))
+      (is (= {:tidb tidb :source_ida sida :source_idb sidb
+              :target_nock "foofoo"} potrb))
+      (is (= {:tidb tidb :source_ida sida :source_idb sidb
+              :target_nock "foofoo"} potrbi))))
+
+  (testing "::t/skip-denormalize support"
+    (let [[s ta tb] (create-multi-relationship)
+          [sida sidb tida tidb] [(uuid/v1) (uuid/v1) (uuid/v1) (uuid/v1)]
+          sr {:ida sida :idb sidb :nick "foo" :nock "foofoo"}
+          _ (insert-record :multi_relationship_test sr)
+          _ (upsert-instance ta {:tida tida :source_ida sida :source_idb sidb
+                                 :target_nick "bar"})
+          _ (upsert-instance tb {:tidb tidb :source_ida sida :source_idb sidb
+                                 :target_nock "bar"})
+
+          resp @(rel/denormalize
+                 tu/*model-session*
+                 s
+                 nil
+                 sr
+                 (merge
+                  (ts/default-timestamp-opt)
+                  {::t/skip-denormalize #{:test-a}}))
+          potra (fetch-record :multi_relationship_test_target_a [:tida] [tida])
+          potrai (fetch-record :multi_relationship_test_target_a_by_source_ids
+                               [:source_ida :source_idb] [sida sidb])
+          potrb (fetch-record :multi_relationship_test_target_b [:tidb] [tidb])
+          potrbi (fetch-record :multi_relationship_test_target_b_by_source_ids
+                               [:source_ida :source_idb] [sida sidb])
+          ]
+      (is (= [[:test-a [:skip]]
+              [:test-b [:ok]]] resp))
+      (is (= {:tida tida :source_ida sida :source_idb sidb
+              :target_nick "bar"} potra))
+      (is (= {:tida tida :source_ida sida :source_idb sidb
+              :target_nick "bar"} potrai))
+      (is (= {:tidb tidb :source_ida sida :source_idb sidb
+              :target_nock "foofoo"} potrb))
+      (is (= {:tidb tidb :source_ida sida :source_idb sidb
+              :target_nock "foofoo"} potrbi)))))

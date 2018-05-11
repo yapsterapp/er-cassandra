@@ -322,10 +322,16 @@
    record :- t/RecordSchema
    opts :- fns/UpsertOptsSchema]
 
-  (assert (or (nil? old-record)
-              (= (t/extract-uber-key-value entity old-record)
-                 (t/extract-uber-key-value entity record))))
-
+  (when (and (some? old-record)
+             (not= (t/extract-uber-key-value entity old-record)
+                   (t/extract-uber-key-value entity record)))
+    (throw (pr/error-ex ::uber-key-mismatch
+                        {:entity (-> entity :primary-table :name)
+                         :old-record-uberkey (t/extract-uber-key-value entity old-record)
+                         :record-uberkey (t/extract-uber-key-value entity record)
+                         :old-record old-record
+                         :record record
+                         :opts opts})))
   (ddo [:let [opts (ts/default-timestamp-opt opts)
 
               ;; separate the tru cassandra columns from non-cassandra
@@ -355,7 +361,10 @@
                     record
                     opts)
 
-        :let [record-keys (-> record keys set)
+        :let [;; don't need the ::t/skip-protect opt any more
+              opts (dissoc opts ::t/skip-protect)
+
+              record-keys (-> record keys set)
               record-ser-keys (-> record-ser keys set)
               removed-keys (set/difference record-keys record-ser-keys)
 
@@ -506,8 +515,11 @@
                                   opts)]
       (return [:delete old-record]))
 
-    (= old-record record)
-    (return deferred-context [:noop record])
+    ;; don't :noop here - there may be callbacks which
+    ;; synthesize a key. anti-tombstone protection will
+    ;; catch true noops later
+    ;; (= old-record record)
+    ;; (return deferred-context [:noop record])
 
     :else
     (ddo [[ur acquire-failures] (upsert-changes*

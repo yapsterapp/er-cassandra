@@ -1,7 +1,7 @@
 (ns er-cassandra.concatenated-key
   (:require
    [clojure.string :as str]
-   [er-cassandra.util.time :as cut]))
+   #?(:clj [er-cassandra.util.time :as cut])))
 
 ;; fns for concatenating key components into a correctly sorting Text
 ;; key to use as the additional component of the PK of an MV
@@ -17,15 +17,22 @@
   IConcatenatedKeySegment
   (-str-rep [v] (if v "true" "false")))
 
-(extend-type java.util.Date
-  IConcatenatedKeySegment
-  (-str-rep [v]
-    (cut/unparse-timestamp-utc-millis v)))
+#?(:clj (extend-type java.util.Date
+          IConcatenatedKeySegment
+          (-str-rep [v]
+            (cut/unparse-timestamp-utc-millis v))))
 
-(extend-type java.lang.Object
-  IConcatenatedKeySegment
-  (-str-rep [v]
-    (str v)))
+#?(:clj (extend-type java.lang.Object
+          IConcatenatedKeySegment
+          (-str-rep [v]
+            (str v)))
+
+   :cljs (extend-type js/Object
+           IConcatenatedKeySegment
+           (-str-rep [v]
+             (str v))))
+
+
 
 (def default-separator "/")
 
