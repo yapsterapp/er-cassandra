@@ -15,10 +15,12 @@ a cassandra connector
 * streaming / paging queries
 * client-side streaming joins
 * efficient - doesn't read or write unnecessarily
+* tombstone avoidance - writes only changed columns
 * runs happily with consistency:ONE
 * LWT support
 * migrations (from [drift](https://github.com/macourtney/drift))
 * low-level async API (built directly on [alia](https://github.com/mpenet/alia))
+* table and model based dump and load tools to/from transit
 
 ## Usage
 
