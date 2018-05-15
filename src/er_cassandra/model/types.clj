@@ -18,6 +18,7 @@
   (s/make-fn-schema s/Any [[{s/Keyword s/Any}]]))
 
 (defprotocol ICallback
+  (-deserialize [_ session entity record opts])
   (-after-load [_ session entity record opts]
     "an after-load callback on a record of an entity, returning
      updated-record or Deferred<updated-record>")
@@ -26,6 +27,7 @@
      updated-record or Deferred<updated-record>. -before-save doesn't
      receive the session because it shouldn't do any persistence ops -
      -before-save is used internally during upsert")
+  (-serialize [_ entity old-record record opts])
   (-after-save [_ session entity old-record record opts]
     "an after-save callback on a record of an entity. responses
      are ignored")
@@ -411,6 +413,8 @@
                              ;; ops would be bad
                              :before-save
                              (-before-save cb entity old-record record opts)
+                             :serialize
+                             (-serialize cb entity old-record record opts)
                              :after-save
                              (-after-save cb session entity old-record record opts))
 
@@ -456,6 +460,8 @@
 
                            (satisfies? ICallback cb)
                            (case callback-key
+                             :deserialize
+                             (-deserialize cb session entity record opts)
                              :after-load
                              (-after-load cb session entity record opts)
                              ;; it's deliberate -before-delete doesn't get the session
