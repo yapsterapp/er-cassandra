@@ -9,11 +9,11 @@
 (defprotocol IConcatenatedKeySegment
   (-str-rep [v]))
 
-(extend-type String
+(extend-type #?(:clj String :cljs string)
   IConcatenatedKeySegment
   (-str-rep [v] v))
 
-(extend-type Boolean
+(extend-type #?(:clj Boolean :cljs boolean)
   IConcatenatedKeySegment
   (-str-rep [v] (if v "true" "false")))
 
@@ -22,17 +22,10 @@
           (-str-rep [v]
             (cut/unparse-timestamp-utc-millis v))))
 
-#?(:clj (extend-type java.lang.Object
-          IConcatenatedKeySegment
-          (-str-rep [v]
-            (str v)))
-
-   :cljs (extend-type js/Object
-           IConcatenatedKeySegment
-           (-str-rep [v]
-             (str v))))
-
-
+(extend-type #?(:clj java.lang.Object :cljs object)
+  IConcatenatedKeySegment
+  (-str-rep [v]
+    (str v)))
 
 (def default-separator "/")
 
