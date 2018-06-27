@@ -5,7 +5,8 @@
    [manifold.deferred :as deferred]
    [schema.test :as st]
    [er-cassandra.model.types :as t]
-   [er-cassandra.model.types :refer :all]))
+   [er-cassandra.model.types :refer :all]
+   [er-cassandra.model.types :as sut]))
 
 (use-fixtures :once st/validate-schemas)
 
@@ -181,3 +182,76 @@
             exp {:id 1 :name "BAR"}]
         (is (= exp @(run-save-callbacks s m :before-save nil r {})))))
     (testing "callback error")))
+
+(deftest create-protect-columns-callback-test
+  (testing "nil's protected columns in a new record"
+    (let [s nil
+          m (t/create-entity {:primary-table {:name :foos :key [:id]}
+                              :callbacks {:before-save
+                                          [(sut/create-protect-columns-callback
+                                            :update-bar?
+                                            :bar)]}})
+          r @(sut/run-save-callbacks
+              s
+              m
+              :before-save
+              nil
+              {:id 1000 :bar 100}
+              nil)]
+
+      (is (= r
+             {:id 1000 :bar nil}))))
+
+  (testing "reverts protected columns to previous values in an updated record"
+    (let [s nil
+          m (t/create-entity {:primary-table {:name :foos :key [:id]}
+                              :callbacks {:before-save
+                                          [(sut/create-protect-columns-callback
+                                            :update-bar?
+                                            :bar)]}})
+          r @(sut/run-save-callbacks
+              s
+              m
+              :before-save
+              {:id 1000 :bar 1}
+              {:id 1000 :bar 100}
+              nil)]
+
+      (is (= r
+             {:id 1000 :bar 1}))))
+
+  (testing "lets protected column updates through with the right additional col"
+    (let [s nil
+          m (t/create-entity {:primary-table {:name :foos :key [:id]}
+                              :callbacks {:before-save
+                                          [(sut/create-protect-columns-callback
+                                            :update-bar?
+                                            :bar)]}})
+          r @(sut/run-save-callbacks
+              s
+              m
+              :before-save
+              {:id 1000 :bar 1}
+              {:id 1000 :bar 100 :update-bar? true}
+              nil)]
+
+      (is (= r
+             {:id 1000 :bar 100}))))
+
+  (testing "lets protected column updates through with ::skip-protect"
+    (let [s nil
+          m (t/create-entity {:primary-table {:name :foos :key [:id]}
+                              :callbacks {:before-save
+                                          [(sut/create-protect-columns-callback
+                                            :update-bar?
+                                            :bar)]}})
+          r @(sut/run-save-callbacks
+              s
+              m
+              :before-save
+              {:id 1000 :bar 1}
+              {:id 1000 :bar 100 :update-bar? true}
+              {::sut/skip-protect true})]
+
+      (is (= r
+             {:id 1000 :bar 100})))))
