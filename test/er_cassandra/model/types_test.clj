@@ -254,4 +254,22 @@
               {::sut/skip-protect true})]
 
       (is (= r
-             {:id 1000 :bar 100})))))
+             {:id 1000 :bar 100}))))
+
+  (testing "doesn't do anything if the col isn't specified in the new-record"
+    (let [s nil
+          m (t/create-entity {:primary-table {:name :foos :key [:id]}
+                              :callbacks {:before-save
+                                          [(sut/create-protect-columns-callback
+                                            :update-bar?
+                                            :bar)]}})
+          r @(sut/run-save-callbacks
+              s
+              m
+              :before-save
+              {:id 1000 :bar 1}
+              {:id 1000}
+              {::sut/skip-protect true})]
+
+      (is (= r
+             {:id 1000})))))
