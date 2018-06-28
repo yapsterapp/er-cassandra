@@ -7,7 +7,8 @@
    [schema.core :as s]
    [clj-time.core :as t]
    [er-cassandra.util.vector :as v]
-   [er-cassandra.key :as k]))
+   [er-cassandra.key :as k]
+   [taoensso.timbre :refer [info warn]]))
 
 (s/defschema RecordSchema {s/Keyword s/Any})
 (s/defschema MaybeRecordSchema (s/maybe RecordSchema))
@@ -498,9 +499,9 @@
         (return record)))))
 
 (defn create-protect-columns-callback
-  "create a callback which will remove cols from a record
-   unless the confirm-col is set and non-nil. always
-   removes confirm-col"
+  "create a callback which will replace cols from a record
+   with their old-record values, unless the confirm-col is
+   set and non-nil. always removes confirm-col"
   [confirm-col & cols]
   (reify
     ICallback
@@ -508,7 +509,11 @@
       (cond
         (::skip-protect opts) (dissoc record confirm-col)
         (get record confirm-col) (dissoc record confirm-col)
-        :else (apply dissoc record confirm-col cols)))))
+        :else (merge
+               record
+               (->> (for [c cols]
+                      [c (get old-record c)])
+                    (into {})))))))
 
 (defn create-updated-at-callback
   "create a callback which will add an :updated_at column

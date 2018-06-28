@@ -411,6 +411,30 @@
         (is (= (merge record new-record)
                r))))
 
+    (testing "update denorm"
+      (let [new-record {:org_id org-id
+                        :id id
+                        :tag #{"sluggish"}}
+            [r acqf] @(u/upsert-changes* tu/*model-session*
+                                         m
+                                         record
+                                         new-record
+                                         (ts/default-timestamp-opt))]
+
+        (is (= nil
+               (fetch-record :upsert_unique_lookup_secondaries_test_by_tag
+                             [:tag] ["quick"])))
+
+        (is (= nil
+               (fetch-record :upsert_unique_lookup_secondaries_test_by_tag
+                             [:tag] ["slow"])))
+
+        (is (= {:org_id org-id
+                :id id
+                :tag "sluggish"}
+               (fetch-record :upsert_unique_lookup_secondaries_test_by_tag
+                             [:tag] ["sluggish"])))))
+
     (testing "result includes columns removed from an op by :before-save callbacks"
       (let [m (create-simple-entity-with-protected-column)
 
