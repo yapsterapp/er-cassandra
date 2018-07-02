@@ -17,10 +17,62 @@
    [er-cassandra.record :as r]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
-   [er-cassandra.model.alia.relationship :as rel]))
+   [er-cassandra.model.alia.relationship :as rel])
+  (:import
+   [clojure.lang ExceptionInfo]))
 
 (use-fixtures :once st/validate-schemas)
 (use-fixtures :each (tu/with-model-session-fixture))
+
+(deftest extract-denorm-source-col-test
+  (testing "column in new record"
+    (is (= 100 (rel/extract-denorm-source-col :foo nil {:foo 100}))))
+  (testing "column in old record"
+    (is (= 100 (rel/extract-denorm-source-col :foo {:foo 100} nil))))
+  (testing "column in new-record in preference to old-record"
+    (is (= 100 (rel/extract-denorm-source-col :foo {:foo 1000} {:foo 100}))))
+  (testing "throws if column not present"
+    (is (thrown-with-msg?
+         ExceptionInfo
+         #"denormalization source col not present"
+         (rel/extract-denorm-source-col :foo nil nil)))))
+
+(deftest derive-denorm-col-test
+  (testing "simple keyword extraction"
+    (is (= 100 (rel/derive-denorm-col :foo nil {:foo 100})))
+    (is (= 100 (rel/derive-denorm-col :foo {:foo 100} nil)))
+    (is (= 100 (rel/derive-denorm-col :foo {:foo 1000} {:foo 100}))))
+  (testing "fn extraction"
+    (is (= 200 (rel/derive-denorm-col [#{:foo :bar :baz}
+                                            #(reduce + 0 (vals %))]
+                                           nil
+                                           {:foo 10 :bar 90 :baz 100})))
+    (is (= 200 (rel/derive-denorm-col [#{:foo :bar :baz}
+                                            #(reduce + 0 (vals %))]
+                                           {:foo 10 :bar 90 :baz 100}
+                                           nil)))
+    (is (= 200 (rel/derive-denorm-col [#{:foo :bar :baz}
+                                            #(reduce + 0 (vals %))]
+                                           {:foo 1000 :baz 1000}
+                                           {:foo 10 :bar 90 :baz 100})))
+    (is (= 200 (rel/derive-denorm-col [#{:foo :bar :baz}
+                                            #(reduce + 0 (vals %))]
+                                           {:foo 10}
+                                           {:bar 90 :baz 100})))
+    (is (thrown-with-msg?
+         ExceptionInfo
+         #"denormalization source col not present"
+         (rel/derive-denorm-col [#{:foo :bar :baz}
+                                 #(reduce + 0 (vals %))]
+                                {:foo 10}
+                                {:bar 20})))))
+
+(deftest extract-denorm-vals-test
+  (testing "simple column extraction"
+    (is (= {:bar 10} (rel/extract-denorm-vals
+                      {:denormalize {:bar :foo}}
+                      nil
+                      {:foo 10})))))
 
 (deftest denormalize-fields-test
   (let [te (t/create-entity
@@ -29,7 +81,7 @@
                 {:primary-table {:name :some_source :key [:id]}
                  :denorm-targets {:test {:target te
                                          :denormalize {:nick :nick
-                                                       :count (comp inc :count)}
+                                                       :count [#{:count} (comp inc :count)]}
                                          :cascade :none
                                          :foreign-key [:parent_id]}}})
 
@@ -57,7 +109,7 @@
                                     :cascade :none
                                     :foreign-key [:parent_id]}
                                 :b {:target te
-                                    :denormalize {:count (comp inc :count)}
+                                    :denormalize {:count [#{:count} (comp inc :count)]}
                                     :cascade :none
                                     :foreign-key [:child_id]}
                                 :c {:target oe
@@ -86,7 +138,7 @@
                                     :cascade :none
                                     :foreign-key [:org_id :parent_id]}
                                 :b {:target te
-                                    :denormalize {:count (comp inc :count)}
+                                    :denormalize {:count [#{:count} (comp inc :count)]}
                                     :cascade :none
                                     :foreign-key [:org_id :child_id]}
                                 :c {:target oe

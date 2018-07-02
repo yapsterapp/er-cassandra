@@ -47,18 +47,64 @@
   (let [uk-val (t/extract-uber-key-value source-entity source-record)]
     [(:foreign-key denorm-rel) uk-val]))
 
+(s/defn extract-denorm-source-col
+  "extracts a single denorm source column or throws an exception"
+  [source-col old-source-record source-record]
+  (cond
+    (contains? source-record source-col) (get source-record source-col)
+    (contains? old-source-record source-col) (get old-source-record source-col)
+    :else (throw (ex-info "denormalization source col not present"
+                          {:source-col source-col
+                           :old-source-record old-source-record
+                           :source-record source-record}))))
+
+(s/defn derive-denorm-col
+  "derives a single target col given the denorm-col-spec"
+  [denorm-col-spec old-source-record source-record]
+  (cond
+
+    (keyword? denorm-col-spec)
+    (extract-denorm-source-col denorm-col-spec old-source-record source-record)
+
+    (vector? denorm-col-spec)
+    (let [[source-col-seq denorm-fn] denorm-col-spec
+          source-cols (into
+                       {}
+                       (for [scol source-col-seq]
+                         [scol
+                          (extract-denorm-source-col
+                           scol
+                           old-source-record
+                           source-record)]))]
+      (denorm-fn source-cols))
+
+    :else
+    (throw (ex-info
+            "unrecognized DenormalizeColumnSchema value"
+            {:denorm-col-spec denorm-col-spec
+             :old-source-record old-source-record
+             :source-record source-record}))))
+
 (s/defn extract-denorm-vals
   "extract the values to be denormalized from a source-record,
    according to the given denorm-rel"
-  [denorm-rel source-record]
-  (->> (:denormalize denorm-rel)
-       (map (fn [[tcol scol-or-fn]]
-              [tcol (scol-or-fn source-record)]))
+  [{denormalize-spec :denormalize
+    :as denorm-rel}
+   old-source-record
+   source-record]
+  (->> denormalize-spec
+       (map (fn [[tcol denorm-col-spec]]
+              [tcol
+               (derive-denorm-col
+                denorm-col-spec
+                old-source-record
+                source-record)]))
        (into {})))
 
 (s/defn denormalize-fields
   "denormalize fields from source-record according to :denormalize
-   of denorm-rel, returning an updated target-record"
+   of denorm-rel, returning an updated target-record. borks if
+   denorm fields are not available"
   [source-entity :- Entity
    target-entity :- Entity
    denorm-rel :- t/DenormalizationRelationshipSchema
@@ -75,7 +121,10 @@
         [fk fk-val] (foreign-key-val source-entity source-record denorm-rel)
         fk-map (into {} (map vector fk fk-val))
 
+        ;; pass a nil old-source-record here, since it's not for
+        ;; change requests
         denorm-vals (extract-denorm-vals denorm-rel
+                                         nil
                                          source-record)]
 
     ;; the merge ensures that a bad denorm spec can't
@@ -108,6 +157,32 @@
                    (= ((apply juxt fk) target-record)
                       fk-val))))))
 
+(s/defn denormalize-fields-to-target
+  "if you have a source *and* a target record and you want to denormalize
+   any fields that should be denormalised from that source to that target, then
+   this is your fn. it will consider all denorm relationships and apply
+   denormalize-fields for each relationship where the target entity and
+   the source-pk/target-fk values match. only updates in-memory - doesn't
+   do any persistence"
+  [source-entity :- Entity
+   target-entity :- Entity
+   source-record :- t/MaybeRecordSchema
+   target-record :- t/RecordSchema]
+  (let [denorm-rels (matching-rels
+                     source-entity
+                     target-entity
+                     source-record
+                     target-record)]
+    (reduce (fn [tr rel]
+              (denormalize-fields
+               source-entity
+               target-entity
+               rel
+               source-record
+               tr))
+            target-record
+            denorm-rels)))
+
 (s/defn denormalize-to-target-record
   "denormalize to a single target record"
   [session :- ModelSession
@@ -135,18 +210,18 @@
                                  source-entity
                                  (or source-record old-source-record)
                                  denorm-rel)
-        fk-map (into {} (map vector fk fk-val))
-
-        denorm-vals (->> (:denormalize denorm-rel)
-                         (map (fn [[tcol scol-or-fn]]
-                                [tcol (scol-or-fn source-record)]))
-                         (into {}))]
+        fk-map (into {} (map vector fk fk-val))]
     ;; (warn "denorm-op" denorm-op)
     (case denorm-op
 
       ;; we only upsert the uberkey, fk and denormalized cols
       :upsert
-      (let [new-target-record (merge denorm-vals
+      (let [denorm-vals (extract-denorm-vals
+                         denorm-rel
+                         old-source-record
+                         source-record)
+
+            new-target-record (merge denorm-vals
                                      fk-map
                                      target-uberkey-map)
             otr (select-keys
@@ -168,8 +243,10 @@
 
           ;; we only upsert the uberkey, fk and denormalized cols
           :null
-          (let [null-denorm-vals (->> denorm-vals
-                                      (map (fn [[k v]] [k nil]))
+          (let [null-denorm-vals (->> denorm-rel
+                                      :denormalize
+                                      keys
+                                      (map (fn [k] [k nil]))
                                       (into {}))
                 new-target-record (merge null-denorm-vals
                                          fk-map
@@ -231,8 +308,10 @@
    denorm-rel :- t/DenormalizationRelationshipSchema
    opts :- fns/DenormalizeOptsSchema]
   ;; don't do anything if we don't need to
-  (let [odvs (extract-denorm-vals denorm-rel old-source-record)
-        dvs  (extract-denorm-vals denorm-rel source-record)]
+  (let [odvs (when (some? old-source-record)
+               (extract-denorm-vals denorm-rel nil old-source-record))
+        dvs  (when (some? source-record)
+               (extract-denorm-vals denorm-rel old-source-record source-record))]
     (if (= dvs odvs)
       (return [denorm-rel-kw :noop])
 
@@ -266,32 +345,6 @@
           (if (nil? maybe-err)
             (return [denorm-rel-kw [:ok]])
             (return [denorm-rel-kw [:fail maybe-err]])))))))
-
-(s/defn denormalize-fields-to-target
-  "if you have a source *and* a target record and you want to denormalize
-   any fields that should be denormalised from that source to that target, then
-   this is your fn. it will consider all denorm relationships and apply
-   denormalize-fields for each relationship where the target entity and
-   the source-pk/target-fk values match. only updates in-memory - doesn't
-   do any persistence"
-  [source-entity :- Entity
-   target-entity :- Entity
-   source-record :- t/MaybeRecordSchema
-   target-record :- t/RecordSchema]
-  (let [denorm-rels (matching-rels
-                     source-entity
-                     target-entity
-                     source-record
-                     target-record)]
-    (reduce (fn [tr rel]
-              (denormalize-fields
-               source-entity
-               target-entity
-               rel
-               source-record
-               tr))
-            target-record
-            denorm-rels)))
 
 (s/defn denormalize
   "denormalize all relationships for a given source record

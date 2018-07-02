@@ -80,14 +80,18 @@
 (s/defschema SecondaryKeySchema
   s/Keyword)
 
-(s/defschema KeywordOrFnSchema
+(s/defschema DeriveDenormFnSchema
+  [(s/one #{s/Keyword} :source-cols)
+   (s/one (s/pred fn?) :derivation-fn)])
+
+(s/defschema DenormalizeColumnSchema
   (s/conditional
-   fn? (s/pred fn?)
+   vector? DeriveDenormFnSchema
    :else s/Keyword))
 
 ;; a map of target fields from source fields-or-fns
 (s/defschema DenormalizeSchema
-  {s/Keyword KeywordOrFnSchema})
+  {s/Keyword DenormalizeColumnSchema})
 
 ;; a Relationship allows fields from a parent Entity or
 ;; one of its index tables to be
