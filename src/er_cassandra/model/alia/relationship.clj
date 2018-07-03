@@ -47,13 +47,81 @@
   (let [uk-val (t/extract-uber-key-value source-entity source-record)]
     [(:foreign-key denorm-rel) uk-val]))
 
+(s/defn requires-denorm?
+  "true if denorm of the source is required, false if not.
+   throws an exception if it's indeterminate.
+
+   denorm is not required if
+   - no source columns are present in source-record
+   - any source cols present in source-record are unchanged
+   denorm is required if
+   - source columns are present in source-record with changes
+     from old-source-record, and either old-source-record is nil
+     (meaning it's an insertion) or *all* source-columns are
+     present in old-source-record
+   it's indeterminate if
+   - some or all source columns are present in source-record,
+     but it's not an insertion and some are missing from old-source-record
+
+  TODO this is perhaps too relaxed - if the constraint is tightened such that
+  if *any* source-cols are present in source-record then *all* source-cols
+  must be present in old-source-record then programming failures which lead
+  to errors on changes will be caught earlier"
+  [source-col-spec old-source-record source-record]
+  (let [source-cols (cond
+                      (keyword? source-col-spec) #{source-col-spec}
+                      (vector? source-col-spec) (set (first source-col-spec))
+                      :else (throw (ex-info "unrecognized source-col-spec"
+                                            {:source-col-spec source-col-spec
+                                             :old-source-record old-source-record
+                                             :source-record source-record})))
+
+        source-col-vals (select-keys source-record source-cols)]
+
+    ;; (warn "requires-denorm?" source-col-spec old-source-record source-record)
+
+    (cond
+      ;; no source cols present in source-record
+      (empty? source-col-vals)
+      false
+
+      ;; any source cols present in source-record are unchanged
+      (= source-col-vals
+         (select-keys old-source-record (keys source-col-vals)))
+      false
+
+      ;; changed source-cols are present in source-record and
+      ;; either old-source-record is nil (meaning it's an insertion)
+      ;; or *all* source-cols are present in old-source-record
+      (and (not-empty source-col-vals)
+           (or (nil? old-source-record)
+               (= source-cols
+                  (set/intersection
+                   (set (keys old-source-record))
+                   source-cols))))
+      true
+
+      :else
+      (throw
+       (ex-info "indeterminate requires-denorm?"
+                {:source-col-spec source-col-spec
+                 :old-source-record old-source-record
+                 :source-record source-record})))))
+
 (s/defn extract-denorm-source-col
   "extracts a single denorm source column or throws an exception"
   [source-col old-source-record source-record]
   (cond
     (contains? source-record source-col) (get source-record source-col)
     (contains? old-source-record source-col) (get old-source-record source-col)
-    :else (throw (ex-info "denormalization source col not present"
+
+    ;; requires-denorm? will detect indeterminate updates... if we get to
+    ;; here then it's an insertion, with an implicit nil value for the
+    ;; source-col in the source-record
+    (nil? old-source-record) nil
+
+    :else
+    (throw (ex-info "denormalization source col not present"
                           {:source-col source-col
                            :old-source-record old-source-record
                            :source-record source-record}))))
@@ -94,12 +162,17 @@
    source-record]
   (->> denormalize-spec
        (map (fn [[tcol denorm-col-spec]]
-              [tcol
-               (derive-denorm-col
-                denorm-col-spec
-                old-source-record
-                source-record)]))
-       (into {})))
+              (when (requires-denorm? denorm-col-spec
+                                      old-source-record
+                                      source-record)
+                [tcol
+                 (derive-denorm-col
+                  denorm-col-spec
+                  old-source-record
+                  source-record)])))
+       (filter identity)
+       (into {})
+       (not-empty)))
 
 (s/defn denormalize-fields
   "denormalize fields from source-record according to :denormalize
@@ -307,12 +380,12 @@
    denorm-rel-kw :- s/Keyword
    denorm-rel :- t/DenormalizationRelationshipSchema
    opts :- fns/DenormalizeOptsSchema]
-  ;; don't do anything if we don't need to
-  (let [odvs (when (some? old-source-record)
-               (extract-denorm-vals denorm-rel nil old-source-record))
-        dvs  (when (some? source-record)
+  (let [dvs  (when (some? source-record)
                (extract-denorm-vals denorm-rel old-source-record source-record))]
-    (if (= dvs odvs)
+    ;; (warn "denormalize-rel" {:dvs dvs})
+    (if (and (some? source-record)
+             (empty? dvs))
+      ;; don't do anything if we don't need to
       (return [denorm-rel-kw :noop])
 
       (with-context deferred-context
@@ -406,6 +479,7 @@
    (reify
      t/ICallback
      (-after-save [_ session entity old-record record opts]
+       ;; (warn "denormalize-callback" old-record record)
        (denormalize
         session
         entity
