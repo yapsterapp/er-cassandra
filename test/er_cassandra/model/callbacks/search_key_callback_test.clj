@@ -46,7 +46,7 @@
 
         (testing "does nothing if no source-cols and no search-key col"
           (is (= {:baz "bloop"}
-                 (t/-before-save
+                 (t/-serialize
                   cb
                   m
                   {:baz "blah"}
@@ -55,7 +55,7 @@
 
         (testing "does nothing if source-col in old-record but not new-record"
           (is (= {:baz "bloop"}
-                 (t/-before-save
+                 (t/-serialize
                   cb
                   m
                   {:baz "blah" :foobar "blimp"}
@@ -64,7 +64,7 @@
 
         (testing "does nothing if search-key in old-record but not new-record"
           (is (= {:baz "bloop"}
-                 (t/-before-save
+                 (t/-serialize
                   cb
                   m
                   {:baz "blah" :sk #{}}
@@ -74,7 +74,7 @@
         (testing "merges if source-col in new-record not in old-record"
           (is (=
                {:baz "bloop" :foobar "blimp" :sk #{"blimp"}}
-               (t/-before-save
+               (t/-serialize
                 cb
                 m
                 {:baz "blah" }
@@ -82,7 +82,7 @@
                 {})))
           (is (=
                {:baz "bloop" :foobar "blimp" :sk #{"blargh" "blimp"}}
-               (t/-before-save
+               (t/-serialize
                 cb
                 m
                 {:baz "blah" :sk #{"blargh"}}
@@ -91,14 +91,14 @@
 
         (testing "sets search-keys col"
           (is (= {:sk #{"foo" "bar" "foo bar"} :foobar "foo bar"}
-                 (t/-before-save
+                 (t/-serialize
                   cb
                   m
                   nil
                   {:foobar "foo bar"}
                   {})))
           (is (= {:sk #{"foo" "bar" "foo bar"} :foobar "foo bar"}
-                 (t/-before-save
+                 (t/-serialize
                   cb
                   m
                   {:foobar nil :sk #{}}
@@ -110,7 +110,7 @@
 
         (testing "does nothing if no source-cols and no search-key col"
           (is (= {:baz "bloop"}
-                 (t/-before-save
+                 (t/-serialize
                   cb
                   m
                   {:baz "blah"}
@@ -120,7 +120,7 @@
         (testing "merges if source-col not in old-record"
           (is (=
                {:baz "bloop" :foo "bloo" :bar "groo" :sk #{"bloo" "groo"}}
-               (t/-before-save
+               (t/-serialize
                 cb
                 m
                 {:baz "blah" :foo "bloo"}
@@ -130,13 +130,13 @@
 
         (testing "sets search-keys col"
           (is (= {:sk #{"foo" "bar" "foo bar"} :foo "foo" :bar "foo bar"}
-                 (t/-before-save
+                 (t/-serialize
                   cb
                   m
                   nil
                   {:foo "foo" :bar "foo bar"} {})))
           (is (= {:sk #{"foo" "bar" "foo bar"} :foo "foo" :bar "foo bar"}
-                 (t/-before-save
+                 (t/-serialize
                   cb
                   m
                   {:foo nil :bar nil :sk #{}}

@@ -795,3 +795,46 @@
                [[:phone] ["123"]]
                }
              (->> acqf (map second) (map (juxt :key :key-value)) set))))))
+
+(defn create-before-save-after-save-entity
+  []
+  (tu/create-table :callback_before_after_test
+                   "(id timeuuid primary key, nick text, count int)")
+  (t/create-entity
+   {:primary-table {:name :callback_before_after_test :key [:id]}
+    :callbacks
+    {:before-save
+     [(fn [{cnt :count :as r}]
+        (assoc r
+               :count
+               (+ 2 (or cnt 0))))]
+
+     :after-save
+     [(fn [{cnt :count :as r}]
+        (when-not (some? cnt)
+          (throw (ex-info ":after-save: :count field not sets" {:r r}))))]
+
+     :after-load
+     [(fn [{cnt :count :as r}]
+        (when-not (some? cnt)
+          (throw (ex-info ":after-load: :count field not sets" {:r r})))
+        (dissoc r :count))]}}))
+
+;; checks that a synthetic field can be created in a :before-save,
+;; propagated in an :after-save (e.g. via a relationship) and
+;; removed in an :after-load so that clients never see it
+(deftest callback-interdeps-test
+  (let [m (create-before-save-after-save-entity)
+        [id] [(uuid/v1)]
+        [_ r] @(u/change*
+            tu/*model-session*
+            m
+            nil
+            {:id id
+             :nick "foo"}
+            {})
+        fr (fetch-record :callback_before_after_test
+                         [:id]
+                         [id])]
+    (is (= r {:id id :nick "foo"}))
+    (is (= fr {:id id :nick "foo" :count 2}))))

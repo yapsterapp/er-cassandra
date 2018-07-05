@@ -44,7 +44,7 @@
         no-search-col? #((complement contains?) % search-col)]
     (reify
       t/ICallback
-      (-before-save [_ entity old-record new-record opts]
+      (-serialize [_ entity old-record new-record opts]
         (cond
           ;; if there are no source-cols in the new-record
           ;; and the new-record doesn't update the search-col then

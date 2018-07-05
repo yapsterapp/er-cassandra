@@ -17,10 +17,127 @@
    [er-cassandra.record :as r]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
-   [er-cassandra.model.alia.relationship :as rel]))
+   [er-cassandra.model.alia.relationship :as rel])
+  (:import
+   [clojure.lang ExceptionInfo]))
 
 (use-fixtures :once st/validate-schemas)
 (use-fixtures :each (tu/with-model-session-fixture))
+
+(deftest requires-denorm?-test
+  (testing "no source-cols present in source-record"
+    (is (identical? false (rel/requires-denorm? :foo nil {})))
+    (is (identical? false (rel/requires-denorm?
+                           [#{:foo :bar} (constantly true)]
+                           nil
+                           {}))))
+
+  (testing "source-cols present in source-record are unchanged"
+    (is (identical? false (rel/requires-denorm? :foo {:foo 10} {:foo 10})))
+    (is (identical? false (rel/requires-denorm?
+                           [#{:foo :bar} (constantly true)]
+                           {:foo 10}
+                           {:foo 10})))
+    (is (identical? false (rel/requires-denorm?
+                           [#{:foo :bar} (constantly true)]
+                           {:foo 10 :bar 20}
+                           {:foo 10 :bar 20}))))
+
+  (testing "changed source-cols present in source-record and either
+            old-source-record is nil (meaning it's an insertion) or *all*
+            source-cols are present in old-source-record"
+    (is (identical? true (rel/requires-denorm? :foo nil {:foo 100})))
+    (is (identical? true (rel/requires-denorm? :foo {:foo 10} {:foo 100})))
+    (is (identical? true (rel/requires-denorm?
+                          [#{:foo :bar} (constantly true)]
+                          nil
+                          {:foo 100})))
+    (is (identical? true (rel/requires-denorm?
+                          [#{:foo :bar} (constantly true)]
+                          {:foo 10 :bar 20}
+                          {:foo 100})))
+    (is (identical? true (rel/requires-denorm?
+                           [#{:foo :bar} (constantly true)]
+                           {:foo 10 :bar 20}
+                           {:foo 100 :bar 200}))))
+
+  (testing "source-cols are present in source-record and not all
+            source-cols are present in old-source-record"
+    (is (thrown-with-msg?
+         ExceptionInfo
+         #"indeterminate"
+         (rel/requires-denorm? :foo {} {:foo 100})))
+    (is (thrown-with-msg?
+         ExceptionInfo
+         #"indeterminate"
+         (rel/requires-denorm?
+          [#{:foo :bar} (constantly true)]
+          {}
+          {:foo 100})))
+    (is (thrown-with-msg?
+         ExceptionInfo
+         #"indeterminate"
+         (rel/requires-denorm?
+          [#{:foo :bar} (constantly true)]
+          {:foo 100}
+          {:foo 100 :bar 200})))))
+
+(deftest extract-denorm-source-col-test
+  (testing "column in new record"
+    (is (= 100 (rel/extract-denorm-source-col :foo nil {:foo 100}))))
+  (testing "column in old record"
+    (is (= 100 (rel/extract-denorm-source-col :foo {:foo 100} nil))))
+  (testing "column in new-record in preference to old-record"
+    (is (= 100 (rel/extract-denorm-source-col :foo {:foo 1000} {:foo 100}))))
+  (testing "nil if old-source-record is nil and col not in new record"
+    (is (= nil (rel/extract-denorm-source-col :foo nil {:bar 100}))))
+  (testing "throws if column not present"
+    (is (thrown-with-msg?
+         ExceptionInfo
+         #"denormalization source col not present"
+         (rel/extract-denorm-source-col :foo {:bar 100} {:bar 10})))))
+
+(deftest derive-denorm-col-test
+  (testing "simple keyword extraction"
+    (is (= 100 (rel/derive-denorm-col :foo nil {:foo 100})))
+    (is (= 100 (rel/derive-denorm-col :foo {:foo 100} nil)))
+    (is (= 100 (rel/derive-denorm-col :foo {:foo 1000} {:foo 100})))
+    (is (= nil (rel/derive-denorm-col :foo nil {:bar 100}))))
+  (testing "fn extraction"
+    (is (= 200 (rel/derive-denorm-col [#{:foo :bar :baz}
+                                            #(reduce + 0 (vals %))]
+                                           nil
+                                           {:foo 10 :bar 90 :baz 100})))
+    (is (= 200 (rel/derive-denorm-col [#{:foo :bar :baz}
+                                            #(reduce + 0 (vals %))]
+                                           {:foo 10 :bar 90 :baz 100}
+                                           nil)))
+    (is (= 200 (rel/derive-denorm-col [#{:foo :bar :baz}
+                                            #(reduce + 0 (vals %))]
+                                           {:foo 1000 :baz 1000}
+                                           {:foo 10 :bar 90 :baz 100})))
+    (is (= 200 (rel/derive-denorm-col [#{:foo :bar :baz}
+                                       #(reduce + 0 (vals %))]
+                                      {:foo 10}
+                                      {:bar 90 :baz 100})))
+    (is (= 190 (rel/derive-denorm-col [#{:foo :bar :baz}
+                                       #(reduce (fnil + 0 0) 0 (vals %))]
+                                      nil
+                                      {:bar 90 :baz 100})))
+    (is (thrown-with-msg?
+         ExceptionInfo
+         #"denormalization source col not present"
+         (rel/derive-denorm-col [#{:foo :bar :baz}
+                                 #(reduce + 0 (vals %))]
+                                {:foo 10}
+                                {:bar 20})))))
+
+(deftest extract-denorm-vals-test
+  (testing "simple column extraction"
+    (is (= {:bar 10} (rel/extract-denorm-vals
+                      {:denormalize {:bar :foo}}
+                      nil
+                      {:foo 10})))))
 
 (deftest denormalize-fields-test
   (let [te (t/create-entity
@@ -29,7 +146,7 @@
                 {:primary-table {:name :some_source :key [:id]}
                  :denorm-targets {:test {:target te
                                          :denormalize {:nick :nick
-                                                       :count (comp inc :count)}
+                                                       :count [#{:count} (comp inc :count)]}
                                          :cascade :none
                                          :foreign-key [:parent_id]}}})
 
@@ -57,7 +174,7 @@
                                     :cascade :none
                                     :foreign-key [:parent_id]}
                                 :b {:target te
-                                    :denormalize {:count (comp inc :count)}
+                                    :denormalize {:count [#{:count} (comp inc :count)]}
                                     :cascade :none
                                     :foreign-key [:child_id]}
                                 :c {:target oe
@@ -86,7 +203,7 @@
                                     :cascade :none
                                     :foreign-key [:org_id :parent_id]}
                                 :b {:target te
-                                    :denormalize {:count (comp inc :count)}
+                                    :denormalize {:count [#{:count} (comp inc :count)]}
                                     :cascade :none
                                     :foreign-key [:org_id :child_id]}
                                 :c {:target oe

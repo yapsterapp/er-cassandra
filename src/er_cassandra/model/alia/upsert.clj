@@ -20,7 +20,8 @@
    [manifold.stream :as stream]
    [prpr.promise :as pr :refer [ddo]]
    [schema.core :as s]
-   [er-cassandra.model.alia.lookup :as lookup])
+   [er-cassandra.model.alia.lookup :as lookup]
+   [taoensso.timbre :refer [warn]])
   (:import er_cassandra.model.model_session.ModelSession
            er_cassandra.model.types.Entity))
 
@@ -353,6 +354,8 @@
                           old-record
                           opts))
 
+        ;; :let [_ (warn "record" record)]
+
         record-ser (t/chain-save-callbacks
                     session
                     entity
@@ -385,6 +388,8 @@
                             record-ser
                             opts)
 
+        ;; :let [_ (warn "updated-record-with-keys-ser" updated-record-with-keys-ser)]
+
         _ (monad/when updated-record-with-keys-ser
             (change-secondaries-and-lookups session
                                             entity
@@ -397,20 +402,46 @@
                                    old-record
                                    updated-record-with-keys-ser)
 
-        response-record (t/chain-callbacks
-                         session
-                         entity
-                         [:deserialize :after-load]
-                         response-record-raw
-                         opts)
+        ;; :let [_ (warn "response-record-raw" response-record-raw)]
+
+        ;; since the :serialize phase can synthesize columns
+        ;; we need to :deserialize to feed to the :after-save
+        ;; callbacks, which may want to propagate the synthesized
+        ;; columns
+        old-record-deser (when old-record-ser
+                           (t/run-callbacks
+                            session
+                            entity
+                            :deserialize
+                            old-record-ser
+                            opts))
+
+        response-record-deser (t/chain-callbacks
+                               session
+                               entity
+                               [:deserialize]
+                               response-record-raw
+                               opts)
+
+        ;; :let [_ (warn "response-record-deser" response-record-deser)]
 
         _ (t/run-save-callbacks
            session
            entity
            :after-save
-           old-record
-           response-record
-           opts)]
+           old-record-deser
+           response-record-deser
+           opts)
+
+        response-record (t/chain-callbacks
+                         session
+                         entity
+                         [:after-load]
+                         response-record-deser
+                         opts)
+
+        ;; :let [_ (warn "response-record" response-record)]
+        ]
 
     (return
      (pair response-record
