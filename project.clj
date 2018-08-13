@@ -39,4 +39,8 @@
 
   :profiles {:repl {:pedantic? :ranges}
 
-             :test {:resource-paths ["test-resources" "resources"]}})
+             :test {:resource-paths ["test-resources" "resources"]}
+
+             :uberjar {:aot [er-cassandra.dump]
+                       :uberjar-name "cassandra.jar"
+                       :global-vars {*assert* false}}})

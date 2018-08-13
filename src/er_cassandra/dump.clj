@@ -121,7 +121,7 @@
             :as cmdline} (cl/parse-options args)
 
            :let [cmd-var (ns-resolve
-                          'er-model.connectors.exporter.keyspace
+                          'er-cassandra.dump
                           (symbol cmd-sym))
                  _ (assert (some? cmd-var))]
 

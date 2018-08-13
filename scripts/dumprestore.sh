@@ -30,12 +30,12 @@
 # - run the script below
 
 # these will need changing
-SOURCE_USER=mccraig
-SOURCE_HOSTS=52.215.83.105,52.18.63.227
-SOURCE_KS=yapster_1_18_0
+SOURCE_USER=centos
+SOURCE_HOSTS=10.0.6.135,10.0.6.104,10.0.5.160
+SOURCE_KS=yapster_20180514
 TARGET_HOSTS=10.0.6.135
-IGNORE_TARGET_HOSTS=10.0.6.2,10.0.5.199,10.0.6.49
-TARGET_KS=yapstaging_20180509
+IGNORE_TARGET_HOSTS=
+TARGET_KS=yapstaging_20180813
 
 # these may not need changing
 SNAPSHOT=`date "+%Y%m%d%H%M"`
@@ -67,6 +67,8 @@ for __H__ in "${__HOSTS__[@]}"
 do
     mkdir -p ${TARGET_DIR}/${__H__}/${TARGET_KS}
     scp -r ${SOURCE_USER}@${__H__}:${SOURCE_COPY_DIR}/${SNAPSHOT}/${SOURCE_KS}/\* ${TARGET_DIR}/${__H__}/${TARGET_KS}
+    # remove the MV dumps to save some space
+    find ${TARGET_DIR}/${__H__}/${TARGET_KS} -mindepth 1 -maxdepth 1 -type d | ./filter_sstables_mvs ${TARGET_KS} | xargs rm -rf
 done
 
 # now move the snapshot sstables a couple of directories up the hierarchy, which puts them
