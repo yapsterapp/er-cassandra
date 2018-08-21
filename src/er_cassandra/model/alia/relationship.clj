@@ -53,20 +53,14 @@
 
    denorm is not required if
    - no source columns are present in source-record
-   - any source cols present in source-record are unchanged
+   - all source cols present in source-record are unchanged
    denorm is required if
    - source columns are present in source-record with changes
-     from old-source-record, and either old-source-record is nil
-     (meaning it's an insertion) or *all* source-columns are
-     present in old-source-record
+     from old-source-record
    it's indeterminate if
-   - some or all source columns are present in source-record,
-     but it's not an insertion and some are missing from old-source-record
-
-  TODO this is perhaps too relaxed - if the constraint is tightened such that
-  if *any* source-cols are present in source-record then *all* source-cols
-  must be present in old-source-record then programming failures which lead
-  to errors on changes will be caught earlier"
+   - source columns are present in source-record with changes
+     from old-source-record *but* not all source columns are
+     present in source-record/old-source-record"
   [source-col-spec old-source-record source-record]
   (let [source-cols (cond
                       (keyword? source-col-spec) #{source-col-spec}
@@ -76,7 +70,30 @@
                                              :old-source-record old-source-record
                                              :source-record source-record})))
 
-        source-col-vals (select-keys source-record source-cols)]
+        source-col-vals (select-keys source-record source-cols)
+        changed-source-cols (if (nil? old-source-record)
+                              source-col-vals
+                              (reduce
+                               (fn [rs [k v]]
+                                 (if (and (contains? old-source-record k)
+                                          (= v (get old-source-record k)))
+                                   rs
+                                   (assoc rs k v)))
+                               {}
+                               source-col-vals))
+        missing-source-cols (when-not (or (nil? old-source-record)
+                                          (empty? source-col-vals))
+                              ;; ^if it's an insert then we can safely use nil
+                              ;; values for missing columns but we'll need the
+                              ;; either the new or old values for upserts so
+                              ;; make sure we've got them
+                              (set/difference
+                               (set source-cols)
+                               (-> old-source-record
+                                   (select-keys source-cols)
+                                   keys
+                                   set
+                                   (set/union (set (keys source-col-vals))))))]
 
     ;; (warn "requires-denorm?" source-col-spec old-source-record source-record)
 
@@ -85,28 +102,34 @@
       (empty? source-col-vals)
       false
 
-      ;; any source cols present in source-record are unchanged
-      (= source-col-vals
-         (select-keys old-source-record (keys source-col-vals)))
+      ;; all source cols are unchanged
+      (empty? changed-source-cols)
       false
 
-      ;; changed source-cols are present in source-record and
-      ;; either old-source-record is nil (meaning it's an insertion)
-      ;; or *all* source-cols are present in old-source-record
-      (and (not-empty source-col-vals)
-           (or (nil? old-source-record)
-               (= source-cols
-                  (set/intersection
-                   (set (keys old-source-record))
-                   source-cols))))
+      ;; source-cols have changed but not *all* source cols are present
+      ;; in source-record/old-source-record
+      (not-empty missing-source-cols)
+      (throw
+       (pr/error-ex ::incomplete-source-record
+                    {:source-col-spec source-col-spec
+                     :old-source-record old-source-record
+                     :source-record source-record
+                     :missing-source-cols missing-source-cols}))
+
+      ;; some source-cols have changed and nothing's missing
+      (and (not-empty changed-source-cols)
+           (empty? missing-source-cols))
       true
 
       :else
       (throw
-       (ex-info "indeterminate requires-denorm?"
-                {:source-col-spec source-col-spec
-                 :old-source-record old-source-record
-                 :source-record source-record})))))
+       (pr/error-ex ::indeterminate-requires-denorm?
+                    {:source-col-spec source-col-spec
+                     :old-source-record old-source-record
+                     :source-record source-record
+                     :source-col-vals source-col-vals
+                     :changed-source-cols changed-source-cols
+                     :missing-source-cols missing-source-cols})))))
 
 (s/defn extract-denorm-source-col
   "extracts a single denorm source column or throws an exception"

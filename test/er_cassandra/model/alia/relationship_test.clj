@@ -17,7 +17,8 @@
    [er-cassandra.record :as r]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
-   [er-cassandra.model.alia.relationship :as rel])
+   [er-cassandra.model.alia.relationship :as rel]
+   [prpr.promise :as pr])
   (:import
    [clojure.lang ExceptionInfo]))
 
@@ -46,41 +47,42 @@
   (testing "changed source-cols present in source-record and either
             old-source-record is nil (meaning it's an insertion) or *all*
             source-cols are present in old-source-record"
-    (is (identical? true (rel/requires-denorm? :foo nil {:foo 100})))
+    (testing "setting col to a truthy value"
+      (is (identical? true (rel/requires-denorm? :foo nil {:foo 100})))
+      (is (identical? true (rel/requires-denorm? :foo {} {:foo 100}))))
+    (testing "setting col to nil"
+      (is (identical? true (rel/requires-denorm? :foo nil {:foo nil})))
+      (is (identical? true (rel/requires-denorm? :foo {} {:foo nil}))))
     (is (identical? true (rel/requires-denorm? :foo {:foo 10} {:foo 100})))
     (is (identical? true (rel/requires-denorm?
                           [#{:foo :bar} (constantly true)]
-                          nil
+                          {:bar 20 :baz 30}
                           {:foo 100})))
     (is (identical? true (rel/requires-denorm?
                           [#{:foo :bar} (constantly true)]
                           {:foo 10 :bar 20}
                           {:foo 100})))
     (is (identical? true (rel/requires-denorm?
-                           [#{:foo :bar} (constantly true)]
-                           {:foo 10 :bar 20}
-                           {:foo 100 :bar 200}))))
+                          [#{:foo :bar} (constantly true)]
+                          {:foo 10 :bar 20}
+                          {:foo 100 :bar 200}))))
 
   (testing "source-cols are present in source-record and not all
             source-cols are present in old-source-record"
-    (is (thrown-with-msg?
-         ExceptionInfo
-         #"indeterminate"
-         (rel/requires-denorm? :foo {} {:foo 100})))
-    (is (thrown-with-msg?
-         ExceptionInfo
-         #"indeterminate"
-         (rel/requires-denorm?
-          [#{:foo :bar} (constantly true)]
-          {}
-          {:foo 100})))
-    (is (thrown-with-msg?
-         ExceptionInfo
-         #"indeterminate"
-         (rel/requires-denorm?
-          [#{:foo :bar} (constantly true)]
-          {:foo 100}
-          {:foo 100 :bar 200})))))
+    (let [[tag value] @(pr/wrap-catch-error
+                        (rel/requires-denorm?
+                         [#{:foo :bar} (constantly true)]
+                         {}
+                         {:foo 100}))]
+      (is (= ::rel/incomplete-source-record tag))
+      (is (= #{:bar} (:missing-source-cols value))))
+    (let [[tag value] @(pr/wrap-catch-error
+                        (rel/requires-denorm?
+                         [#{:foo :bar} (constantly true)]
+                         {:foo 99 :baz 66}
+                         {:foo 100}))]
+      (is (= ::rel/incomplete-source-record tag))
+      (is (= #{:bar} (:missing-source-cols value))))))
 
 (deftest extract-denorm-source-col-test
   (testing "column in new record"
