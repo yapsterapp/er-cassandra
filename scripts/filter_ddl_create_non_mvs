@@ -5,7 +5,7 @@ import re
 
 ddl = sys.stdin.read()
 
-patt = re.compile(r"^(CREATE\s+(?:.*?)\n\n)", re.MULTILINE | re.DOTALL)
+patt = re.compile(r"^(CREATE\s+(?:.*?)(?:\n\n|\Z))", re.MULTILINE | re.DOTALL)
 creates = patt.findall(ddl)
 
 def non_mv (mv):

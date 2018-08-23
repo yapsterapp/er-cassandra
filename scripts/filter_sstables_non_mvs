@@ -9,7 +9,7 @@ if len(sys.argv) != 2:
 
 with open(sys.argv[1] + '.cql') as x: ddl = x.read()
 
-patt = re.compile(r"^(CREATE MATERIALIZED VIEW (?:.*?)\n\n)", re.MULTILINE | re.DOTALL)
+patt = re.compile(r"^(CREATE MATERIALIZED VIEW (?:.*?)(?:\n\n|\Z))", re.MULTILINE | re.DOTALL)
 mvs = patt.findall(ddl)
 
 def ks_mv_path (mv):
