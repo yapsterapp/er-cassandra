@@ -5,7 +5,7 @@ import re
 
 ddl = sys.stdin.read()
 
-patt = re.compile(r"^(CREATE MATERIALIZED VIEW (?:.*?)\n\n)", re.MULTILINE | re.DOTALL)
+patt = re.compile(r"^(CREATE MATERIALIZED VIEW (?:.*?)(?:\n\n|\Z))", re.MULTILINE | re.DOTALL)
 mvs = patt.findall(ddl)
 
 def del_mv (mv):
