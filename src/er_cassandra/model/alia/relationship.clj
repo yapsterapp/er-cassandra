@@ -508,7 +508,9 @@
         entity
         old-record
         record
-        (merge opts denorm-opts)))
+        (merge
+         (fns/upsert-opts->denormalize-opts opts)
+         denorm-opts)))
 
      (-after-delete [_ session entity record opts]
        (denormalize
@@ -516,4 +518,6 @@
         entity
         record
         nil
-        (merge opts denorm-opts))))))
+        (merge
+         (fns/delete-opts->denormalize-opts opts)
+         denorm-opts))))))
