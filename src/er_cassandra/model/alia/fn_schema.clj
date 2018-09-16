@@ -143,11 +143,24 @@
   [opts :- DenormalizeOptsSchema]
   (dissoc opts :fetch-size :buffer-size))
 
+(s/defn upsert-opts->denormalize-opts :- DenormalizeOptsSchema
+  [upsert-opts :- UpsertOptsSchema]
+  (-> upsert-opts
+      (dissoc :where)
+      (dissoc :consistency)))
+
 (s/defn denormalize-opts->delete-opts :- rs/DeleteOptsSchema
   [opts :- DenormalizeOptsSchema]
   (-> opts
       denormalize-opts->upsert-opts
       upsert-opts->delete-opts))
+
+(s/defn delete-opts->denormalize-opts :- DenormalizeOptsSchema
+  [delete-opts :- rs/DeleteOptsSchema]
+  (-> delete-opts
+      (dissoc :where)
+      (dissoc :if-exists)
+      (dissoc :only-if)))
 
 (s/defn opts->prepare?-opt :- rs/PrepareOptSchema
   [opts]
