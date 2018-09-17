@@ -104,14 +104,15 @@
 
 (s/defn upsert-opts->delete-opts :- rs/DeleteOptsSchema
   "remove irrelevant parts of upsert opts to match delete opts"
-  [upsert-opts :- UpsertOptsSchema]
+  [{using :using :as upsert-opts} :- UpsertOptsSchema]
   (-> upsert-opts
       (dissoc :if-not-exists)
       (dissoc :consistency)
       (dissoc :er-cassandra.model.types/skip-denormalize)
       (dissoc :er-cassandra.model.types/skip-protect)
-      (update-in [:using] (fn [u]
-                            (dissoc u :ttl)))))
+      (merge
+       (when (map? using)
+         {:using (dissoc using :ttl)}))))
 
 (s/defn upsert-opts->insert-opts :- rs/InsertOptsSchema
   "remove irrelevant parts of upsert opts to match insert opts"
