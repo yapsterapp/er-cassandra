@@ -108,6 +108,8 @@
   (-> upsert-opts
       (dissoc :if-not-exists)
       (dissoc :consistency)
+      (dissoc :er-cassandra.model.types/skip-denormalize)
+      (dissoc :er-cassandra.model.types/skip-protect)
       (update-in [:using] (fn [u]
                             (dissoc u :ttl)))))
 
@@ -117,7 +119,9 @@
   (-> upsert-opts
       (dissoc :where)
       (dissoc :only-if)
-      (dissoc :if-exists)))
+      (dissoc :if-exists)
+      (dissoc :er-cassandra.model.types/skip-denormalize)
+      (dissoc :er-cassandra.model.types/skip-protect)))
 
 (s/defn upsert-opts->using-only :- UpsertUsingOnlyOptsWithTimestampSchema
   "pick out just the :using opts"
