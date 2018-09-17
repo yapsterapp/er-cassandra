@@ -543,7 +543,7 @@
                                   entity
                                   (t/uber-key entity)
                                   old-record
-                                  opts)]
+                                  (fns/upsert-opts->delete-opts opts))]
       (return [:delete old-record]))
 
     ;; don't :noop here - there may be callbacks which
