@@ -107,6 +107,7 @@
   [upsert-opts :- UpsertOptsSchema]
   (-> upsert-opts
       (dissoc :if-not-exists)
+      (dissoc :consistency)
       (update-in [:using] (fn [u]
                             (dissoc u :ttl)))))
 
