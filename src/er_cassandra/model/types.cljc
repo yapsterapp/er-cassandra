@@ -152,7 +152,7 @@
    #(= (:type %) :lookup) LookupTableSchema))
 
 (s/defschema EntitySchema
-  {:class-name NamespacedKeyword
+  {:class-name (s/maybe NamespacedKeyword)
    :primary-table PrimaryTableSchema
    (s/optional-key :unique-key-tables) [UniqueKeyTableSchema]
    (s/optional-key :secondary-tables) [SecondaryTableSchema]
@@ -163,7 +163,7 @@
 
 
 (s/defrecord Entity
-    [class-name :- NamespacedKeyword
+    [class-name :- (s/maybe NamespacedKeyword)
      primary-table :- PrimaryTableSchema
      unique-key-tables :- [UniqueKeyTableSchema]
      secondary-tables :- [SecondaryTableSchema]
@@ -200,7 +200,8 @@
   "create an entity record from a spec"
   [entity-spec]
   (let [spec (conform-all-tables entity-spec)
-        spec (merge {:unique-key-tables []
+        spec (merge {:class-name nil
+                     :unique-key-tables []
                      :secondary-tables []
                      :lookup-tables []
                      :callbacks {}
