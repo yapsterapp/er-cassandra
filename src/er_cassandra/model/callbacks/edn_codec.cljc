@@ -1,6 +1,7 @@
 (ns er-cassandra.model.callbacks.edn-codec
   (:require
-   [clojure.edn :as edn]))
+   #?(:clj [clojure.edn :as edn]
+      :cljs [cljs.reader :as edn])))
 
 (defn edn-serialize-callback
   [col]
