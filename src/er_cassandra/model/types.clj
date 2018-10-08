@@ -8,29 +8,13 @@
    [clj-time.core :as t]
    [er-cassandra.util.vector :as v]
    [er-cassandra.key :as k]
+   [er-cassandra.model.callbacks.schema :refer [CallbacksSchema]]
    [taoensso.timbre :refer [info warn]]))
 
 (s/defschema RecordSchema {s/Keyword s/Any})
 (s/defschema MaybeRecordSchema (s/maybe RecordSchema))
 (s/defschema ChangeSchema [(s/one MaybeRecordSchema :old-record)
                            (s/one MaybeRecordSchema :new-record)])
-
-(s/defschema CallbackFnSchema
-  (s/make-fn-schema s/Any [[{s/Keyword s/Any}]]))
-
-(s/defschema CallbackSchema
-  (s/conditional
-   fn? CallbackFnSchema
-   #(satisfies? ICallback %) (s/protocol ICallback)))
-
-(s/defschema CallbacksSchema
-  {(s/optional-key :deserialize) [CallbackSchema]
-   (s/optional-key :after-load) [CallbackSchema]
-   (s/optional-key :before-save) [CallbackSchema]
-   (s/optional-key :serialize) [CallbackSchema]
-   (s/optional-key :after-save) [CallbackSchema]
-   (s/optional-key :before-delete) [CallbackSchema]
-   (s/optional-key :after-delete) [CallbackSchema]})
 
 ;; a primary key for a cassandra table
 ;; the first entry may itself be a vector, representing
