@@ -21,6 +21,7 @@
    [taoensso.timbre :refer [info warn]]
    [prpr.promise :as pr :refer [ddo]])
   (:import
+   [er_cassandra.model.callbacks.protocol ICallback]
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
 
@@ -500,7 +501,7 @@
   ([] (denormalize-callback {}))
   ([denorm-opts :- fns/DenormalizeCallbackOptsSchema]
    (reify
-     t/ICallback
+     ICallback
      (-after-save [_ session entity old-record record opts]
        ;; (warn "denormalize-callback" old-record record)
        (denormalize

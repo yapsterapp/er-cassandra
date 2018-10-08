@@ -2,8 +2,9 @@
   (:require
    [clojure.string :as str]
    [er-cassandra.util.string :refer [normalize-string]]
-   [er-cassandra.model.types :as t]
-   [prpr.promise :as pr]))
+   [prpr.promise :as pr])
+  (:import
+   [er_cassandra.model.callbacks.protocol ICallback]))
 
 (defn ^:private prepare-string
   [s]
@@ -43,7 +44,7 @@
         search-col? #(contains? % search-col)
         no-search-col? #((complement contains?) % search-col)]
     (reify
-      t/ICallback
+      ICallback
       (-serialize [_ entity old-record new-record opts]
         (cond
           ;; if there are no source-cols in the new-record
