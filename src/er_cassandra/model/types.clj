@@ -7,6 +7,8 @@
    [er-cassandra.model.callbacks.schema :refer [CallbacksSchema]]
    [taoensso.timbre :refer [info warn]]))
 
+(s/defschema NamespacedKeyword (s/constrained s/Keyword #(some? (namespace %)) 'keyword-namespace))
+
 (s/defschema RecordSchema {s/Keyword s/Any})
 (s/defschema MaybeRecordSchema (s/maybe RecordSchema))
 (s/defschema ChangeSchema [(s/one MaybeRecordSchema :old-record)
@@ -150,7 +152,8 @@
    #(= (:type %) :lookup) LookupTableSchema))
 
 (s/defschema EntitySchema
-  {:primary-table PrimaryTableSchema
+  {:class-name NamespacedKeyword
+   :primary-table PrimaryTableSchema
    (s/optional-key :unique-key-tables) [UniqueKeyTableSchema]
    (s/optional-key :secondary-tables) [SecondaryTableSchema]
    (s/optional-key :lookup-tables) [LookupTableSchema]
@@ -160,7 +163,8 @@
 
 
 (s/defrecord Entity
-    [primary-table :- PrimaryTableSchema
+    [class-name :- NamespacedKeyword
+     primary-table :- PrimaryTableSchema
      unique-key-tables :- [UniqueKeyTableSchema]
      secondary-tables :- [SecondaryTableSchema]
      lookup-tables :- [LookupTableSchema]
@@ -207,8 +211,13 @@
     (strict-map->Entity spec)))
 
 (defmacro defentity
-  [name entity-spec]
-  `(def ~name (create-entity ~entity-spec)))
+  [var-name entity-spec]
+  (let [class-name (keyword (name (ns-name *ns*)) (name var-name))]
+    `(def ~var-name
+       (create-entity
+        (assoc
+         ~entity-spec
+         :class-name ~class-name)))))
 
 (defn satisfies-entity?
   "return true if the record has at least all columns of
@@ -283,6 +292,10 @@
 (defn is-lookup-table
   [^Entity entity table]
   (is-table-name (:lookup-tables entity) table))
+
+(defn entity-class-name
+  [^Entity entity]
+  (:class-name entity))
 
 (defn uber-key
   [^Entity entity]
