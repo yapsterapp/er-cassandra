@@ -210,14 +210,15 @@
     (s/validate EntitySchema spec)
     (strict-map->Entity spec)))
 
-(defmacro defentity
-  [var-name entity-spec]
-  (let [class-name (keyword (name (ns-name *ns*)) (name var-name))]
-    `(def ~var-name
-       (create-entity
-        (assoc
-         ~entity-spec
-         :class-name ~class-name)))))
+#?(:clj
+   (defmacro defentity
+     [var-name entity-spec]
+     (let [class-name (keyword (name (ns-name *ns*)) (name var-name))]
+       `(def ~var-name
+          (create-entity
+           (assoc
+            ~entity-spec
+            :class-name ~class-name))))))
 
 (defn satisfies-entity?
   "return true if the record has at least all columns of
