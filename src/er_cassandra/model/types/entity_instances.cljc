@@ -24,6 +24,23 @@
   (when-let [class-name (t/entity-class-name entity)]
     {(s/optional-key entity-instance-class-name-key) (s/eq class-name)}))
 
+(defn with-optional-entity-class
+  [sch ^Entity entity]
+  (if (map? sch)
+    (merge
+     (dissoc sch entity-instance-class-name-key)
+     (reduce
+      (fn [rs [k v]]
+        (assoc
+         rs
+         (if (s/optional-key? k)
+           k
+           (s/optional-key k))
+         v))
+      {}
+      (entity-class-schema entity)))
+    sch))
+
 #?(:clj
    (defmacro record-schema
      [^Entity entity record-schema]
