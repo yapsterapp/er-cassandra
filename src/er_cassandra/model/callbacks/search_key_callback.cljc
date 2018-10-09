@@ -1,10 +1,11 @@
 (ns er-cassandra.model.callbacks.search-key-callback
   (:require
    [clojure.string :as str]
-   [er-cassandra.util.string :refer [normalize-string]]
-   [prpr.promise :as pr])
-  (:import
-   [er_cassandra.model.callbacks.protocol ICallback]))
+   #?(:cljs [er-cassandra.model.callbacks.protocol :refer [ICallback]])
+   [er-cassandra.util.string :refer [normalize-string]])
+  #?(:clj
+     (:import
+      [er_cassandra.model.callbacks.protocol ICallback])))
 
 (defn ^:private prepare-string
   [s]
