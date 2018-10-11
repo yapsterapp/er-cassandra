@@ -19,6 +19,9 @@
   #?(:clj nil
      :cljs {s/Keyword s/Any}))
 
+(def entity-class-name
+  t/entity-class-name)
+
 (defn entity-class-schema
   [^Entity entity]
   (when-let [class-name (t/entity-class-name entity)]
