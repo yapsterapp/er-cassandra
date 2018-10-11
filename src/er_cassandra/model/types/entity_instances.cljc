@@ -24,6 +24,8 @@
   (when-let [class-name (t/entity-class-name entity)]
     {(s/optional-key entity-instance-class-name-key) (s/eq class-name)}))
 
+;; NOTE mccraig-20181011 this looks weird - the reduce
+;; doesn't seem to do anything
 (defn with-optional-entity-class
   [sch ^Entity entity]
   (if (map? sch)
