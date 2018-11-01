@@ -410,7 +410,7 @@
     (if (and (some? source-record)
              (empty? dvs))
       ;; don't do anything if we don't need to
-      (return [denorm-rel-kw :noop])
+      (return deferred-context [denorm-rel-kw :noop])
 
       (with-context deferred-context
         (mlet [trs (target-record-stream session
