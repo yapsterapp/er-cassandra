@@ -25,21 +25,43 @@
                              {})
             first)))
 
-(defn ^:private table-columns-query
+(defn ^:private table-columns-metadata-query
   [keyspace table]
   (h/select :system_schema.columns
             (h/where {:keyspace_name keyspace
                       :table_name table})))
 
-(defn table-columns
+(defn table-columns-metadata
+  "metadata for all columns of a table"
   ([^Session session table]
-   (table-columns session (session/keyspace session) table))
+   (table-columns-metadata session (session/keyspace session) table))
   ([^Session session keyspace table]
    (session/execute session
-                    (table-columns-query
+                    (table-columns-metadata-query
                      (name keyspace)
                      (name table))
                     {})))
+
+(defn ^:private column-metadata-query
+  [keyspace table column]
+  (h/select :system_schema.columns
+            (h/where {:keyspace_name keyspace
+                      :table_name table
+                      :column_name column})))
+
+(defn column-metadata
+  "metadata for a single column"
+  ([^Session session table column]
+   (column-metadata session (session/keyspace session) table column))
+  ([^Session session keyspace table column]
+   (d/chain
+    (session/execute session
+                     (column-metadata-query
+                      (name keyspace)
+                      (name table)
+                      (name column))
+                     {})
+    first)))
 
 (defn ^:private usertype-metadata-query
   [keyspace type]
@@ -57,27 +79,3 @@
                               (name type))
                              {})
             first)))
-
-(defn ^:private column-metadata-query
-  [keyspace table]
-  (h/select :system_schema.columns
-            (h/where {:keyspace_name keyspace
-                      :table_name table})))
-
-(defn column-metadata
-  "returns a Deferred with metadata for the requested table (or nil)"
-  ([^Session session table]
-   (column-metadata session (session/keyspace session) table))
-  ([^Session session keyspace table]
-   (session/execute session
-                    (column-metadata-query
-                     (name keyspace)
-                     (name table))
-                    {})))
-
-(defn column-names
-  ([^Session session table]
-   (column-names session (session/keyspace session) table))
-  ([^Session session keyspace table]
-   (d/chain (column-metadata session keyspace table)
-            #(map :column_name %))))
