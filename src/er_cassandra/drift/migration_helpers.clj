@@ -100,7 +100,7 @@
 
 (defn rename-column
   [table old-column-name new-column-name]
-  @(cols/rename-column
+  @(cols/rename-column-if-not-renamed
     (session)
     table
     old-column-name

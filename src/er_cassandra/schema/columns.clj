@@ -59,7 +59,7 @@
 
       (and (some? col-md)
            (= col-type (name type)))
-      (prpr/success-pr
+      (return
        [::column-exists {:table table
                          :column column
                          :type type}])
@@ -81,12 +81,13 @@
                       column)]
     (cond
       (nil? col-md)
-      (prpr/success-pr
+      (return
        [::column-does-not-exist {:table table
                                  :column column}])
 
       :else
       (alter-table-drop-column cassandra table column))))
+
 
 (defn rename-column
   [cassandra table old-column-name new-column-name]
@@ -103,3 +104,25 @@
      [::column-renamed {:table table
                         :old-column-name old-column-name
                         :new-column-name new-column-name}])))
+
+(defn rename-column-if-not-renamed
+  [cassandra table old-column-name new-column-name]
+  (ddo [{col-type :type
+         :as new-col-md} (cass.sch/column-metadata
+                          cassandra
+                          table
+                          new-column-name)]
+    (cond
+      (some? new-col-md)
+      (return
+       [::column-already-renamed
+        {:table table
+         :old-column-name old-column-name
+         :new-column-name new-column-name}])
+
+      :else
+      (rename-column
+       cassandra
+       table
+       old-column-name
+       new-column-name))))
