@@ -56,7 +56,7 @@
         primary-key-str))
       ")"
       (case v-compaction
-        nil nil
+        nil (str "WITH " leveled-compaction-clause)
         :leveled (str "WITH " leveled-compaction-clause)
         :size-tiered (str "WITH " size-tiered-compaction-clause))])))
 
@@ -93,6 +93,6 @@
       "where" where-clauses
       "primary key" primary-key-str
       (case v-compaction
-        nil nil
+        nil (str "WITH " leveled-compaction-clause)
         :leveled (str "WITH " leveled-compaction-clause)
         :size-tiered (str "WITH " size-tiered-compaction-clause))])))
