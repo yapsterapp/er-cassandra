@@ -1,6 +1,6 @@
 (ns er-cassandra.model.callbacks.distinct-vector-callback
   (:require
-   [plumbing.core :refer :all]))
+   [plumbing.core :refer [assoc-when]]))
 
 (defn create-distinct-vector-callback
   [col]

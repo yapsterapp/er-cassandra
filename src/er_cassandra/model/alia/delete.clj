@@ -10,6 +10,7 @@
    [er-cassandra.record.schema :as rs]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model
+    [callbacks :as cb]
     [types :as t]
     [util :as util :refer [combine-responses create-lookup-record]]]
    [er-cassandra.model.alia
@@ -156,7 +157,7 @@
    record :- t/RecordSchema
    opts :- fns/DeleteOptsWithTimestampSchema]
   (with-context deferred-context
-    (mlet [_ (t/run-callbacks
+    (mlet [_ (cb/run-callbacks
               session
               entity
               :before-delete
@@ -193,7 +194,7 @@
                              nil
                              opts)
 
-           _ (t/run-callbacks
+           _ (cb/run-callbacks
               session
               entity
               :after-delete

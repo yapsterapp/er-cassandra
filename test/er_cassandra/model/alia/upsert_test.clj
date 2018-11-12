@@ -9,6 +9,7 @@
    [er-cassandra.model.model-session :as ms]
    [er-cassandra.session.alia :as als]
    [er-cassandra.record :as r]
+   [er-cassandra.model.callbacks :as cb]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.alia.lookup :as l]
@@ -33,7 +34,7 @@
   (t/create-entity
    {:primary-table {:name :simple_upsert_test_with_protected_column :key [:id]}
     :callbacks
-    {:before-save [(t/create-protect-columns-callback
+    {:before-save [(cb/create-protect-columns-callback
                     :update-nick?
                     :nick)]}}))
 

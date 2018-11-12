@@ -7,6 +7,7 @@
    [clojure.java.io :as io]
    [er-cassandra.record :as cass.r]
    [er-cassandra.model :as cass.m]
+   [er-cassandra.model.callbacks :as cass.cb]
    [er-cassandra.session :as cass.session]
    [er-cassandra.schema :as cass.schema]
    [er-cassandra.model.types :as cass.t]
@@ -142,7 +143,7 @@
         :let [r-s (->> raw-s
                        (stream/map
                         (fn [r]
-                          (cass.t/chain-callbacks
+                          (cass.cb/chain-callbacks
                            cassandra
                            entity
                            [:deserialize :after-load]
