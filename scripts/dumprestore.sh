@@ -87,8 +87,8 @@ do
     find ${TARGET_DIR}/${__H__}/${TARGET_KS} -mindepth 1 -maxdepth 1 -type d | ./filter_sstables_non_mvs ${TARGET_KS} | parallel --jobs 4 -I % "CMD=\"sudo -u ${TARGET_CASSANDRA_USER}  sstableloader -f ${TARGET_CASSANDRA_YAML} -d ${TARGET_HOSTS} % \" ; echo \${CMD} ; \${CMD}"
 done
 
-## recreate all the MVs
-cat "${TARGET_KS}.cql" | ./filter_ddl_create_mvs | cqlsh ${TARGET_HOSTS}
-
 ## and disable autocompaction
 echo "nodetool enableautocompaction" | pssh -I -i -h pssh/hosts
+
+## recreate all the MVs
+cat "${TARGET_KS}.cql" | ./filter_ddl_create_mvs | cqlsh ${TARGET_HOSTS}
