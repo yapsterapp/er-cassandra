@@ -1,13 +1,19 @@
 (ns er-cassandra.drift.migration-helpers
   (:require [drift.config :refer [*config-map*]]
-            [er-cassandra.session]
+            [qbits.hayt :as h]
+            [qbits.hayt.dsl :as cql]
+            [er-cassandra.session :as session]
+            [er-cassandra.schema :as cass.sch]
             [clojure.java.io :as io]
             [clojure.java.shell :refer [sh]]
+            [clojure.string :as str]
             [environ.core :refer [env]]
-            [cats.core :refer [mlet return]]
+            [cats.core :refer [return]]
             [cats.context :refer [with-context]]
             [manifold.deferred :as d]
-            [cats.labs.manifold :refer [deferred-context]]))
+            [cats.labs.manifold :refer [deferred-context]]
+            [prpr.promise :as prpr :refer [ddo]]
+            [er-cassandra.schema.columns :as cols]))
 
 (defn config
   [k]
@@ -36,22 +42,21 @@
 (defn cqlsh
   "execute a command with cqlsh"
   [cqlsh-cmd]
-  (with-context deferred-context
-    (mlet [{sh-exit :exit
-            sh-out :out
-            sh-err :err
-            :as sh-r} (d/future
-                           (sh (env :cqlsh "cqlsh")
-                               :in cqlsh-cmd))]
-      ;; cqlsh seems to return code 0 with a non-empty error
-      ;; instead of non-zero error-codes
-      (if (and (= 0 sh-exit)
-               (empty? sh-err))
-        (return sh-out)
-        (throw (ex-info "sh error" {:cqlsh-cmd cqlsh-cmd
-                                    :exit sh-exit
-                                    :out sh-out
-                                    :err sh-err}))))))
+  (ddo [{sh-exit :exit
+         sh-out :out
+         sh-err :err
+         :as sh-r} (d/future
+                     (sh (env :cqlsh "cqlsh")
+                         :in cqlsh-cmd))]
+    ;; cqlsh seems to return code 0 with a non-empty error
+    ;; instead of non-zero error-codes
+    (if (and (= 0 sh-exit)
+             (empty? sh-err))
+      (return sh-out)
+      (throw (ex-info "sh error" {:cqlsh-cmd cqlsh-cmd
+                                  :exit sh-exit
+                                  :out sh-out
+                                  :err sh-err})))))
 
 (defn empty-file
   "write or re-write f as a 0-length file and return Deferred<\"\">"
@@ -76,3 +81,27 @@
 
      :else
      (cqlsh cqlsh-cmd))))
+
+
+(defn add-column
+  [table column type]
+  @(cols/add-column-if-not-exists
+    (session)
+    table
+    column
+    type))
+
+(defn remove-column
+  [table column]
+  @(cols/drop-column-if-exists
+    (session)
+    table
+    column))
+
+(defn rename-column
+  [table old-column-name new-column-name]
+  @(cols/rename-column-if-not-renamed
+    (session)
+    table
+    old-column-name
+    new-column-name))

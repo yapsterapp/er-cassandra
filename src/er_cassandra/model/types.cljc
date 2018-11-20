@@ -1,58 +1,18 @@
 (ns er-cassandra.model.types
   (:require
-   [cats.core :refer [mlet return >>=]]
-   [cats.context :refer [with-context]]
-   [cats.labs.manifold :refer [deferred-context]]
    [clojure.set :as set]
    [schema.core :as s]
-   [clj-time.core :as t]
    [er-cassandra.util.vector :as v]
    [er-cassandra.key :as k]
+   [er-cassandra.model.callbacks.schema :refer [CallbacksSchema]]
    [taoensso.timbre :refer [info warn]]))
+
+(s/defschema NamespacedKeyword (s/constrained s/Keyword #(some? (namespace %)) 'keyword-namespace))
 
 (s/defschema RecordSchema {s/Keyword s/Any})
 (s/defschema MaybeRecordSchema (s/maybe RecordSchema))
 (s/defschema ChangeSchema [(s/one MaybeRecordSchema :old-record)
                            (s/one MaybeRecordSchema :new-record)])
-
-(s/defschema CallbackFnSchema
-  (s/make-fn-schema s/Any [[{s/Keyword s/Any}]]))
-
-(defprotocol ICallback
-  (-deserialize [_ session entity record opts])
-  (-after-load [_ session entity record opts]
-    "an after-load callback on a record of an entity, returning
-     updated-record or Deferred<updated-record>")
-  (-before-save [_ entity old-record record opts]
-    "a before-save callback on a record of an entity, returning
-     updated-record or Deferred<updated-record>. -before-save doesn't
-     receive the session because it shouldn't do any persistence ops -
-     -before-save is used internally during upsert")
-  (-serialize [_ entity old-record record opts])
-  (-after-save [_ session entity old-record record opts]
-    "an after-save callback on a record of an entity. responses
-     are ignored")
-  (-before-delete [_ entity record opts]
-    "a before-delete callback on a record of an entity. responses
-     are ignored, but an error will prevent the delete. -before-delete
-     doesn't receive the session because it shouldn't do any persistence ops")
-  (-after-delete [_ session entity record opts]
-    "an after-delete callback on a record of an entity. responses
-     are ignored"))
-
-(s/defschema CallbackSchema
-  (s/conditional
-   fn? CallbackFnSchema
-   #(satisfies? ICallback %) (s/protocol ICallback)))
-
-(s/defschema CallbacksSchema
-  {(s/optional-key :deserialize) [CallbackSchema]
-   (s/optional-key :after-load) [CallbackSchema]
-   (s/optional-key :before-save) [CallbackSchema]
-   (s/optional-key :serialize) [CallbackSchema]
-   (s/optional-key :after-save) [CallbackSchema]
-   (s/optional-key :before-delete) [CallbackSchema]
-   (s/optional-key :after-delete) [CallbackSchema]})
 
 ;; a primary key for a cassandra table
 ;; the first entry may itself be a vector, representing
@@ -192,7 +152,8 @@
    #(= (:type %) :lookup) LookupTableSchema))
 
 (s/defschema EntitySchema
-  {:primary-table PrimaryTableSchema
+  {:class-name (s/maybe NamespacedKeyword)
+   :primary-table PrimaryTableSchema
    (s/optional-key :unique-key-tables) [UniqueKeyTableSchema]
    (s/optional-key :secondary-tables) [SecondaryTableSchema]
    (s/optional-key :lookup-tables) [LookupTableSchema]
@@ -202,7 +163,8 @@
 
 
 (s/defrecord Entity
-    [primary-table :- PrimaryTableSchema
+    [class-name :- (s/maybe NamespacedKeyword)
+     primary-table :- PrimaryTableSchema
      unique-key-tables :- [UniqueKeyTableSchema]
      secondary-tables :- [SecondaryTableSchema]
      lookup-tables :- [LookupTableSchema]
@@ -238,7 +200,8 @@
   "create an entity record from a spec"
   [entity-spec]
   (let [spec (conform-all-tables entity-spec)
-        spec (merge {:unique-key-tables []
+        spec (merge {:class-name nil
+                     :unique-key-tables []
                      :secondary-tables []
                      :lookup-tables []
                      :callbacks {}
@@ -248,9 +211,15 @@
     (s/validate EntitySchema spec)
     (strict-map->Entity spec)))
 
-(defmacro defentity
-  [name entity-spec]
-  `(def ~name (create-entity ~entity-spec)))
+#?(:clj
+   (defmacro defentity
+     [var-name entity-spec]
+     (let [class-name (keyword (name (ns-name *ns*)) (name var-name))]
+       `(def ~var-name
+          (create-entity
+           (assoc
+            ~entity-spec
+            :class-name ~class-name))))))
 
 (defn satisfies-entity?
   "return true if the record has at least all columns of
@@ -326,6 +295,10 @@
   [^Entity entity table]
   (is-table-name (:lookup-tables entity) table))
 
+(defn entity-class-name
+  [^Entity entity]
+  (:class-name entity))
+
 (defn uber-key
   [^Entity entity]
   (get-in entity [:primary-table :key]))
@@ -398,150 +371,3 @@
   (k/extract-key-equality-clause
    (get-in entity [:primary-table :key])
    record))
-
-(defn run-save-callbacks
-  "run callbacks for an op which requires the old-record"
-  [session ^Entity entity callback-key old-record record opts]
-  (assert (#{:serialize :before-save :after-save} callback-key))
-  (let [all-callbacks (concat (get-in entity [:callbacks callback-key])
-                              (get-in opts [callback-key]))
-        callback-mfs (for [cb all-callbacks]
-                       (fn [record]
-                         (cond
-                           (fn? cb)
-                           (cb record)
-
-                           (satisfies? ICallback cb)
-                           (case callback-key
-                             ;; it's deliberate -before-save doesn't get the session -
-                             ;; it's used internally during upsert, and persistence
-                             ;; ops would be bad
-                             :before-save
-                             (-before-save cb entity old-record record opts)
-                             :serialize
-                             (-serialize cb entity old-record record opts)
-                             :after-save
-                             (-after-save cb session entity old-record record opts))
-
-                           :else
-                           (throw
-                            (ex-info
-                             "neither an fn or an ICallback"
-                             {:entity entity
-                              :callback-key callback-key
-                              :callback cb})))))]
-    (with-context deferred-context
-      (if (not-empty callback-mfs)
-        (apply >>= (return record) callback-mfs)
-        (return record)))))
-
-(defn chain-save-callbacks
-  [session ^Entity entity callback-keys old-record record opts]
-  (let [rsf-mfs (for [cbk callback-keys]
-                  (fn [record]
-                    (run-save-callbacks
-                     session
-                     entity
-                     cbk
-                     old-record
-                     record
-                     opts)))]
-    (with-context deferred-context
-      (if (not-empty rsf-mfs)
-        (apply >>= (return record) rsf-mfs)
-        (return record)))))
-
-(defn run-callbacks
-  "run callbacks for an op which doesn't require the old-record"
-  [session ^Entity entity callback-key record opts]
-  (assert (#{:deserialize :after-load :before-delete :after-delete} callback-key))
-  (let [all-callbacks (concat (get-in entity [:callbacks callback-key])
-                              (get-in opts [callback-key]))
-        callback-mfs (for [cb all-callbacks]
-                       (fn [record]
-                         (cond
-                           (fn? cb)
-                           (cb record)
-
-                           (satisfies? ICallback cb)
-                           (case callback-key
-                             :deserialize
-                             (-deserialize cb session entity record opts)
-                             :after-load
-                             (-after-load cb session entity record opts)
-                             ;; it's deliberate -before-delete doesn't get the session
-                             :before-delete
-                             (-before-delete cb entity record opts)
-                             :after-delete
-                             (-after-delete cb session entity record opts))
-
-                           :else
-                           (throw
-                            (ex-info
-                             "neither an fn or an ICallback"
-                             {:entity entity
-                              :callback-key callback-key
-                              :callback cb})))))]
-    (with-context deferred-context
-      (if (not-empty callback-mfs)
-        (apply >>= (return record) callback-mfs)
-        (return record)))))
-
-(defn chain-callbacks
-  [session ^Entity entity callback-keys record opts]
-  (let [rc-mfs (for [cbk callback-keys]
-                 (fn [record]
-                   (run-callbacks
-                    session
-                    entity
-                    cbk
-                    record
-                    opts)))]
-    (with-context deferred-context
-      (if (not-empty rc-mfs)
-        (apply >>= (return record) rc-mfs)
-        (return record)))))
-
-(defn create-protect-columns-callback
-  "create a callback which will replace cols from a record
-   with their old-record values, unless the confirm-col is
-   set and non-nil. always removes confirm-col"
-  [confirm-col & cols]
-  (reify
-    ICallback
-    (-before-save [_ entity old-record record opts]
-      (cond
-        (::skip-protect opts) (dissoc record confirm-col)
-        (get record confirm-col) (dissoc record confirm-col)
-        :else (merge
-               record
-               (->> (for [c cols]
-                      [c (get old-record c)])
-                    (into {})))))))
-
-(defn create-updated-at-callback
-  "create a callback which will add an :updated_at column
-   if it's not already set"
-  ([] (create-updated-at-callback :updated_at))
-  ([updated-at-col]
-   (fn [r] (assoc r updated-at-col (.toDate (t/now))))))
-
-(defn create-select-view-callback
-  "selects the given columns from a record"
-  [cols]
-  (fn [r]
-    (select-keys r cols)))
-
-(defn create-filter-view-callback
-  "filers the given columns from a record"
-  [cols]
-  (fn [r]
-    (apply dissoc r cols)))
-
-(defn create-update-col-callback
-  "a callback which updates a column with a function"
-  [col f]
-  (fn [r]
-    (if (contains? r col)
-      (update r col f)
-      r)))

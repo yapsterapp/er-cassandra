@@ -35,7 +35,7 @@ SOURCE_HOSTS=10.0.6.135,10.0.6.104,10.0.5.160
 SOURCE_KS=yapster_20180514
 TARGET_HOSTS=10.0.6.135
 IGNORE_TARGET_HOSTS=
-TARGET_KS=yapster_20180514
+TARGET_KS=yapdev_20181106
 
 # these may not need changing
 SNAPSHOT=`date "+%Y%m%d%H%M"`
@@ -75,8 +75,20 @@ done
 # directly in the keyspace/table directory, ready for sstableloader
 find ${TARGET_DIR} -type f -path \*/snapshots/\* | xargs -I % sh -c "mv % \$(dirname %)/../.."
 
+## BEFORE loading the snapshots, remove all the MVs
+cat "${TARGET_KS}.cql" | ./filter_ddl_drop_mvs | cqlsh ${TARGET_HOSTS}
+
+## and disable autocompaction
+echo "nodetool disableautocompaction" | pssh -I -i -h pssh/hosts
+
 # now run the sstableloader
 for __H__ in "${__HOSTS__[@]}"
 do
     find ${TARGET_DIR}/${__H__}/${TARGET_KS} -mindepth 1 -maxdepth 1 -type d | ./filter_sstables_non_mvs ${TARGET_KS} | parallel --jobs 4 -I % "CMD=\"sudo -u ${TARGET_CASSANDRA_USER}  sstableloader -f ${TARGET_CASSANDRA_YAML} -d ${TARGET_HOSTS} % \" ; echo \${CMD} ; \${CMD}"
 done
+
+## and disable autocompaction
+echo "nodetool enableautocompaction" | pssh -I -i -h pssh/hosts
+
+## recreate all the MVs
+cat "${TARGET_KS}.cql" | ./filter_ddl_create_mvs | cqlsh ${TARGET_HOSTS}

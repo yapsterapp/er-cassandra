@@ -62,7 +62,7 @@
   "returns [key-cols counter-col] for a counter table,
    nil otherwise"
   [cassandra keyspace table]
-  (ddo [cols (cass.schema/table-columns
+  (ddo [cols (cass.schema/table-columns-metadata
               cassandra
               keyspace
               table)

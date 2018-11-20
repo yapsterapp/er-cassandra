@@ -4,6 +4,7 @@
             [cats.core :refer [mlet return]]
             [cats.context :refer [with-context]]
             [cats.labs.manifold :refer [deferred-context]]
+            [er-cassandra.model.callbacks :as cb]
             [er-cassandra.model.types :as t]
             [er-cassandra.model.model-session :as ms]
             [er-cassandra.model.util
@@ -26,7 +27,7 @@
        (->> strm
             (s/map (fn [mi]
                      (if (ms/entity-instance? mi)
-                       (t/chain-callbacks
+                       (cb/chain-callbacks
                         session
                         entity
                         [:deserialize :after-load]
@@ -49,7 +50,7 @@
        (->> strm
             (s/map (fn [mi]
                      (if (ms/entity-instance? mi)
-                       (t/chain-callbacks
+                       (cb/chain-callbacks
                         session
                         entity
                         [:deserialize :after-load]
