@@ -29,9 +29,6 @@
                  [cc.qbits/hayt "4.0.0"]
                  [environ "1.1.0"]
                  [drift "1.5.3"]
-                 [employeerepublic/deferst "0.7.0"
-                  :exclusions [funcool/promesa
-                               manifold]]
                  [com.cognitect/transit-clj "0.8.297"]
                  [employeerepublic/promisespromises "_"]]
 
