@@ -7,6 +7,7 @@
               [clj-time.coerce :as time.coerce]]
        :cljs [[cljs-time.core :as time]
               [cljs-time.coerce :as time.coerce]])
+   [er-cassandra.model.types]
    [er-cassandra.model.callbacks.protocol
     :refer [ICallback
             -before-delete
