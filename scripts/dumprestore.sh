@@ -90,5 +90,8 @@ done
 ## and disable autocompaction
 echo "nodetool enableautocompaction" | pssh -I -i -h pssh/hosts
 
+## do a full compaction before recreating MVs - get rid of old tombstone
+echo "nodetool compact #{TARGET_KS}" | pssh -I -i -h pssh/hosts
+
 ## recreate all the MVs
 cat "${TARGET_KS}.cql" | ./filter_ddl_create_mvs | cqlsh ${TARGET_HOSTS}
