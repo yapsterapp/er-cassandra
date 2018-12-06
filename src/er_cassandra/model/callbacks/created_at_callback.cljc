@@ -1,6 +1,6 @@
 (ns er-cassandra.model.callbacks.created-at-callback
   (:require
-   [clj-uuid :as uuid]))
+   #?(:clj [clj-uuid :as uuid])))
 
 (defn created-at-callback
   "a callback to set a :created_at field from a V1 uuid field"
@@ -8,5 +8,6 @@
   ([id-col created-at-col]
    (fn [r]
      (if (nil? (get r created-at-col))
-       (assoc r created-at-col (uuid/get-instant (get r id-col)))
+       (assoc r created-at-col #?(:clj (uuid/get-instant (get r id-col))
+                                  :cljs (js/Date.)))
        r))))

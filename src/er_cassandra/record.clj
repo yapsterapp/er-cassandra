@@ -98,7 +98,7 @@
        r-s))))
 
   ([^Session session table key record-or-key-value]
-   (select session table key record-or-key-value {}))
+   (select-buffered session table key record-or-key-value {}))
 
   ([^Session session
     table

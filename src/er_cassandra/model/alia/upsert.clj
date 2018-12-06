@@ -12,6 +12,7 @@
    [er-cassandra.model.alia.lookup :as l]
    [er-cassandra.model.alia.minimal-change :as min.ch]
    [er-cassandra.model.alia.unique-key :as unique-key]
+   [er-cassandra.model.callbacks :as cb]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.types.change :as t.change]
    [er-cassandra.model.util :as util :refer [combine-responses]]
@@ -346,7 +347,7 @@
               old-record (not-empty old-record)]
 
         old-record-ser (when old-record
-                         (t/run-save-callbacks
+                         (cb/run-save-callbacks
                           session
                           entity
                           :serialize
@@ -356,7 +357,7 @@
 
         ;; :let [_ (warn "record" record)]
 
-        record-ser (t/chain-save-callbacks
+        record-ser (cb/chain-save-callbacks
                     session
                     entity
                     [:before-save :serialize]
@@ -409,14 +410,14 @@
         ;; callbacks, which may want to propagate the synthesized
         ;; columns
         old-record-deser (when old-record-ser
-                           (t/run-callbacks
+                           (cb/run-callbacks
                             session
                             entity
                             :deserialize
                             old-record-ser
                             opts))
 
-        response-record-deser (t/chain-callbacks
+        response-record-deser (cb/chain-callbacks
                                session
                                entity
                                [:deserialize]
@@ -425,7 +426,7 @@
 
         ;; :let [_ (warn "response-record-deser" response-record-deser)]
 
-        _ (t/run-save-callbacks
+        _ (cb/run-save-callbacks
            session
            entity
            :after-save
@@ -433,7 +434,7 @@
            response-record-deser
            opts)
 
-        response-record (t/chain-callbacks
+        response-record (cb/chain-callbacks
                          session
                          entity
                          [:after-load]
@@ -494,7 +495,7 @@
 
         ;; need to run :before-save on the record in case
         ;; it defaults something in the uberkey
-        record-ser (t/run-save-callbacks
+        record-ser (cb/run-save-callbacks
                     session
                     entity
                     :before-save
@@ -511,7 +512,7 @@
                          record-ser))
 
         old-record (monad/when raw-old-record
-                     (t/chain-callbacks
+                     (cb/chain-callbacks
                       session
                       entity
                       [:deserialize :after-load]
