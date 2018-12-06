@@ -27,7 +27,9 @@
                   :exclusions [manifold]]
                  [cc.qbits/hayt "4.0.2"]
                  [environ "1.1.0"]
-                 [drift "1.5.3"]
+                 [drift "1.5.3"
+                  :exclusions [org.clojure/clojure
+                               org.clojure/tools.logging]]
                  [com.cognitect/transit-clj "0.8.313"]
                  [employeerepublic/promisespromises "_"]]
 
