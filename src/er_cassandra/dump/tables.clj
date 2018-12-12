@@ -14,31 +14,11 @@
    [manifold.stream :as stream]
    [qbits.hayt :as h]
    [taoensso.timbre :as timbre :refer [info]]
-   [taoensso.timbre :refer [warn]])
+   [taoensso.timbre :refer [warn]]
+   [er-cassandra.dump.transit :as d.t])
   (:import
    [com.cognitect.transit WriteHandler ReadHandler]
    [java.io EOFException]))
-
-(def custom-transit-write-handlers
-  {java.lang.Integer
-   (reify WriteHandler
-     (tag [_ _] "i32")
-     (rep [_ i] (.toString i))
-     (stringRep [this bi] (.rep this bi))
-     (getVerboseHandler [_] nil))})
-
-(def transit-write-handler-map
-  (transit/write-handler-map
-   custom-transit-write-handlers))
-
-(def custom-transit-read-handlers
-  {"i32" (reify ReadHandler
-           (fromRep [_ o]
-             (java.lang.Integer/parseInt ^String o)))})
-
-(def transit-read-handler-map
-  (transit/read-handler-map
-   custom-transit-read-handlers))
 
 (defn keyspace-table-name
   [keyspace table]
@@ -97,79 +77,26 @@
          (stream/filter #(not (skip-set %)))
          return)))
 
-(defn log-notify-stream
-  "returns a notify-s which expects [stream-name count drained?] records
-   and logs them with the supplied level"
-  ([] (log-notify-stream :info))
-  ([level]
-   (let [s (stream/stream 100)]
-     (stream/consume
-      (fn [[stream-name count drained?]]
-        (if drained?
-          (timbre/log level stream-name count "FINISHED")
-          (timbre/log level stream-name count))
-        )
-      s)
-     s)))
-
 (defn table->record-s
   "return a stream of records from a table"
   [cassandra
    keyspace
    table]
-  (cass.r/select-buffered
-   cassandra
-   (keyspace-table-name keyspace table)))
+  (ddo [r-s (cass.r/select-buffered
+             cassandra
+             (keyspace-table-name keyspace table))]
+    (return
+     ;; remove nil values from the record streams
+     ;; to avoid creating tombstones
+     (stream/map
+      remove-nil-values
+      r-s))))
 
 (defn remove-nil-values
   [r]
   (->> r
        (filter (fn [[k v]] (some? v)))
        (into {})))
-
-(defn dump-record-s->transit
-  "write a stream of records to a file as EDN"
-  [f
-   {:keys [stream-name
-           notify-s
-           notify-cnt]
-    :as opts}
-   r-s]
-  (ddo [:let [out (-> f io/file io/output-stream)
-              w (transit/writer out
-                                :msgpack
-                                {:handlers transit-write-handler-map})
-              notify-cnt (or notify-cnt 10000)
-              counter-a (atom 0)
-
-              update-counter-fn (fn [cnt]
-                                  (let [nc (inc cnt)]
-                                    (when (and
-                                           notify-s
-                                           (= 0 (mod nc notify-cnt)))
-                                      (stream/try-put!
-                                       notify-s
-                                       [stream-name nc]
-                                       0))
-                                    nc))
-
-              no-buffer-s (stream/stream)
-              _ (stream/connect r-s no-buffer-s)]
-
-        total-cnt (->> no-buffer-s
-                       (stream/realize-each)
-                       (stream/map
-                        (fn [r]
-                          (swap! counter-a update-counter-fn)
-                          (transit/write w (remove-nil-values r))))
-                       (pr.st/count-all-throw
-                        ::dump-record-s->transit))]
-
-    (.close out)
-    (when notify-s
-      (stream/put! notify-s [stream-name total-cnt :drained])
-      (stream/close! notify-s))
-    (return total-cnt)))
 
 (defn dump-table
   [cassandra
@@ -183,10 +110,10 @@
              cassandra
              keyspace
              table)]
-    (dump-record-s->transit
+    (d.t/record-s->transit-file
      f
      {:stream-name table
-      :notify-s (log-notify-stream)}
+      :notify-s (d.t/log-notify-stream)}
      r-s)))
 
 (defn dump-tables
@@ -203,11 +130,11 @@
                                      cassandra
                                      keyspace
                                      t)]
-                            (dump-record-s->transit
+                            (d.t/record-s->transit-file
                              (io/file directory
                                       (str (name t) ".transit"))
                              {:stream-name (name t)
-                              :notify-s (log-notify-stream)}
+                              :notify-s (d.t/log-notify-stream)}
                              r-s))))
                        (stream/realize-each)
                        (pr.st/count-all-throw
@@ -227,35 +154,6 @@
      keyspace
      directory
      table-s)))
-
-(defn file->record-s
-  "uses a thread to read EDN from a file and return a stream of records
-   from the file"
-  [f]
-  (let [s (stream/stream 5000)]
-    (d/finally
-      (pr/catch-error-log
-       (str "file->record-s: " (pr-str f))
-       (d/future
-         (let [in (-> f
-                      io/file
-                      io/input-stream)
-               r (transit/reader in
-                                 :msgpack
-                                 {:handlers transit-read-handler-map})]
-
-           (pr/catch
-               (fn [x]
-                 ;; transit throws a RuntimeException on EOF!
-                 (.close in)
-                 (pr/success-pr true))
-
-               (d/loop [v (transit/read r)]
-                 (ddo [_ (stream/put! s v)]
-                   (d/recur (transit/read r))))))))
-      (fn [] (stream/close! s)))
-
-    (return deferred-context s)))
 
 (defn insert-normal-record
   [cassandra
@@ -369,28 +267,22 @@
 
     (return total-cnt)))
 
-(defn transit-file->record-s
-  [keyspace
-   directory
-   table]
-  (ddo [:let [table (keyword table)
-              directory (-> directory io/file)
-              f (io/file directory (str (name table) ".transit"))]]
-    (file->record-s f)))
-
 (defn load-table
   "load a single table"
   [cassandra
    keyspace
    directory
    table]
-  (ddo [r-s (transit-file->record-s keyspace directory table)]
+  (ddo [:let [table (keyword table)
+              directory (-> directory io/file)
+              f (io/file directory (str (name table) ".transit"))]
+        r-s (d.t/transit-file->record-s f)]
     (load-record-s->table
      cassandra
      keyspace
      table
      {:counter-table table
-      :notify-s (log-notify-stream)}
+      :notify-s (d.t/log-notify-stream)}
      r-s)))
 
 (defn load-tables
@@ -403,12 +295,12 @@
                        (stream/buffer 3)
                        (stream/map
                         (fn [[t-n f]]
-                          (ddo [r-s (file->record-s f)]
+                          (ddo [r-s (d.t/transit-file->record-s f)]
                             (load-record-s->table
                              cassandra
                              keyspace
                              t-n
-                             {:notify-s (log-notify-stream)}
+                             {:notify-s (d.t/log-notify-stream)}
                              r-s))))
                        (stream/realize-each)
                        (pr.st/count-all-throw
