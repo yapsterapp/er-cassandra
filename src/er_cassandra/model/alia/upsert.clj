@@ -84,9 +84,7 @@
                   entity
                   table
                   kv
-                  (-> opts
-                      fns/upsert-opts->using-only
-                      fns/upsert-opts->delete-opts))]
+                  (fns/primary-upsert-opts->lookup-delete-opts opts))]
       (return
        [:deleted dr]))
 
@@ -101,8 +99,7 @@
              entity
              table
              min-secondary-change
-             (-> opts
-                 fns/upsert-opts->using-only))]
+             (fns/primary-upsert-opts->lookup-upsert-opts opts))]
       (return
        [:upserted new-secondary-record]))
 
@@ -120,8 +117,7 @@
                entity
                table
                min-secondary-change
-               (-> opts
-                   fns/upsert-opts->using-only)))]
+               (fns/primary-upsert-opts->lookup-upsert-opts opts)))]
       (if min-secondary-change
         (return [:upserted new-secondary-record])
         (return [:nochange new-secondary-record])))))
@@ -204,9 +200,7 @@
                   entity
                   table
                   kv
-                  (-> opts
-                      fns/upsert-opts->using-only
-                      fns/upsert-opts->delete-opts))]
+                  (fns/primary-upsert-opts->lookup-delete-opts opts))]
       (return
        [:deleted dr]))
 
@@ -220,8 +214,7 @@
              entity
              table
              new-lookup-record
-             (-> opts
-                 fns/upsert-opts->using-only))]
+             (fns/primary-upsert-opts->lookup-upsert-opts opts))]
       (return [:upserted new-lookup-record]))
 
     :else
@@ -237,8 +230,7 @@
                entity
                table
                min-change
-               (-> opts
-                   fns/upsert-opts->using-only)))]
+               (fns/primary-upsert-opts->lookup-upsert-opts opts)))]
       (if min-change
         (return [:upserted new-lookup-record])
         (return [:nochange new-lookup-record])))))

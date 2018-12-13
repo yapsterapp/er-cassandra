@@ -130,12 +130,24 @@
       (dissoc :er-cassandra.model.types/skip-protect)
       (dissoc :er-cassandra.model.types/minimal-change)))
 
-(s/defn upsert-opts->using-only-with-timestamp :- UpsertUsingOnlyOptsWithTimestampSchema
-  "similar to upsert-opts->using-only but not sure i should change that"
+(s/defn primary-upsert-opts->lookup-delete-opts
+  "given upsert opts for a primary table, return suitable delete
+   opts for a lookup/secondary record"
+  [{using :using :as upsert-opts} :- UpsertOptsWithTimestampSchema]
+  (-> upsert-opts
+      (select-keys [:using :prepare :consistency])
+      (merge
+       (when (map? using)
+         {:using (dissoc using :ttl)}))))
+
+(s/defn primary-upsert-opts->lookup-upsert-opts
+  "given upsert opts for a primary table, return suitable upsert
+   opts for a lookup/secondary record"
   [upsert-opts :- UpsertOptsWithTimestampSchema]
   (select-keys upsert-opts
                [:using
                 :prepare
+                :consistency
                 :er-cassandra.model.types/minimal-change]))
 
 (s/defn upsert-opts->using-only :- UpsertUsingOnlyOptsWithTimestampSchema
