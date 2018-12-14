@@ -105,6 +105,7 @@
 (s/defschema DeleteUsingOnlyOptsWithTimestampSchema
   (merge
    rs/PrepareOptSchema
+   rs/ConsistencyOptSchema
    {:using DeleteUsingWithTimestampSchema}))
 
 (s/defn upsert-opts->delete-opts :- rs/DeleteOptsSchema
