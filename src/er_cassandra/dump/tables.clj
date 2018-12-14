@@ -77,6 +77,12 @@
          (stream/filter #(not (skip-set %)))
          return)))
 
+(defn remove-nil-values
+  [r]
+  (->> r
+       (filter (fn [[k v]] (some? v)))
+       (into {})))
+
 (defn table->record-s
   "return a stream of records from a table"
   [cassandra
@@ -91,12 +97,6 @@
      (stream/map
       remove-nil-values
       r-s))))
-
-(defn remove-nil-values
-  [r]
-  (->> r
-       (filter (fn [[k v]] (some? v)))
-       (into {})))
 
 (defn dump-table
   [cassandra
@@ -267,6 +267,15 @@
 
     (return total-cnt)))
 
+(defn transit-file->entity-record-s
+  [keyspace directory table]
+  (ddo [:let [f (io/file directory (str (name table) ".transit"))]
+        raw-s (d.t/transit-file->record-s f)]
+    (return
+     (stream/map
+      remove-nil-values
+      raw-s))))
+
 (defn load-table
   "load a single table"
   [cassandra
@@ -276,7 +285,7 @@
   (ddo [:let [table (keyword table)
               directory (-> directory io/file)
               f (io/file directory (str (name table) ".transit"))]
-        r-s (d.t/transit-file->record-s f)]
+        r-s (transit-file->entity-record-s keyspace directory table)]
     (load-record-s->table
      cassandra
      keyspace
