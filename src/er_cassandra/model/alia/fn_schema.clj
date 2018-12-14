@@ -81,6 +81,7 @@
 (s/defschema UpsertUsingOnlyOptsWithTimestampSchema
   (merge
    rs/PrepareOptSchema
+   UpsertConsistencySchema
    {:using UpsertUsingWithTimestampSchema}
    UpsertControlSchema))
 
