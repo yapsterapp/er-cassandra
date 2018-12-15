@@ -65,8 +65,8 @@
                          (return str-statement))]
     (when trace?
       (if (true? trace?)
-        (debug str-statement)
-        (log trace? str-statement)))
+        (debug str-statement opts)
+        (log trace? str-statement opts)))
     (aliam/execute
      alia-session
      exec-statement
