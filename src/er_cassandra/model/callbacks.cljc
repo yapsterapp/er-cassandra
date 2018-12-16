@@ -16,7 +16,8 @@
             -before-save
             -after-save
             -deserialize
-            -serialize]])
+            -serialize]]
+   [taoensso.timbre :refer [info]])
   #?(:clj
      (:import
       [er_cassandra.model.types Entity])))
@@ -39,11 +40,18 @@
                     (into {})))))))
 
 (defn create-updated-at-callback
-  "create a callback which will add an :updated_at column
-   if it's not already set"
+  "create a callback which will set an :updated_at column
+   - but only if there are changes - it won't trigger any change itself"
   ([] (create-updated-at-callback :updated_at))
   ([updated-at-col]
-   (fn [r] (assoc r updated-at-col (time.coerce/to-date (time/now))))))
+   (reify
+     ICallback
+     (-before-save [_ entity old-record record opts]
+       (if (or (nil? old-record)
+               (not= (select-keys old-record (keys record))
+                     (into {} record)))
+         (assoc record updated-at-col (time.coerce/to-date (time/now)))
+         record)))))
 
 (defn create-select-view-callback
   "selects the given columns from a record"
