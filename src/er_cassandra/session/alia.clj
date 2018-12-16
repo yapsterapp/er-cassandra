@@ -65,8 +65,8 @@
                          (return str-statement))]
     (when trace?
       (if (true? trace?)
-        (debug str-statement opts)
-        (log trace? str-statement opts)))
+        (debug [str-statement opts])
+        (log trace? [str-statement opts])))
     (aliam/execute
      alia-session
      exec-statement
@@ -92,22 +92,22 @@
                          (return str-statement))]
     (when trace?
       (if (true? trace?)
-        (debug str-statement)
-        (log trace? str-statement)))
+        (debug [str-statement opts])
+        (log trace? [str-statement opts]))
 
-    (return
-     (aliam/execute-buffered
-      alia-session
-      exec-statement
-      (-> opts
-          (dissoc :trace? :prepare?))))))
+      (return
+       (aliam/execute-buffered
+        alia-session
+        exec-statement
+        (-> opts
+            (dissoc :trace? :prepare?)))))))
 
 (defn shutdown-session-and-cluster
   [session]
   (info "closing underlying alia session and cluster")
   (let [cluster (.getCluster session)]
     (alia/shutdown session)
-    (alia/shutdown cluster)                                                                                                                                                                                                                ))
+    (alia/shutdown cluster)))
 
 (defnk ^:private create-alia-session*
   "returns a Deferred<com.datastax.driver.core/Session>"
