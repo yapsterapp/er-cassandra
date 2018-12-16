@@ -93,14 +93,14 @@
     (when trace?
       (if (true? trace?)
         (debug [str-statement opts])
-        (log trace? [str-statement opts]))
+        (log trace? [str-statement opts])))
 
-      (return
-       (aliam/execute-buffered
-        alia-session
-        exec-statement
-        (-> opts
-            (dissoc :trace? :prepare?)))))))
+    (return
+     (aliam/execute-buffered
+      alia-session
+      exec-statement
+      (-> opts
+          (dissoc :trace? :prepare?))))))
 
 (defn shutdown-session-and-cluster
   [session]
