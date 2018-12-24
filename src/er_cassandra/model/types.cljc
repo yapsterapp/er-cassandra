@@ -1,4 +1,7 @@
 (ns er-cassandra.model.types
+  #?(:cljs
+     (:require-macros
+      [er-cassandra.model.types]))
   (:require
    [clojure.set :as set]
    [schema.core :as s]
