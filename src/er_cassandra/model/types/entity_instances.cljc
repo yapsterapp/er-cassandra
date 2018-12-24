@@ -16,8 +16,11 @@
   :er-cassandra.model/entity)
 
 (def extra-keys-schema
+  {s/Keyword s/Any})
+
+(def extra-client-keys-schema
   #?(:clj nil
-     :cljs {s/Keyword s/Any}))
+     :cljs extra-keys-schema))
 
 (def entity-class-name
   t/entity-class-name)
@@ -61,7 +64,7 @@
            base-schema#
            (entity-class-schema ~entity)
            (when-not has-extra-keys?#
-             extra-keys-schema))))))
+             extra-client-keys-schema))))))
 
 #?(:clj
    (defmacro defrecordschema

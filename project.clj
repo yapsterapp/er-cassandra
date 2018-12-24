@@ -9,30 +9,28 @@
   :pedantic? :abort
 
   :exclusions [org.clojure/clojure
-               org.clojure/tools.reader
+               org.clojure/tols.reader
                org.clojure/tools.logging]
 
   :dependencies [[org.clojure/clojure "_"]
 
-                 [org.clojure/tools.cli "0.3.5"]
+                 [org.clojure/tools.cli "0.4.1"]
                  [org.clojure/core.match "0.3.0-alpha4"]
                  [org.clojure/math.combinatorics "0.1.4"]
-                 [potemkin "0.4.3"
-                  :exclusions [riddley]]
-                 [prismatic/plumbing "0.5.5"]
-                 [clj-time "0.13.0"]
+                 [prismatic/plumbing "0.5.5"
+                  :exclusions [prismatic/schema]]
+                 [clj-time "0.15.1"]
                  [danlentz/clj-uuid "0.1.7"]
-                 [mccraigmccraig/alia "4.0.4"
+                 [cc.qbits/alia "4.3.0"
                   :exclusions [com.google.guava/guava]]
-                 [cc.qbits/alia-manifold "4.0.3"
+                 [cc.qbits/alia-manifold "4.3.0"
                   :exclusions [manifold]]
-                 [cc.qbits/hayt "4.0.0"]
+                 [cc.qbits/hayt "4.0.2"]
                  [environ "1.1.0"]
-                 [drift "1.5.3"]
-                 [employeerepublic/deferst "0.7.0"
-                  :exclusions [funcool/promesa
-                               manifold]]
-                 [com.cognitect/transit-clj "0.8.297"]
+                 [drift "1.5.3"
+                  :exclusions [org.clojure/clojure
+                               org.clojure/tools.logging]]
+                 [com.cognitect/transit-clj "0.8.313"]
                  [employeerepublic/promisespromises "_"]]
 
   :aliases {"test-repl" ["with-profile" "cassandra-unit,repl" "repl"]}
