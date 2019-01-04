@@ -405,14 +405,13 @@
                      nok-old-record
                      nok-record)
 
-         ;; (warn "upsert-primary-record-without-unique-keys"
-         ;;       {:primary-table (:primary-table entity)
-         ;;        :old-record old-record
-         ;;        :record record
-         ;;        :nok-old-record nok-old-record
-         ;;        :nok-record nok-record
-         ;;        :min-change min-change})
-
+         ;; _ (warn "upsert-primary-record-without-unique-keys"
+         ;;         {:primary-table (:primary-table entity)
+         ;;          :old-record old-record
+         ;;          :record record
+         ;;          :nok-old-record nok-old-record
+         ;;          :nok-record nok-record
+         ;;          :min-change min-change})
          ]
      (if (nil? min-change)
        (return deferred-context nok-record)
@@ -619,7 +618,8 @@
    entity :- Entity
    old-record :- t/MaybeRecordSchema ;; record with old unique keys
    new-record :- t/MaybeRecordSchema
-   opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema] ;; record with updated unique keys
+   {minimal-change? ::t/minimal-change
+    :as opts} :- fns/UpsertUsingOnlyOptsWithTimestampSchema] ;; record with updated unique keys
 
   (ddo [{release-key-responses :release-key-responses
          acquire-key-responses :acquire-key-responses}
@@ -644,26 +644,36 @@
               ;; only update the cols relating to the unique keys
               all-uk-cols (all-unique-key-cols entity)
               uberkey-cols (-> entity t/uber-key flatten set)
+              all-uk-and-uberkey-cols (into uberkey-cols all-uk-cols)
 
-              ;; we will set these if they are provided
-              set-cols (set/difference all-uk-cols uberkey-cols)
+              ;; one of these has to be in the change or it's a no-op
+              uk-change-cols (set/difference all-uk-cols uberkey-cols)
 
-              ;; only proceed if we have some col vals to set
-              set-vals (select-keys updated-record set-cols)
+              ;; the minimum change considering only unique-key cols
+              ;; (and uberkey cols obvs)
+              min-ch ((if minimal-change?
+                        min.ch/minimal-change-for-table
+                        min.ch/avoid-tombstone-change-for-table)
+                      (:primary-table entity)
+                      (select-keys old-record all-uk-and-uberkey-cols)
+                      (select-keys updated-record all-uk-and-uberkey-cols))
 
-              update-cols (into
-                           all-uk-cols
-                           uberkey-cols)]
+              ;; _ (warn "update-unique-keys-after-primary-upsert"
+              ;;         opts
+              ;;         min-ch)
+              ]
 
-        upsert-response (if-not (empty? set-vals)
+        ;; only update when we have some change outside of the uberkey cols
+        ;; (otherwise deletes can leave a naked uberkey min-ch which
+        ;;  will bork an update statement)
+        upsert-response (monad/when (not-empty
+                                     (select-keys min-ch uk-change-cols))
                           (r/update
                            session
                            (get-in entity [:primary-table :name])
                            (get-in entity [:primary-table :key])
-                           (select-keys updated-record
-                                        update-cols)
-                           opts)
-                          (return nil))]
+                           min-ch
+                           opts))]
     (return [updated-record
              acquire-failures])))
 
@@ -688,9 +698,9 @@
                          old-record
                          record
                          opts)]
-    (update-unique-keys-after-primary-upsert session
-                                             entity
-                                             old-record
-                                             record
-                                             (fns/upsert-opts->using-only
-                                              opts))))
+    (update-unique-keys-after-primary-upsert
+     session
+     entity
+     old-record
+     record
+     (fns/primary-upsert-opts->lookup-upsert-opts opts))))

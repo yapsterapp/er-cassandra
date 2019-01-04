@@ -96,6 +96,7 @@
   (-change [this entity old-record record opts]
     (swap! model-spy-log-atom conj {:action :change
                                     :entity entity
+                                    :old-record old-record
                                     :record record
                                     :opts opts})
     (change* this entity old-record record opts))

@@ -167,7 +167,10 @@
   [using-clauses]
   (->>
    (for [[k v] using-clauses]
-     [(placeholder-kw :using k) v])
+     [(placeholder-kw :using k)
+      (cond
+        (= :ttl k) (int v) ;; java driver requires ttl int
+        :else v)])
    (into {})))
 
 (s/defn prepare-insert-statement
