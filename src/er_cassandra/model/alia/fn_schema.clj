@@ -28,10 +28,14 @@
 (s/defschema UpsertSkipDenormalizeSchema
   {(s/optional-key :er-cassandra.model.types/skip-denormalize) #{s/Keyword}})
 
-(s/defschema UpsertSkipSchema
+(s/defschema MinimalChangeSchema
+  {(s/optional-key :er-cassandra.model.types/minimal-change) s/Bool})
+
+(s/defschema UpsertControlSchema
   (merge
    UpsertSkipProtectSchema
-   UpsertSkipDenormalizeSchema))
+   UpsertSkipDenormalizeSchema
+   MinimalChangeSchema))
 
 (defn has-some-key?
   "returns an fn which tests whether its argument
@@ -66,19 +70,20 @@
     UpsertConsistencySchema
     UpsertWhereSchema
     UpsertUsingSchema
-    UpsertSkipSchema)))
+    UpsertControlSchema)))
 
 (s/defschema UpsertUsingWithTimestampSchema
   (merge
-   UpsertSkipSchema
+   UpsertControlSchema
    {(s/optional-key :ttl) s/Int
     :timestamp s/Int}))
 
 (s/defschema UpsertUsingOnlyOptsWithTimestampSchema
   (merge
    rs/PrepareOptSchema
+   UpsertConsistencySchema
    {:using UpsertUsingWithTimestampSchema}
-   UpsertSkipSchema))
+   UpsertControlSchema))
 
 (s/defschema UpsertOptsWithTimestampSchema
   (conditional-upsert-schema
@@ -87,7 +92,7 @@
     UpsertConsistencySchema
     UpsertWhereSchema
     UpsertUsingOnlyOptsWithTimestampSchema
-    UpsertSkipSchema)))
+    UpsertControlSchema)))
 
 (s/defschema DeleteUsingWithTimestampSchema
   {:timestamp s/Int})
@@ -100,6 +105,7 @@
 (s/defschema DeleteUsingOnlyOptsWithTimestampSchema
   (merge
    rs/PrepareOptSchema
+   rs/ConsistencyOptSchema
    {:using DeleteUsingWithTimestampSchema}))
 
 (s/defn upsert-opts->delete-opts :- rs/DeleteOptsSchema
@@ -110,6 +116,7 @@
       (dissoc :consistency)
       (dissoc :er-cassandra.model.types/skip-denormalize)
       (dissoc :er-cassandra.model.types/skip-protect)
+      (dissoc :er-cassandra.model.types/minimal-change)
       (merge
        (when (map? using)
          {:using (dissoc using :ttl)}))))
@@ -122,7 +129,28 @@
       (dissoc :only-if)
       (dissoc :if-exists)
       (dissoc :er-cassandra.model.types/skip-denormalize)
-      (dissoc :er-cassandra.model.types/skip-protect)))
+      (dissoc :er-cassandra.model.types/skip-protect)
+      (dissoc :er-cassandra.model.types/minimal-change)))
+
+(s/defn primary-upsert-opts->lookup-delete-opts
+  "given upsert opts for a primary table, return suitable delete
+   opts for a lookup/secondary record"
+  [{using :using :as upsert-opts} :- UpsertOptsWithTimestampSchema]
+  (-> upsert-opts
+      (select-keys [:using :prepare :consistency])
+      (merge
+       (when (map? using)
+         {:using (dissoc using :ttl)}))))
+
+(s/defn primary-upsert-opts->lookup-upsert-opts
+  "given upsert opts for a primary table, return suitable upsert
+   opts for a lookup/secondary record"
+  [upsert-opts :- UpsertOptsWithTimestampSchema]
+  (select-keys upsert-opts
+               [:using
+                :prepare
+                :consistency
+                :er-cassandra.model.types/minimal-change]))
 
 (s/defn upsert-opts->using-only :- UpsertUsingOnlyOptsWithTimestampSchema
   "pick out just the :using opts"

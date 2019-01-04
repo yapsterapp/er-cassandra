@@ -22,7 +22,7 @@
    [prpr.promise :as pr :refer [ddo]]
    [schema.core :as s]
    [er-cassandra.model.alia.lookup :as lookup]
-   [taoensso.timbre :refer [warn]])
+   [taoensso.timbre :refer [warn error]])
   (:import er_cassandra.model.model_session.ModelSession
            er_cassandra.model.types.Entity))
 
@@ -58,7 +58,8 @@
     :as table} :- t/SecondaryTableSchema
    old-record :- t/MaybeRecordSchema
    new-record :- t/MaybeRecordSchema
-   opts :- fns/UpsertOptsWithTimestampSchema
+   {minimal-change? ::t/minimal-change
+    :as opts} :- fns/UpsertOptsWithTimestampSchema
    [old-secondary-record
     new-secondary-record
     :as secondary-change] :- t/ChangeSchema]
@@ -83,32 +84,32 @@
                   entity
                   table
                   kv
-                  (-> opts
-                      fns/upsert-opts->using-only
-                      fns/upsert-opts->delete-opts))]
+                  (fns/primary-upsert-opts->lookup-delete-opts opts))]
       (return
        [:deleted dr]))
 
     (nil? old-secondary-record)
     (ddo [:let [min-secondary-change (min.ch/avoid-tombstone-change-for-table
-                            table
-                            old-secondary-record
-                            new-secondary-record)]
+                                      table
+                                      old-secondary-record
+                                      new-secondary-record)]
+
           _ (upsert-index-record
              session
              entity
              table
              min-secondary-change
-             (-> opts
-                 fns/upsert-opts->using-only))]
+             (fns/primary-upsert-opts->lookup-upsert-opts opts))]
       (return
        [:upserted new-secondary-record]))
 
     :else
-    (ddo [:let [min-secondary-change (min.ch/avoid-tombstone-change-for-table
-                            table
-                            old-secondary-record
-                            new-secondary-record)]
+    (ddo [:let [min-secondary-change ((if minimal-change?
+                                        min.ch/minimal-change-for-table
+                                        min.ch/avoid-tombstone-change-for-table)
+                                      table
+                                      old-secondary-record
+                                      new-secondary-record)]
 
           _ (monad/when min-secondary-change
               (upsert-index-record
@@ -116,8 +117,7 @@
                entity
                table
                min-secondary-change
-               (-> opts
-                   fns/upsert-opts->using-only)))]
+               (fns/primary-upsert-opts->lookup-upsert-opts opts)))]
       (if min-secondary-change
         (return [:upserted new-secondary-record])
         (return [:nochange new-secondary-record])))))
@@ -176,7 +176,8 @@
     :as table} :- t/LookupTableSchema
    old-record :- t/MaybeRecordSchema
    new-record :- t/MaybeRecordSchema
-   opts :- fns/UpsertOptsWithTimestampSchema
+   {minimal-change? ::t/minimal-change
+    :as opts} :- fns/UpsertOptsWithTimestampSchema
    [old-lookup-record
     new-lookup-record
     :as lookup-change] :- t/ChangeSchema]
@@ -199,9 +200,7 @@
                   entity
                   table
                   kv
-                  (-> opts
-                      fns/upsert-opts->using-only
-                      fns/upsert-opts->delete-opts))]
+                  (fns/primary-upsert-opts->lookup-delete-opts opts))]
       (return
        [:deleted dr]))
 
@@ -215,12 +214,13 @@
              entity
              table
              new-lookup-record
-             (-> opts
-                 fns/upsert-opts->using-only))]
+             (fns/primary-upsert-opts->lookup-upsert-opts opts))]
       (return [:upserted new-lookup-record]))
 
     :else
-    (ddo [:let [min-change (min.ch/avoid-tombstone-change-for-table
+    (ddo [:let [min-change ((if minimal-change?
+                              min.ch/minimal-change-for-table
+                              min.ch/avoid-tombstone-change-for-table)
                             table
                             old-lookup-record
                             new-lookup-record)]
@@ -230,8 +230,7 @@
                entity
                table
                min-change
-               (-> opts
-                   fns/upsert-opts->using-only)))]
+               (fns/primary-upsert-opts->lookup-upsert-opts opts)))]
       (if min-change
         (return [:upserted new-lookup-record])
         (return [:nochange new-lookup-record])))))
