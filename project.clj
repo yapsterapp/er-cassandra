@@ -9,7 +9,7 @@
   :pedantic? :abort
 
   :exclusions [org.clojure/clojure
-               org.clojure/tols.reader
+               org.clojure/tools.reader
                org.clojure/tools.logging]
 
   :dependencies [[org.clojure/clojure "_"]
