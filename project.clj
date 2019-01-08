@@ -29,7 +29,8 @@
                  [environ "1.1.0"]
                  [drift "1.5.3"
                   :exclusions [org.clojure/clojure
-                               org.clojure/tools.logging]]
+                               org.clojure/tools.logging
+                               org.clojure/java.classpath]]
                  [com.cognitect/transit-clj "0.8.313"]
                  [employeerepublic/promisespromises "_"]]
 
