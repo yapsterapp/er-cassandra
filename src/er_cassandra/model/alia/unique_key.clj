@@ -703,5 +703,4 @@
      entity
      old-record
      record
-     (fns/upsert-opts->using-only-with-timestamp
-      opts))))
+     (fns/primary-upsert-opts->lookup-upsert-opts opts))))

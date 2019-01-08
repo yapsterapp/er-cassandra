@@ -31,11 +31,11 @@
 
 # these will need changing
 SOURCE_USER=centos
-SOURCE_HOSTS=10.0.6.135,10.0.6.104,10.0.5.160
+SOURCE_HOSTS=10.0.6.135,10.0.6.104,10.0.5.160,10.0.4.143,10.0.5.21
 SOURCE_KS=yapster_20180514
 TARGET_HOSTS=10.0.6.135
 IGNORE_TARGET_HOSTS=
-TARGET_KS=yapdev_20181106
+TARGET_KS=yapster_20180514
 
 # these may not need changing
 SNAPSHOT=`date "+%Y%m%d%H%M"`

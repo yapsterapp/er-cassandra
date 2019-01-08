@@ -52,6 +52,10 @@
 (s/defschema PrepareOptSchema
   {(s/optional-key :prepare?) s/Bool})
 
+(s/defschema ConsistencyOptSchema
+  {(s/optional-key :consistency)
+   ConsistencyLevelSchema})
+
 (s/defschema FullTableSelectOptsSchema
   {(s/optional-key :columns) SelectColumnsSchema
    (s/optional-key :limit) LimitSchema})
@@ -113,19 +117,19 @@
 (s/defschema InsertOptsSchema
   (merge
    PrepareOptSchema
+   ConsistencyOptSchema
    {(s/optional-key :if-not-exists) s/Bool
-    (s/optional-key :using) UpsertUsingSchema
-    (s/optional-key :consistency) ConsistencyLevelSchema}))
+    (s/optional-key :using) UpsertUsingSchema}))
 
 
 (s/defschema UpdateOptsSchema
   (merge
    PrepareOptSchema
+   ConsistencyOptSchema
    {(s/optional-key :only-if) WhereSchema
     (s/optional-key :if-exists) s/Bool
     (s/optional-key :if-not-exists) s/Bool
     (s/optional-key :using) UpsertUsingSchema
-    (s/optional-key :consistency) ConsistencyLevelSchema
     (s/optional-key :set-columns) UpdateColumnsSchema}))
 
 (s/defschema DeleteUsingSchema
@@ -134,6 +138,7 @@
 (s/defschema DeleteOptsSchema
   (merge
    PrepareOptSchema
+   ConsistencyOptSchema
    {(s/optional-key :only-if) WhereSchema
     (s/optional-key :if-exists) s/Bool
     (s/optional-key :using) DeleteUsingSchema

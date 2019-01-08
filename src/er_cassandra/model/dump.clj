@@ -19,6 +19,7 @@
    [taoensso.timbre :as timbre :refer [info]]
    [taoensso.timbre :refer [warn]]
    [er-cassandra.dump.tables :as dump.tables]
+   [er-cassandra.dump.transit :as dump.transit]
    [prpr.stream :as prpr.stream]))
 
 
@@ -136,7 +137,7 @@
    entity]
   (ddo [:let [keyspace (cass.session/keyspace cassandra)
               table (-> entity :primary-table :name)]
-        raw-s (dump.tables/transit-file->record-s
+        raw-s (dump.tables/transit-file->entity-record-s
                keyspace
                directory
                table)
@@ -152,7 +153,7 @@
     (load-record-s->entity
      cassandra
      entity
-     {:notify-s (dump.tables/log-notify-stream)}
+     {:notify-s (dump.transit/log-notify-stream)}
      cassandra-opts
      r-s)))
 
