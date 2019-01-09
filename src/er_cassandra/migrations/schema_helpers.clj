@@ -28,6 +28,13 @@
 (def size-tiered-compaction-clause
   "compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy', 'max_threshold': '32', 'min_threshold': '4'}")
 
+(defn all-primary-key-columns-exist?
+  [columns primary-key]
+  (let [column-names (set columns)]
+    (every?
+     #(contains? column-names %)
+     (flatten primary-key))))
+
 (defn create-table
   [{v-name :name
     v-primary-key :primary-key
@@ -38,7 +45,7 @@
           (str "invalid table definition"
                "\n\n"
                (pr-str table-definition)))
-  (assert (every? #(contains? (set (map first v-columns)) %) (flatten v-primary-key))
+  (assert (all-primary-key-columns-exist? (map first v-columns) v-primary-key)
           (str "not all primary key columns are defined!"
                "\n\n"
                (pr-str table-definition)))
@@ -71,7 +78,7 @@
           (str "invalid view definition"
                "\n\n"
                (pr-str view-definition)))
-  (assert (every? #(contains? (set v-selected-columns) %) (flatten v-primary-key))
+  (assert (all-primary-key-columns-exist? v-selected-columns v-primary-key)
           (str "views must include all primary key columns"
                "\n\n"
                (pr-str view-definition)))
