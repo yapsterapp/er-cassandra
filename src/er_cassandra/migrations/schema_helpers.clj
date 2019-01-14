@@ -65,12 +65,28 @@
    keyword? schema/Keyword
    string? schema/Str))
 
+(schema/defschema CassandraClusteringOrderDirection
+  (apply schema/enum clustering-order-directions))
+
+(schema/defschema CassandraColumnClusteringOrder
+  (schema/conditional
+   (fn [co] (sequential? co))
+   [(schema/one schema/Keyword :name)
+    (schema/optional CassandraClusteringOrderDirection :dir)]
+
+   :else
+   schema/Keyword))
+
+(schema/defschema CassandraClusteringOrder
+  [CassandraColumnClusteringOrder])
+
 (schema/defschema CreateTable
   {:name schema/Str
    :primary-key t/PrimaryKeySchema
    :columns [[(schema/one schema/Keyword :name)
               (schema/one CassandraColumnType :type)]]
-   :compaction CassandraTableCompaction})
+   :compaction CassandraTableCompaction
+   :clustering-order CassandraClusteringOrder})
 
 (defn all-primary-key-columns-exist?
   [columns primary-key]
@@ -141,7 +157,8 @@
    :from schema/Str
    :primary-key t/PrimaryKeySchema
    :selected-columns [schema/Keyword]
-   :compaction CassandraTableCompaction})
+   :compaction CassandraTableCompaction
+   :clustering-order CassandraClusteringOrder})
 
 (schema/defn create-view
   [{v-name :name
