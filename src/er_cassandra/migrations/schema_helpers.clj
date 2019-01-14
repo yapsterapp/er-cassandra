@@ -32,7 +32,6 @@
 
 (defn clustering-order-str
   [clustering-order]
-  (prn "co" clustering-order)
   (-> (reduce
        (fn [rs cg]
          (if (clustering-order-entry? cg)
@@ -95,7 +94,19 @@
   (assert (or (nil? v-compaction) (#{:leveled :size-tiered} v-compaction)))
   (let [v-name (name v-name)
         v-columns (map (fn [[n t]] (str n " " t)) v-columns)
-        primary-key-str (str "primary key " (index-str v-primary-key))]
+        primary-key-str (str "primary key " (index-str v-primary-key))
+        clustering-order-str (when (some? v-clustering-order)
+                               (str "CLUSTERING ORDER BY ("
+                                    (clustering-order-str v-clustering-order)
+                                    ")"))
+        compaction-str (case v-compaction
+                         nil nil
+                         :leveled leveled-compaction-clause
+                         :size-tiered size-tiered-compaction-clause)
+        with-strs (filter
+                   identity
+                   [clustering-order-str
+                    compaction-str])]
     (string/join
      " "
      ["create table if not exists" v-name "("
@@ -105,12 +116,8 @@
         v-columns
         primary-key-str))
       ")"
-      (when (some? v-clustering-order)
-        (str "WITH CLUSTERING ORDER BY (" (clustering-order-str v-clustering-order) ")"))
-      (case v-compaction
-        nil nil
-        :leveled (str "WITH " leveled-compaction-clause)
-        :size-tiered (str "WITH " size-tiered-compaction-clause))])))
+      (when (seq with-strs)
+        (str "WITH " (string/join " AND " with-strs)))])))
 
 (defn create-view
   [{v-name :name
@@ -140,7 +147,19 @@
         where-clauses (string/join
                        " and "
                        (map #(str % " is not null") primary-key-columns))
-        primary-key-str (index-str v-primary-key)]
+        primary-key-str (index-str v-primary-key)
+        clustering-order-str (when (some? v-clustering-order)
+                               (str "CLUSTERING ORDER BY ("
+                                    (clustering-order-str v-clustering-order)
+                                    ")"))
+        compaction-str (case v-compaction
+                         nil nil
+                         :leveled leveled-compaction-clause
+                         :size-tiered size-tiered-compaction-clause)
+        with-strs (filter
+                   identity
+                   [clustering-order-str
+                    compaction-str])]
     (string/join
      " "
      ["create materialized view if not exists" v-name
@@ -149,9 +168,5 @@
       "from" v-from
       "where" where-clauses
       "primary key" primary-key-str
-      (when (some? v-clustering-order)
-        (str "WITH CLUSTERING ORDER BY (" (clustering-order-str v-clustering-order) ")"))
-      (case v-compaction
-        nil nil
-        :leveled (str "WITH " leveled-compaction-clause)
-        :size-tiered (str "WITH " size-tiered-compaction-clause))])))
+      (when (seq with-strs)
+        (str "WITH " (string/join " AND " with-strs)))])))
