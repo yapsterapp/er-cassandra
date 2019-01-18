@@ -34,5 +34,5 @@
 
   (testing "segment-encodings"
     (let [t (java.util.Date.)]
-      (is (= (str "foo/true/" (cut/unparse-timestamp-utc-millis t)))
-          (sut/concatenate-keys ["foo" Boolean/TRUE t])))))
+      (is (= (str "foo/true/" (cut/unparse-timestamp-utc-millis t))
+             (sut/concatenate-keys ["foo" Boolean/TRUE t]))))))
