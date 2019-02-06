@@ -7,7 +7,7 @@
               [clj-time.coerce :as time.coerce]]
        :cljs [[cljs-time.core :as time]
               [cljs-time.coerce :as time.coerce]])
-   [er-cassandra.model.types]
+   [er-cassandra.model.types :as t]
    [er-cassandra.model.callbacks.protocol
     :refer [ICallback
             -before-delete
@@ -31,7 +31,7 @@
     ICallback
     (-before-save [_ entity old-record record opts]
       (cond
-        (::skip-protect opts) (dissoc record confirm-col)
+        (::t/skip-protect opts) (dissoc record confirm-col)
         (get record confirm-col) (dissoc record confirm-col)
         :else (merge
                record
