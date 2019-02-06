@@ -21,7 +21,8 @@
         (nil? v) (assoc r col nil)
         (and (string? v) (empty? v)) (assoc r col nil)
         (string? v) r
-        :else (update r col pr-str)))))
+        :else (binding [*print-length* -1]
+                (update r col pr-str))))))
 
 (defn edn-deserialize-callback
   ([col] (edn-deserialize-callback col nil {}))
