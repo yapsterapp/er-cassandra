@@ -104,7 +104,7 @@
               :before-save
               {:id 1000 :bar 1}
               {:id 1000 :bar 100 :update-bar? true}
-              {::sut/skip-protect true})]
+              {::t/skip-protect true})]
 
       (is (= r
              {:id 1000 :bar 100}))))
@@ -122,7 +122,7 @@
               :before-save
               {:id 1000 :bar 1}
               {:id 1000}
-              {::sut/skip-protect true})]
+              {::t/skip-protect true})]
 
       (is (= r
              {:id 1000})))))
