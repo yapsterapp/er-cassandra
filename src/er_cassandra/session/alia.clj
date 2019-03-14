@@ -20,36 +20,57 @@
     SpySession
     KeyspaceProvider]))
 
-(defn prepare-async
-  [alia-session statement]
-  (let [r (d/deferred)]
-    (trace "preparing: " statement)
-    (alia/prepare-async
-     alia-session
-     statement
-     {:success (partial d/success! r)
-      :error (partial d/error! r)})
-    r))
+(defn dissoc-prepared-stmt-if-error
+  [stmt-cache str-statement]
+  (let [pps (get stmt-cache str-statement)
+        e? (some-> pps (d/error-value nil) some?)]
+    (if e?
+      (dissoc stmt-cache str-statement)
+      stmt-cache)))
+
+(defn prepare-async-via-agent
+  [agent-state agent-ref alia-session str-statement deferred-result]
+  (if-let [pps (get agent-state str-statement)]
+    (do
+      (trace "connecting in-flight prepared statement:" str-statement)
+      (d/connect pps deferred-result)
+      agent-state)
+    (do
+      (trace "preparing statement:" str-statement)
+      (alia/prepare-async
+       alia-session
+       str-statement
+       {:success (fn [ps]
+                   (d/success! deferred-result ps))
+        :error (fn [e]
+                 (send
+                  agent-ref
+                  dissoc-prepared-stmt-if-error
+                  str-statement)
+                 (d/error! deferred-result e))})
+      (assoc agent-state str-statement deferred-result))))
 
 (defn maybe-prepare
   [alia-session
-   prepared-stmts-atom
+   prepared-stmts-agent
    str-statement]
-  (if-let [ps (get @prepared-stmts-atom
-                   str-statement)]
+  (if-let [pps (get @prepared-stmts-agent str-statement)]
     (do
-      (trace "re-using prepared-statement: " str-statement)
-      (return deferred-context ps))
-    (ddo [ps (prepare-async alia-session str-statement)]
-      (swap! prepared-stmts-atom
-             assoc
-             str-statement
-             ps)
-      ps)))
+      (trace "re-using prepared statement:" str-statement)
+      pps)
+    (let [r (d/deferred)]
+      (send
+       prepared-stmts-agent
+       prepare-async-via-agent
+       prepared-stmts-agent
+       alia-session
+       str-statement
+       r)
+      r)))
 
 (defn- execute*
   [alia-session
-   prepared-stmts-atom
+   prepared-stmts-agent
    statement
    {values :values
     trace? :trace?
@@ -60,7 +81,7 @@
                               (h/->raw statement))]
         exec-statement (if prepare?
                          (maybe-prepare alia-session
-                                        prepared-stmts-atom
+                                        prepared-stmts-agent
                                         str-statement)
                          (return str-statement))]
     (when trace?
@@ -76,7 +97,7 @@
 (defn- execute-buffered*
   "execute a statement returning a Deferred<Stream<record>>"
   [alia-session
-   prepared-stmts-atom
+   prepared-stmts-agent
    statement
    {values :values
     trace? :trace?
@@ -87,7 +108,7 @@
                               (h/->raw statement))]
         exec-statement (if prepare?
                          (maybe-prepare alia-session
-                                        prepared-stmts-atom
+                                        prepared-stmts-agent
                                         str-statement)
                          (return str-statement))]
     (when trace?
@@ -141,14 +162,14 @@
              _ (alia/execute alia-session (str "USE " keyspace ";") {})]
         (return alia-session)))))
 
-(defrecord AliaSession [keyspace alia-session prepared-stmts-atom trace?]
+(defrecord AliaSession [keyspace alia-session prepared-stmts-agent trace?]
   KeyspaceProvider
   (keyspace [_] keyspace)
   Session
   (execute [_ statement opts]
-    (execute* alia-session prepared-stmts-atom statement (assoc opts :trace? trace?)))
+    (execute* alia-session prepared-stmts-agent statement (assoc opts :trace? trace?)))
   (execute-buffered [_ statement opts]
-    (execute-buffered* alia-session prepared-stmts-atom statement (assoc opts :trace? trace?)))
+    (execute-buffered* alia-session prepared-stmts-agent statement (assoc opts :trace? trace?)))
   (close [_]
     (shutdown-session-and-cluster alia-session)))
 
@@ -162,7 +183,7 @@
                            {:keyspace keyspace
                             :alia-session datastax-session
                             :trace? trace?
-                            :prepared-stmts-atom (atom {})})]]
+                            :prepared-stmts-agent (agent {})})]]
       (return
        [alia-session
         (fn [] (s/close alia-session))]))))
@@ -220,17 +241,17 @@
 
 (defrecord AliaSpySession [keyspace
                            alia-session
-                           prepared-stmts-atom
+                           prepared-stmts-agent
                            spy-log-atom
                            truncate-on-close
                            trace?]
   Session
   (execute [_ statement opts]
     (swap! spy-log-atom conj statement)
-    (execute* alia-session prepared-stmts-atom statement (assoc opts :trace? trace?)))
+    (execute* alia-session prepared-stmts-agent statement (assoc opts :trace? trace?)))
   (execute-buffered [_ statement opts]
     (swap! spy-log-atom conj statement)
-    (execute-buffered* alia-session prepared-stmts-atom statement (assoc opts :trace? trace?)))
+    (execute-buffered* alia-session prepared-stmts-agent statement (assoc opts :trace? trace?)))
   (close [self]
     (with-context deferred-context
       (mlet [_ (if truncate-on-close
@@ -263,7 +284,7 @@
                                :spy-log-atom (atom [])
                                :truncate-on-close truncate-on-close
                                :trace? trace?
-                               :prepared-stmts-atom (atom {})})]]
+                               :prepared-stmts-agent (agent {})})]]
       (return
        [spy-session
         (fn [] (s/close spy-session))]))))
