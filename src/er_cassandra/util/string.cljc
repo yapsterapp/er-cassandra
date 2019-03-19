@@ -17,4 +17,9 @@
          "")
         (str/lower-case))))
 
-
+(defn string->re-pattern
+  [s]
+  (when s
+    (-> s
+        normalize-string
+        re-pattern)))
