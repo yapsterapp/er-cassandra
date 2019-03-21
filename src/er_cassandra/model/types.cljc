@@ -99,17 +99,69 @@
   {(s/optional-key :collections) {s/Keyword
                                   (s/enum :list :set :map)}})
 
+;; for efficient, tombstone avoiding, changes to collection columns we generate
+;; a diff of old/new values during statement preparation, so that these diffs
+;; can be easily discernible from ordinary values we use this record type and
+;; schema:
+(defrecord CollectionColumnDiff [intersection])
+
+(s/defschema CollectionColumnDiffSchema
+  (s/constrained
+   (s/record
+    CollectionColumnDiff
+    {:intersection (s/pred coll?)
+     (s/enum + -) (s/pred coll?)})
+   (fn [ccd]
+     (let [[first-val & other-vals] (vals ccd)
+           first-coll-type (type first-val)]
+       (or (empty? other-vals)
+           (every? #(= first-coll-type (type %)) other-vals))))
+   'has-matching-collection-types))
+
+(defn is-collection-column-diff?
+  [v]
+  (or
+   (instance? CollectionColumnDiff v)
+   (and
+    (map? v)
+    (set/superset? #{:intersection + -} (set (keys v))))))
+
 (s/defschema MaterializedViewSchema
   {(s/optional-key :view?) s/Bool})
+
+(s/defschema VersionedTableSchema
+  {(s/optional-key :versioned?) s/Bool
+   (s/optional-key :version-col) s/Keyword})
 
 ;; secondary tables contain all columns from the primary
 ;; table, with a different primary key.
 ;; secondary and lookup tables may be materialized views,
 ;; which will be used for query but won't be upserted to
-(s/defschema SecondaryTableSchema
+(s/defschema BaseSecondaryTableSchema
   (merge BaseTableSchema
          MaterializedViewSchema
+         VersionedTableSchema
          {:type (s/eq :secondary)}))
+
+(s/defschema SecondaryViewTableSchema
+  (-> BaseSecondaryTableSchema
+     (dissoc (s/optional-key :view?))
+     (merge
+      {:view? (s/eq true)
+       (s/optional-key :versioned?) (s/eq false)})))
+
+(s/defschema SecondaryVersionedTableSchema
+  (-> BaseSecondaryTableSchema
+     (dissoc (s/optional-key :versioned?))
+     (merge
+      {:versioned? (s/eq true)
+       (s/optional-key :view?) (s/eq false)})))
+
+(s/defschema SecondaryTableSchema
+  (s/conditional
+   :versioned? SecondaryVersionedTableSchema
+   :view? SecondaryViewTableSchema
+   :else BaseSecondaryTableSchema))
 
 ;; unique-key tables are lookup tables with a unique
 ;; constraint on the key, enforced with an LWT.

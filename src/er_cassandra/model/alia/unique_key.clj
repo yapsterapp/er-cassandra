@@ -20,7 +20,8 @@
    [schema.core :as s]
    [taoensso.timbre :refer [info warn]]
    [er-cassandra.model.alia.minimal-change :as min.ch]
-   [er-cassandra.model.alia.lookup :as lookup])
+   [er-cassandra.model.alia.lookup :as lookup]
+   [er-cassandra.model.types :as t ])
   (:import
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
@@ -83,13 +84,27 @@
               min-change (min.ch/avoid-tombstone-change-for-table
                           unique-key-table
                           nil ;; always nil for acquire
-                          unique-key-record)]
+                          unique-key-record)
 
-        insert-response (r/insert session
-                                  (:name unique-key-table)
-                                  min-change
-                                  (merge (fns/opts-remove-timestamp opts)
-                                         {:if-not-exists true}))
+              has-collection-cols? (some
+                                    (comp t/is-collection-column-diff? second)
+                                    min-change)]
+
+        insert-response (if has-collection-cols?
+                          (r/update session
+                                    (:name unique-key-table)
+                                    (:key unique-key-table)
+                                    min-change
+                                    (merge (fns/opts-remove-timestamp opts)
+                                           {:only-if
+                                            (k/extract-key-equality-clause
+                                             lwt-update-key
+                                             lwt-update-key-value)}))
+                          (r/insert session
+                                    (:name unique-key-table)
+                                    min-change
+                                    (merge (fns/opts-remove-timestamp opts)
+                                           {:if-not-exists true})))
 
         :let [inserted? (applied? insert-response)
               owned? (applied-or-owned?
@@ -405,6 +420,10 @@
                      nok-old-record
                      nok-record)
 
+         has-collection-cols? (some
+                               (comp t/is-collection-column-diff? second)
+                               min-change)
+
          ;; _ (warn "upsert-primary-record-without-unique-keys"
          ;;         {:primary-table (:primary-table entity)
          ;;          :old-record old-record
@@ -421,10 +440,28 @@
                    ;; prefer insert - because if a new record is updated
                    ;; into existence, all it's cols being nulled will cause
                    ;; its automatic deletion
-                   insert? (or if-not-exists
-                               (and (not if-exists) (not only-if)))]
+                   ;;
+                   ;; for records containing collection columns our tombstone
+                   ;; avoidance will protect against the null columns causing
+                   ;; deletion case
+                   ;;
+                   ;; records containing collection columns can be safely
+                   ;; INSERTed if the collection column isn't present (as
+                   ;; INSERTs won't trigger the automatic deletion)
+                   ;;
+                   ;; if a collection column is present in the record then
+                   ;; UPDATE will *always* be used _and_ the collection column
+                   ;; will *never* be nil'led (by virtue of the column only ever
+                   ;; being SET using the collection altering + and - operators)
+                   insert? (and
+                            (not has-collection-cols?)
+                            (or if-not-exists
+                                (and (not if-exists) (not only-if))))]
 
              insert-response (cond
+                               (not insert?)
+                               (return nil)
+
                                if-not-exists
                                (r/insert session
                                          primary-table-name
@@ -435,23 +472,23 @@
                                (r/insert session
                                          primary-table-name
                                          min-change
-                                         opts)
-
-                               :else ;; only-if
-                               (return nil))
+                                         opts))
 
              :let [inserted? (cond
+                               (not insert?)
+                               false
+
                                if-not-exists
                                (applied? insert-response)
 
-                               (and (not if-exists) (not only-if)) true
-
-                               :else false)]
+                               (and (not if-exists) (not only-if))
+                               true)]
 
              update-response (cond
+                               insert?
+                               (return nil)
 
-                               (and (not insert?)
-                                    (or if-exists only-if))
+                               (or if-exists only-if)
                                (r/update
                                 session
                                 primary-table-name
@@ -459,8 +496,13 @@
                                 min-change
                                 (fns/opts-remove-timestamp opts))
 
-                               insert?
-                               (return nil)
+                               has-collection-cols?
+                               (r/update
+                                session
+                                primary-table-name
+                                primary-table-key
+                                min-change
+                                opts)
 
                                :else
                                (throw (ex-info
@@ -469,7 +511,8 @@
                                         :record record
                                         :opts opts})))
 
-             :let [updated? (applied? update-response)]
+             :let [updated? (or has-collection-cols?
+                                (applied? update-response))]
 
              upserted-record (cond
                                ;; return what was upserted or nil

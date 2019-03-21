@@ -943,9 +943,10 @@
                      :key-value ["foo@bar.com"]}]}
                  (set acquire-failures)))
 
-          (is (= updated-b
-                 (fetch-record :mixed_unique_key_test
-                               [:org_id :id] [org-id idb])))
+          (let [fetched-b (fetch-record :mixed_unique_key_test
+                                        [:org_id :id] [org-id idb])]
+            (is (= (update updated-b :phone sort)
+                   (update fetched-b :phone sort))))
           ;; ida keys remain with ida
           (is (= {:nick "foo" :org_id org-id :id ida}
                  (fetch-record :mixed_unique_key_test_by_nick

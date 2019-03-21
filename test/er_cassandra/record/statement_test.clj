@@ -101,6 +101,41 @@
             {:id "id"
              :foo "foo"}
             {}))))
+  (testing "collection colls"
+    (testing "with plain values"
+      (is (= {:insert :foos
+              :values {:id "id"
+                       :foo [10 20]}}
+             (sut/insert-statement
+              :foos
+              {:id "id"
+               :foo [10 20]}
+              {})))
+      (is (= {:insert :foos
+              :values {:id "id"
+                       :foo {"bar" 20}}}
+             (sut/insert-statement
+              :foos
+              {:id "id"
+               :foo {"bar" 20}}
+              {}))))
+    (testing "with minimal change diffs"
+      (is (= {:insert :foos
+              :values {:id "id"
+                       :foo [10 20]}}
+             (sut/insert-statement
+              :foos
+              {:id "id"
+               :foo {:intersection nil + [10 20] - [30 40]}}
+              {})))
+      (is (= {:insert :foos
+              :values {:id "id"
+                       :foo [10 20]}}
+             (sut/insert-statement
+              :foos
+              {:id "id"
+               :foo {:intersection [10] + [20] - [200]}}
+              {})))))
   (testing "with ttl"
     (is (= {:insert :foos
             :values {:id "id" :foo "foo"}
@@ -139,7 +174,7 @@
 (deftest update-statement-test
   (testing "simple update"
     (is (= {:update :foos
-            :set-columns {:foo "foo"}
+            :set-columns [[:foo "foo"]]
             :where [[:= :id 100]]}
            (sut/update-statement
             :foos
@@ -149,7 +184,8 @@
             {}))))
   (testing "compound key, multiple cols"
     (is (= {:update :foos
-            :set-columns {:foo "foo" :bar "bar"}
+            :set-columns [[:foo "foo"]
+                          [:bar "bar"]]
             :where [[:= :id 100] [:= :id2 200]]}
            (sut/update-statement
             :foos
@@ -161,7 +197,7 @@
             {}))))
   (testing "set-columns"
     (is (= {:update :foos
-            :set-columns {:foo "foo"}
+            :set-columns [[:foo "foo"]]
             :where [[:= :id 100]]}
            (sut/update-statement
             :foos
@@ -172,7 +208,8 @@
             {:set-columns [:foo]}))))
   (testing "only-if"
     (is (= {:update :foos
-            :set-columns {:foo "foo" :bar "bar"}
+            :set-columns [[:foo "foo"]
+                          [:bar "bar"]]
             :where [[:= :id 100]]
             :if [[:= :foo "foo"]]}
            (sut/update-statement
@@ -185,7 +222,8 @@
 
   (testing "if-exists"
     (is (= {:update :foos
-            :set-columns {:foo "foo" :bar "bar"}
+            :set-columns [[:foo "foo"]
+                          [:bar "bar"]]
             :where [[:= :id 100]]
             :if-exists true}
            (sut/update-statement
@@ -198,7 +236,8 @@
 
   (testing "if-not-exists"
     (is (= {:update :foos
-            :set-columns {:foo "foo" :bar "bar"}
+            :set-columns [[:foo "foo"]
+                          [:bar "bar"]]
             :where [[:= :id 100]]
             :if-exists false}
            (sut/update-statement
@@ -210,7 +249,7 @@
             {:if-not-exists true}))))
   (testing "using ttl"
     (is (= {:update :foos
-            :set-columns {:foo "foo"}
+            :set-columns [[:foo "foo"]]
             :where [[:= :id 100]]
             :using [[:ttl 5000]]}
            (sut/update-statement
@@ -221,7 +260,7 @@
             {:using {:ttl 5000}}))))
   (testing "using timestamp"
     (is (= {:update :foos
-            :set-columns {:foo "foo"}
+            :set-columns [[:foo "foo"]]
             :where [[:= :id 100]]
             :using [[:timestamp 5000]]}
            (sut/update-statement
@@ -237,7 +276,41 @@
                           [:id]
                           {:id 100
                            :foo "foo"}
-                          {:blah true})))))
+                          {:blah true}))))
+  (testing "collection coll diffs"
+    (is (= {:update :foos
+            :set-columns [[:foo [+ [10 20]]]
+                          [:foo [- [1  2]]]]
+            :where [[:= :id 100]]}
+           (sut/update-statement
+            :foos
+            [:id]
+            {:id 100
+             :foo {+ [10 20]
+                   - [1  2]}}
+            {})))
+    (is (= {:update :foos
+            :set-columns [[:bar 1]
+                          [:foo [- #{2}]]]
+            :where [[:= :id 100]]}
+           (sut/update-statement
+            :foos
+            [:id]
+            {:id 100
+             :bar 1
+             :foo {- #{2}}}
+            {})))
+    (is (= {:update :foos
+            :set-columns [[:bar 1]
+                          [:foo [+ {"foo" 2}]]]
+            :where [[:= :id 100]]}
+           (sut/update-statement
+            :foos
+            [:id]
+            {:id 100
+             :bar 1
+             :foo {+ {"foo" 2}}}
+            {})))))
 
 (deftest delete-statement-test
   (testing "simple delete"
@@ -313,3 +386,186 @@
             :id
             10
             {:blah true})))))
+
+(deftest prepare-update-statement-test
+  (testing "simple prepared statement"
+    (is (= {:update :foos
+            :set-columns [[:foo :set_foo]]
+            :where [[:= :id :where_id]]}
+           (sut/prepare-update-statement
+            :foos
+            :id
+            {:id 100
+             :foo "foo"}
+            {}))))
+  (testing "compound key, multiple cols"
+    (is (= {:update :foos
+            :set-columns [[:foo :set_foo]
+                          [:bar :set_bar]]
+            :where [[:= :id :where_id]
+                    [:= :id2 :where_id2]]}
+           (sut/prepare-update-statement
+            :foos
+            [:id :id2]
+            {:id 100
+             :id2 200
+             :foo "foo"
+             :bar "bar"}
+            {}))))
+  (testing "with options"
+    (let [base-cql {:update :foos
+                    :set-columns [[:foo :set_foo]
+                                  [:bar :set_bar]]
+                    :where [[:= :id :where_id]]}
+          base-record {:id 100
+                       :foo "foo"
+                       :bar "bar"}
+          base-key [:id]
+
+          prepare-update-statement
+          (fn -prepare-update-statement
+            ([opt]
+             (-prepare-update-statement base-key base-record opt))
+            ([record opt]
+             (-prepare-update-statement base-key record opt))
+            ([key record opt]
+             (sut/prepare-update-statement :foos key record opt)))]
+      (testing "set-columns"
+        (is (= (update base-cql :set-columns (partial remove (fn [[k _]] (= :bar k))))
+               (prepare-update-statement {:set-columns [:foo]}))))
+      (testing "only-if"
+        (is (= (assoc base-cql :if [[:= :foo "foo"]])
+               (prepare-update-statement {:only-if [[:= :foo "foo"]]}))))
+      (testing "if-exists"
+        (is (= (assoc base-cql :if-exists true)
+               (prepare-update-statement {:if-exists true}))))
+      (testing "if-not-exists"
+        (is (= (assoc base-cql :if-exists false)
+               (prepare-update-statement {:if-not-exists true}))))
+      (testing "using ttl"
+        (is (= (assoc base-cql :using [[:ttl :using_ttl]])
+               (prepare-update-statement {:using {:ttl 5000}}))))
+      (testing "using timestamp"
+        (is (= (assoc base-cql :using [[:timestamp :using_timestamp]])
+               (prepare-update-statement {:using {:timestamp 5000}}))))
+      (testing "unknown opts"
+        (is (thrown-with-msg?
+             ExceptionInfo
+             #"does not match schema"
+             (prepare-update-statement {:blah true}))))))
+  (testing "collection coll diffs"
+    (let [cql {:update :foos
+               :set-columns [[:foo [+ :set_add_foo]]
+                             [:foo [- :set_rem_foo]]]
+               :where [[:= :id :where_id]]}
+          base-record {:id 100}
+          prepare-update-statement (fn [record]
+                                     (sut/prepare-update-statement
+                                      :foos
+                                      [:id]
+                                      (merge base-record record)
+                                      {}))]
+      (is (= cql (prepare-update-statement
+                  {:foo {+ {:a 20}}})))
+      (is (= cql (prepare-update-statement
+                  {:foo {- #{10}}})))
+      (is (= cql (prepare-update-statement
+                  {:foo {+ [10 20]
+                         - [1  2]}}))))))
+
+(deftest prepare-update-values-test
+  (testing "simple record"
+    (is (= {:set_foo "foo"
+            :set_bar "bar"
+            :where_id 100}
+           (sut/prepare-update-values
+            :foos
+            :id
+            {:id 100
+             :foo "foo"
+             :bar "bar"}
+            {}))))
+  (testing "with options"
+    (let [base-values {:set_foo "foo"
+                       :set_bar "bar"
+                       :where_id 100}
+          base-record {:id 100
+                       :foo "foo"
+                       :bar "bar"}
+
+          prepare-update-values
+          (fn [opts]
+            (sut/prepare-update-values
+             :foos
+             :id
+             base-record
+             opts))]
+      (testing "set-columns"
+        (is (= (dissoc base-values :set_bar)
+               (prepare-update-values
+                {:set-columns [:foo]}))))
+      (testing "using ttl"
+        (is (= (assoc base-values :using_ttl 500)
+               (prepare-update-values
+                {:using {:ttl 500}}))))
+      (testing "using timestamp"
+        (is (= (assoc base-values :using_timestamp 5000)
+               (prepare-update-values
+                {:using {:timestamp 5000}}))))))
+  (testing "collection values"
+    (let [base-record {:id 100}
+          base-values {:where_id 100}
+          prepare-update-values (fn [record]
+                                     (sut/prepare-update-values
+                                      :foos
+                                      [:id]
+                                      (merge base-record record)
+                                      {}))]
+      (is (= (assoc base-values
+                    :set_add_foo {:a 20}
+                    :set_rem_foo nil)
+             (prepare-update-values
+              {:foo {+ {:a 20}}})))
+      (is (= (assoc base-values
+                    :set_add_foo nil
+                    :set_rem_foo #{10})
+             (prepare-update-values
+              {:foo {- #{10}}})))
+      (is (= (assoc base-values
+                    :set_add_foo [10 20]
+                    :set_rem_foo [1 2])
+             (prepare-update-values
+              {:foo {+ [10 20]
+                     - [1  2]}}))))))
+
+(deftest prepare-record-values-test
+  (testing "simple record"
+    (is (= {:set_id 100
+            :set_foo "foo"
+            :set_bar "bar"}
+           (sut/prepare-record-values
+            :set
+            {:id 100
+             :foo "foo"
+             :bar "bar"}))))
+  (testing "collection values"
+    (testing "using plain values"
+      (is (= {:set_id 100
+              :set_foo [10 20]}
+             (sut/prepare-record-values
+              :set
+              {:id 100
+               :foo [10 20]}))))
+    (testing "using collection coll diffs"
+      (is (= {:set_id 100
+              :set_foo [10 20]}
+             (sut/prepare-record-values
+              :set
+              {:id 100
+               :foo {:intersection nil + [10 20] - [30 40]}})))
+      (is (= {:set_id 100
+              :set_foo [10 20]}
+             (sut/prepare-record-values
+              :set
+              {:id 100
+               :foo {:intersection [10] + [20] - [200]}}))))))

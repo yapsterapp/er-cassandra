@@ -9,6 +9,7 @@
    [qbits.hayt :as h]
    [er-cassandra.util.vector :as v]
    [er-cassandra.key :refer [flatten-key extract-key-equality-clause]]
+   [er-cassandra.model.types :as t]
    [er-cassandra.session :as session]
    [prpr.promise :as pr :refer [ddo]]
    [cats.context :refer [with-context]]
@@ -17,6 +18,15 @@
    [er-cassandra.record.schema :as sch])
   (:import
    [qbits.hayt.cql CQLRaw CQLFn]))
+
+(defn full-coll-from-change
+  [{intsx :intersection
+    added +}]
+  (cond
+    (empty? intsx) added
+    (empty? added) intsx
+    (map? intsx) (merge intsx added)
+    :else (into intsx added)))
 
 (defn combine-where
   [& clauses]
@@ -69,7 +79,9 @@
   (->> record
        (map (fn [[k v]]
               [(placeholder-kw prefix k)
-               v]))
+               (if (t/is-collection-column-diff? v)
+                 (full-coll-from-change v)
+                 v)]))
        (into {})))
 
 (s/defn prepare-where-placeholders
@@ -153,10 +165,17 @@
   [table :- s/Keyword
    record :- sch/RecordSchema
    {:keys [if-not-exists using] :as opts} :- sch/InsertOptsSchema]
-  (h/insert table
-            (h/values record)
-            (when if-not-exists (h/if-not-exists true))
-            (when (not-empty using) (apply h/using (flatten (seq using))))))
+  (let [record-with-full-coll-cols (reduce
+                                    (fn [rs [k v]]
+                                      (if (t/is-collection-column-diff? v)
+                                        (assoc rs k (full-coll-from-change v))
+                                        rs))
+                                    record
+                                    record)]
+    (h/insert table
+             (h/values record-with-full-coll-cols)
+             (when if-not-exists (h/if-not-exists true))
+             (when (not-empty using) (apply h/using (flatten (seq using)))))))
 
 (s/defn prepare-using-placeholders
   [using-clauses]
@@ -206,9 +225,21 @@
            using
            set-columns] :as opts} :- sch/UpdateOptsSchema]
   (let [key-clause (extract-key-equality-clause key record opts)
-        set-cols (if (not-empty set-columns)
+        raw-cols (if (not-empty set-columns)
                    (select-keys record set-columns)
                    (apply dissoc record (flatten-key key)))
+        set-cols (reduce
+                  (fn [rs [k v]]
+                    (if (t/is-collection-column-diff? v)
+                      (apply
+                       conj
+                       rs
+                       (map
+                        (fn [[op vs]] [k [op vs]])
+                        (select-keys v [+ -])))
+                      (conj rs [k v])))
+                  []
+                  raw-cols)
 
         stmt (h/update table
                        (h/set-columns set-cols)
@@ -221,17 +252,31 @@
 
 (s/defn prepare-set-placeholders
   [set-cols]
-  (->> set-cols
-       (map (fn [[k v]]
-              [k (placeholder-kw :set k)]))
-       (into {})))
+  (reduce
+   (fn [rs [k v]]
+     (if (t/is-collection-column-diff? v)
+       (conj
+        rs
+        [k [+ (placeholder-kw :set_add k)]]
+        [k [- (placeholder-kw :set_rem k)]])
+       (conj rs [k (placeholder-kw :set k)])))
+   []
+   set-cols))
 
 (s/defn prepare-set-values
   [set-cols]
-  (->> set-cols
-       (map (fn [[k v]]
-              [(placeholder-kw :set k) v]))
-       (into {})))
+  (reduce
+   (fn [rs [k v]]
+     (if (t/is-collection-column-diff? v)
+       (let [{added +
+              removed -} v]
+         (assoc
+          rs
+          (placeholder-kw :set_add k) added
+          (placeholder-kw :set_rem k) removed))
+       (assoc rs (placeholder-kw :set k) v)))
+   {}
+   set-cols))
 
 (s/defn prepare-update-statement
   "returns a Hayt prepared update statement"

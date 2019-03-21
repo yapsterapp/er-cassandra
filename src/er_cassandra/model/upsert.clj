@@ -22,13 +22,20 @@
   ([^ModelSession session ^Entity entity old-record record opts]
    (ms/-change session entity old-record record opts)))
 
-(defn upsert
-  "upsert a single instance
+(defn ^:deprecated upsert
+  "**DEPRECATED** use `select-upsert` or `change` instead
+
+   upsert a single instance
 
    throws an Exception if the entity has
    any foreign keys, since a re-select would be required to determine
    the foreign key ops required. use change or select-upsert instead
    for entities with foreign keys
+
+   throws an Exception if the record contains non-serialized collection
+   columns as these cannot be upserted safely without generating tombstones
+   use select-upsert (or change) instead for entities with non-serialized
+   collection columns
 
    returns a Deferred<[updated-record key-failures]> where
    updated-record is the record as currently in the db and key-failures

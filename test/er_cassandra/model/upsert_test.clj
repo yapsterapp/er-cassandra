@@ -274,20 +274,28 @@
 
                         :nick "fooble"
                         :email #{"foo@foo.com" "foo@baz.com"}
-                        :phone ["789" "456"]
+                        :phone (sort ["789" "456"])
 
                         :thing "blarghle"
 
                         :title "dr"
                         :tag #{"slower" "slow"}
-                        :dept ["sales" "dev"]}
+                        :dept (sort ["sales" "dev"])}
 
+            sort-unordered-collections (fn [r]
+                                         (-> r
+                                             (update :phone sort)
+                                             (update :dept sort)))
+
+            ts-before-change (* 1000 (.getTime (java.util.Date.)))
             r-s @(m/change
                   tu/*model-session*
                   m
                   record
                   new-record
-                  { ::t/minimal-change true})
+                  {::t/minimal-change true
+                   ;; force a timestamp we can verify
+                   :using {:timestamp ts-before-change}})
 
             stmts (c.session/spy-log tu/*model-session*)]
 
@@ -332,8 +340,9 @@
                (fetch-record :mups_unique_lookup_secondaries_test_by_thing
                              [:org_id :thing] [org-id "blah"])))
         (is (= new-record
-               (fetch-record :mups_unique_lookup_secondaries_test_by_thing
-                             [:org_id :thing] [org-id "blarghle"])))
+               (sort-unordered-collections
+                (fetch-record :mups_unique_lookup_secondaries_test_by_thing
+                              [:org_id :thing] [org-id "blarghle"]))))
 
         (is (= nil
                (fetch-record :mups_unique_lookup_secondaries_test_by_title
@@ -367,15 +376,19 @@
 
 
         ;; primary record change without unique-keys
+        ;; using update to avoid collection column tombstones
         (is (match-statement
-             {:insert :mups_unique_lookup_secondaries_test,
-              :values {:org_id org-id,
-                       :id id,
-                       :stuff "mobargh",
-                       :title "dr",
-                       :thing "blarghle",
-                       :tag #{"slower" "slow"},
-                       :dept ["sales" "dev"]}}
+             {:update :mups_unique_lookup_secondaries_test,
+              :set-columns [[:stuff "mobargh"]
+                            [:title "dr"]
+                            [:thing "blarghle"]
+                            [:tag [+ #{"slower"}]]
+                            [:tag [- #{"quick"}]]
+                            [:dept [+ ["sales"]]]
+                            [:dept [- ["hr"]]]]
+              :where [[:= :org_id org-id]
+                      [:= :id id]]
+              :using [[:timestamp ts-before-change]]}
              stmts))
 
         ;; delete old nick lookup LWT
@@ -441,13 +454,14 @@
         ;; primary record change unique keys
         (is (match-statement
              {:update :mups_unique_lookup_secondaries_test,
-              :set-columns
-              {:email #{"foo@foo.com" "foo@baz.com"},
-               :nick "fooble",
-               :phone ["789" "456"]},
-              :where
-              [[:= :org_id org-id]
-               [:= :id id]]}
+              :set-columns [[:email [+ #{"foo@foo.com"}]]
+                            [:email [- #{"foo@bar.com"}]]
+                            [:nick "fooble"]
+                            [:phone [+ ["789"]]]
+                            [:phone [- ["123"]]]]
+              :where [[:= :org_id org-id]
+                      [:= :id id]]
+              :using [[:timestamp ts-before-change]]}
              stmts))
 
         ;; delete mr title lookup
@@ -510,17 +524,18 @@
              stmts))
 
         ;; insert blarghle thing secondary
+        ;; using update to avoid collection column tombstones
         (is (match-statement
-             {:insert :mups_unique_lookup_secondaries_test_by_thing,
-              :values
-              {:email #{"foo@foo.com" "foo@baz.com"},
-               :nick "fooble",
-               :stuff "mobargh",
-               :phone ["789" "456"],
-               :org_id org-id,
-               :title "dr",
-               :thing "blarghle",
-               :id id,
-               :tag #{"slower" "slow"},
-               :dept ["sales" "dev"]}}
+             {:update :mups_unique_lookup_secondaries_test_by_thing,
+              :set-columns [[:email [+ #{"foo@foo.com" "foo@baz.com"}]]
+                            [:nick "fooble"]
+                            [:stuff "mobargh"]
+                            [:phone [+ ["789" "456"]]]
+                            [:title "dr"]
+                            [:id id]
+                            [:tag [+ #{"slower" "slow"}]]
+                            [:dept [+ ["dev" "sales"]]]]
+              :where [[:= :org_id org-id]
+                      [:= :thing "blarghle"]]
+              :using [[:timestamp ts-before-change]]}
              stmts))))))

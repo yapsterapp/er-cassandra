@@ -232,6 +232,35 @@
                        (assoc-when :values update-values)))]
      (return resp))))
 
+(defn update-buffered
+  "update a stream of records"
+  ([^Session session table key record-stream]
+   (update-buffered session
+                    table
+                    key
+                    record-stream
+                    {:buffer-size 25}))
+
+  ([^Session session
+    table
+    key
+    record-stream
+    {:keys [buffer-size] :as opts}]
+   (->> record-stream
+        (stream/map
+         (fn [r]
+           (update session
+                   table
+                   key
+                   r
+                   (dissoc opts :buffer-size))))
+        (stream/realize-each)
+        ((fn [s]
+           (if buffer-size
+             (stream/buffer buffer-size s)
+             s)))
+        (return deferred-context))))
+
 (defn delete
   "delete a record"
 
@@ -266,3 +295,32 @@
                        (assoc-when :values delete-values)))]
      (return
       resp))))
+
+(defn delete-buffered
+  "delete a stream of records"
+  ([^Session session table key record-or-key-value-stream]
+   (delete-buffered session
+                    table
+                    key
+                    record-or-key-value-stream
+                    {:buffer-size 25}))
+
+  ([^Session session
+    table
+    key
+    record-or-key-value-stream
+    {:keys [buffer-size] :as opts}]
+   (->> record-or-key-value-stream
+        (stream/map
+         (fn [r-or-kv]
+           (delete session
+                   table
+                   key
+                   r-or-kv
+                   (dissoc opts :buffer-size))))
+        (stream/realize-each)
+        ((fn [s]
+           (if buffer-size
+             (stream/buffer buffer-size s)
+             s)))
+        (return deferred-context))))

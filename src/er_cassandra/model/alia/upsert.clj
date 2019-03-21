@@ -40,14 +40,26 @@
    and since we don't want any :where or LWTs they are forbidden by schema"
   [session :- ModelSession
    entity :- Entity
-   table :- t/TableSchema
+   {versioned? :versioned?
+    :as table} :- t/TableSchema
    record :- t/RecordSchema
    opts :- fns/UpsertUsingOnlyOptsWithTimestampSchema]
   (with-context deferred-context
-    (mlet [insert-result (r/insert session
-                                   (:name table)
-                                   record
-                                   opts)]
+    (mlet [:let [has-collection-cols? (some
+                                       (comp t/is-collection-column-diff? second)
+                                       record)]
+           insert-result (if (and (not versioned?) has-collection-cols?)
+                           (r/update
+                            session
+                            (:name table)
+                            (:key table)
+                            record
+                            opts)
+                           (r/insert
+                            session
+                            (:name table)
+                            record
+                            opts))]
       (return
        [:upserted record]))))
 
@@ -447,8 +459,10 @@
      (pair response-record
            acquire-failures))))
 
-(s/defn upsert*
-  "upsert a single instance
+(s/defn ^:deprecated upsert*
+  "**DEPRECATED** use `select-upsert` or `change` instead
+
+   upsert a single instance
 
    convenience fn - if the entity has any maintained foreign keys it borks"
   [session :- ModelSession
@@ -458,6 +472,34 @@
   (ddo [:let [has-maintained-foreign-keys?
               (not-empty
                (t/all-maintained-foreign-key-cols entity))]
+
+        record-ser
+        (cb/chain-save-callbacks
+         session
+         entity
+         [:before-save :serialize]
+         nil
+         record
+         opts)
+
+        :let [collection-cols (->> record-ser
+                                   (filter (comp coll? second))
+                                   (map first)
+                                   set)
+              has-collection-cols? (seq collection-cols)]
+
+        _ (monad/when has-collection-cols?
+            (throw
+             (pr/error-ex
+              :upsert/unsafe-upsert-of-collection-column
+              {:message (str "this entity has "
+                             "un-serialized collection columns "
+                             "for which upsert is not a safe operation. "
+                             "either use select-upsert or change")
+               :entitiy (with-out-str (pprint entity))
+               :record record
+               :collection-columns collection-cols
+               :opts opts})))
 
         _ (monad/when has-maintained-foreign-keys?
             (throw

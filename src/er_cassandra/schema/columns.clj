@@ -52,17 +52,18 @@
          :as col-md} (cass.sch/column-metadata
                       cassandra
                       table
-                      column)]
+                      column)
+        type-kw (keyword type)]
     (cond
       (nil? col-md)
-      (alter-table-add-column cassandra table column type)
+      (alter-table-add-column cassandra table column type-kw)
 
       (and (some? col-md)
-           (= col-type (name type)))
+           (= col-type (name type-kw)))
       (return
        [::column-exists {:table table
                          :column column
-                         :type type}])
+                         :type type-kw}])
 
       :else
       (prpr/error-pr
