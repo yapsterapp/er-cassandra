@@ -13,8 +13,8 @@
                org.clojure/tools.logging]
 
   :dependencies [[org.clojure/clojure "_"]
+                 [org.clojure/tools.cli "_"]
 
-                 [org.clojure/tools.cli "0.4.1"]
                  [org.clojure/core.match "0.3.0-alpha4"]
                  [org.clojure/math.combinatorics "0.1.4"]
                  [prismatic/plumbing "0.5.5"
