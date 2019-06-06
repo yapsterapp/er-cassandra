@@ -126,7 +126,10 @@
              (sut/insert-statement
               :foos
               {:id "id"
-               :foo {:intersection nil + [10 20] - [30 40]}}
+               :foo {:intersection []
+                     :prepended [10]
+                     :appended [20]
+                     :removed [30 40]}}
               {})))
       (is (= {:insert :foos
               :values {:id "id"
@@ -134,7 +137,9 @@
              (sut/insert-statement
               :foos
               {:id "id"
-               :foo {:intersection [10] + [20] - [200]}}
+               :foo {:intersection [10]
+                     :appended [20]
+                     :removed [200]}}
               {})))))
   (testing "with ttl"
     (is (= {:insert :foos
@@ -279,26 +284,27 @@
                           {:blah true}))))
   (testing "collection coll diffs"
     (is (= {:update :foos
-            :set-columns [[:foo [+ [10 20]]]
-                          [:foo [- [1  2]]]]
+            :set-columns [[:foo [10 20]]]
             :where [[:= :id 100]]}
            (sut/update-statement
             :foos
             [:id]
             {:id 100
-             :foo {+ [10 20]
-                   - [1  2]}}
+             :foo {:intersection []
+                   :appended [10 20]
+                   :removed  [1  2]}}
             {})))
     (is (= {:update :foos
             :set-columns [[:bar 1]
-                          [:foo [- #{2}]]]
+                          [:foo #{}]]
             :where [[:= :id 100]]}
            (sut/update-statement
             :foos
             [:id]
             {:id 100
              :bar 1
-             :foo {- #{2}}}
+             :foo {:intersection #{}
+                   :removed #{2}}}
             {})))
     (is (= {:update :foos
             :set-columns [[:bar 1]
@@ -309,7 +315,34 @@
             [:id]
             {:id 100
              :bar 1
-             :foo {+ {"foo" 2}}}
+             :foo {:intersection {"baz" 1}
+                   :appended {"foo" 2}}}
+            {})))
+    (is (= {:update :foos
+            :set-columns [[:bar 1]
+                          [:foo [[0] +]]]
+            :where [[:= :id 100]]}
+           (sut/update-statement
+            :foos
+            [:id]
+            {:id 100
+             :bar 1
+             :foo {:intersection [1 2 3]
+                   :prepended [0]}}
+            {})))
+    (is (= {:update :foos
+            :set-columns [[:bar 1]
+                          [:foo [[0] +]]
+                          [:foo [+ [4]]]]
+            :where [[:= :id 100]]}
+           (sut/update-statement
+            :foos
+            [:id]
+            {:id 100
+             :bar 1
+             :foo {:intersection [1 2 3]
+                   :prepended [0]
+                   :appended [4]}}
             {})))))
 
 (deftest delete-statement-test
@@ -454,10 +487,21 @@
              #"does not match schema"
              (prepare-update-statement {:blah true}))))))
   (testing "collection coll diffs"
-    (let [cql {:update :foos
-               :set-columns [[:foo [+ :set_add_foo]]
-                             [:foo [- :set_rem_foo]]]
-               :where [[:= :id :where_id]]}
+    (let [base-update {:update :foos
+                       :where [[:= :id :where_id]]}
+          append-to-col-cql (merge
+                             base-update
+                             {:set-columns [[:foo [+ :set_append_foo]]]})
+          prepend-to-col-cql (merge
+                              base-update
+                              {:set-columns [[:foo [:set_prepend_foo +]]]})
+          add-to-col-cql (merge
+                          base-update
+                          {:set-columns [[:foo [:set_prepend_foo +]]
+                                         [:foo [+ :set_append_foo]]]})
+          set-col-cql (merge
+                       base-update
+                       {:set-columns [[:foo :set_foo]]})
           base-record {:id 100}
           prepare-update-statement (fn [record]
                                      (sut/prepare-update-statement
@@ -465,13 +509,28 @@
                                       [:id]
                                       (merge base-record record)
                                       {}))]
-      (is (= cql (prepare-update-statement
-                  {:foo {+ {:a 20}}})))
-      (is (= cql (prepare-update-statement
-                  {:foo {- #{10}}})))
-      (is (= cql (prepare-update-statement
-                  {:foo {+ [10 20]
-                         - [1  2]}}))))))
+      (is (= append-to-col-cql
+             (prepare-update-statement
+              {:foo {:intersection {}
+                     :appended {:a 20}}})))
+      (is (= prepend-to-col-cql
+             (prepare-update-statement
+              {:foo {:intersection [1 2 3]
+                     :prepended [0]}})))
+      (is (= add-to-col-cql
+             (prepare-update-statement
+              {:foo {:intersection [1 2 3]
+                     :prepended [0]
+                     :appended [4]}})))
+      (is (= set-col-cql
+             (prepare-update-statement
+              {:foo {:intersection #{}
+                     :removed #{10}}})))
+      (is (= set-col-cql
+             (prepare-update-statement
+              {:foo {:intersection [0]
+                     :appended [10 20]
+                     :removed  [1  2]}}))))))
 
 (deftest prepare-update-values-test
   (testing "simple record"
@@ -521,22 +580,32 @@
                                       [:id]
                                       (merge base-record record)
                                       {}))]
-      (is (= (assoc base-values
-                    :set_add_foo {:a 20}
-                    :set_rem_foo nil)
+
+      (is (= (assoc base-values :set_append_foo {:a 20})
              (prepare-update-values
-              {:foo {+ {:a 20}}})))
-      (is (= (assoc base-values
-                    :set_add_foo nil
-                    :set_rem_foo #{10})
+              {:foo {:intersection {}
+                     :appended {:a 20}}})))
+      (is (= (assoc base-values :set_prepend_foo [0])
              (prepare-update-values
-              {:foo {- #{10}}})))
-      (is (= (assoc base-values
-                    :set_add_foo [10 20]
-                    :set_rem_foo [1 2])
+              {:foo {:intersection [1 2 3]
+                     :prepended [0]}})))
+      (is (= (assoc
+              base-values
+              :set_prepend_foo [0]
+              :set_append_foo [4])
              (prepare-update-values
-              {:foo {+ [10 20]
-                     - [1  2]}}))))))
+              {:foo {:intersection [1 2 3]
+                     :prepended [0]
+                     :appended [4]}})))
+      (is (= (assoc base-values :set_foo #{})
+             (prepare-update-values
+              {:foo {:intersection #{}
+                     :removed #{10}}})))
+      (is (= (assoc base-values :set_foo [0 10 20])
+             (prepare-update-values
+              {:foo {:intersection [0]
+                     :appended [10 20]
+                     :removed  [1  2]}}))))))
 
 (deftest prepare-record-values-test
   (testing "simple record"
@@ -562,10 +631,14 @@
              (sut/prepare-record-values
               :set
               {:id 100
-               :foo {:intersection nil + [10 20] - [30 40]}})))
+               :foo {:intersection []
+                     :appended [10 20]
+                     :removed  [30 40]}})))
       (is (= {:set_id 100
               :set_foo [10 20]}
              (sut/prepare-record-values
               :set
               {:id 100
-               :foo {:intersection [10] + [20] - [200]}}))))))
+               :foo {:intersection [10]
+                     :appended [20]
+                     :removed  [200]}}))))))

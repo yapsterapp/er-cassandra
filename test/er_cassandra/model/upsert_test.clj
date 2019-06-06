@@ -29,7 +29,7 @@
   []
   (tu/create-table
    :mups_unique_lookup_secondaries_test
-   "(org_id timeuuid, id timeuuid, nick text, email set<text>, phone list<text>, thing text, title text, tag set<text>, dept list<text>, stuff text, primary key (org_id, id))")
+   "(org_id timeuuid, id timeuuid, nick text, email set<text>, phone list<text>, thing text, title text, tag set<text>, dept map<text, int>, stuff text, primary key (org_id, id))")
 
   (tu/create-table
    :mups_unique_lookup_secondaries_test_by_nick
@@ -43,7 +43,7 @@
 
   (tu/create-table
    :mups_unique_lookup_secondaries_test_by_thing
-   "(org_id timeuuid, id timeuuid, nick text, email set<text>, phone list<text>, thing text, title text, tag set<text>, dept list<text>, stuff text, primary key (org_id, thing))")
+   "(org_id timeuuid, id timeuuid, nick text, email set<text>, phone list<text>, thing text, title text, tag set<text>, dept map<text, int>, stuff text, primary key (org_id, thing))")
 
   (tu/create-table
    :mups_unique_lookup_secondaries_test_by_title
@@ -74,7 +74,7 @@
                      :collections {:tag :set}}
                     {:name :mups_unique_lookup_secondaries_test_by_dept
                      :key [:dept]
-                     :collections {:dept :list}}]}))
+                     :collections {:dept :map}}]}))
 
 (deftest upsert-test
   (let [m (create-simple-entity)
@@ -193,7 +193,7 @@
 
                 :title "mr"
                 :tag #{"quick" "slow"}
-                :dept ["hr" "dev"]}]
+                :dept {"hr" 1, "dev" 2}}]
 
     (testing "insert with minimal change does the insert"
       (let [_ (c.session/reset-spy-log tu/*model-session*)
@@ -274,18 +274,13 @@
 
                         :nick "fooble"
                         :email #{"foo@foo.com" "foo@baz.com"}
-                        :phone (sort ["789" "456"])
+                        :phone ["789" "456"]
 
                         :thing "blarghle"
 
                         :title "dr"
                         :tag #{"slower" "slow"}
-                        :dept (sort ["sales" "dev"])}
-
-            sort-unordered-collections (fn [r]
-                                         (-> r
-                                             (update :phone sort)
-                                             (update :dept sort)))
+                        :dept {"sales" 1, "dev" 2}}
 
             ts-before-change (* 1000 (.getTime (java.util.Date.)))
             r-s @(m/change
@@ -340,9 +335,8 @@
                (fetch-record :mups_unique_lookup_secondaries_test_by_thing
                              [:org_id :thing] [org-id "blah"])))
         (is (= new-record
-               (sort-unordered-collections
-                (fetch-record :mups_unique_lookup_secondaries_test_by_thing
-                              [:org_id :thing] [org-id "blarghle"]))))
+               (fetch-record :mups_unique_lookup_secondaries_test_by_thing
+                             [:org_id :thing] [org-id "blarghle"])))
 
         (is (= nil
                (fetch-record :mups_unique_lookup_secondaries_test_by_title
@@ -382,10 +376,8 @@
               :set-columns [[:stuff "mobargh"]
                             [:title "dr"]
                             [:thing "blarghle"]
-                            [:tag [+ #{"slower"}]]
-                            [:tag [- #{"quick"}]]
-                            [:dept [+ ["sales"]]]
-                            [:dept [- ["hr"]]]]
+                            [:tag #{"slower" "slow"}]
+                            [:dept {"sales" 1, "dev" 2}]]
               :where [[:= :org_id org-id]
                       [:= :id id]]
               :using [[:timestamp ts-before-change]]}
@@ -454,11 +446,9 @@
         ;; primary record change unique keys
         (is (match-statement
              {:update :mups_unique_lookup_secondaries_test,
-              :set-columns [[:email [+ #{"foo@foo.com"}]]
-                            [:email [- #{"foo@bar.com"}]]
+              :set-columns [[:email #{"foo@foo.com" "foo@baz.com"}]
                             [:nick "fooble"]
-                            [:phone [+ ["789"]]]
-                            [:phone [- ["123"]]]]
+                            [:phone ["789" "456"]]]
               :where [[:= :org_id org-id]
                       [:= :id id]]
               :using [[:timestamp ts-before-change]]}
@@ -534,8 +524,146 @@
                             [:title "dr"]
                             [:id id]
                             [:tag [+ #{"slower" "slow"}]]
-                            [:dept [+ ["dev" "sales"]]]]
+                            [:dept [+ {"sales" 1, "dev" 2}]]]
               :where [[:= :org_id org-id]
                       [:= :thing "blarghle"]]
+              :using [[:timestamp ts-before-change]]}
+             stmts))))))
+
+(deftest minimal-upsert-with-collection-columns-test
+  (let [m (create-unique-lookup-secondaries-entity)
+        [org-id id] [(uuid/v1) (uuid/v1)]
+
+        record {:org_id org-id
+                :id id
+
+                :stuff "whateva"
+
+                :nick "foo"
+                :email #{"foo@bar.com" "foo@baz.com"}
+                :phone ["123" "456"]
+
+                :thing "blah"
+
+                :title "mr"
+                :tag #{"quick" "slow"}
+                :dept {"hr" 0, "dev" 1}}
+
+        r-s @(m/change
+              tu/*model-session*
+              m
+              nil
+              record
+              {::t/minimal-change true})
+
+        alter-record-and-return-stmts
+        (fn [update-fn]
+          (let [_ (c.session/reset-spy-log tu/*model-session*)
+
+                old-record (fetch-record
+                            :mups_unique_lookup_secondaries_test
+                            [:org_id :id]
+                            [org-id id])
+
+                new-record (update-fn old-record)
+
+                ts-before-change (* 1000 (.getTime (java.util.Date.)))
+                r-s @(m/change
+                      tu/*model-session*
+                      m
+                      old-record
+                      new-record
+                      {::t/minimal-change true
+                       ;; force a timestamp we can verify
+                       :using {:timestamp ts-before-change}})
+
+                stmts (c.session/spy-log tu/*model-session*)
+
+                db-record (fetch-record
+                           :mups_unique_lookup_secondaries_test
+                           [:org_id :id]
+                           [org-id id])]
+            {:ts-before ts-before-change
+             :old-record old-record
+             :new-record new-record
+             :db-record db-record
+             :stmts stmts}))]
+    (testing "prepending and appending to lists"
+      (let [{ts-before-change :ts-before
+             stmts :stmts
+             {updated-phone :phone} :db-record
+             :as _} (alter-record-and-return-stmts
+                     (fn [r]
+                       (update r :phone #(concat ["000"] % ["789"]))))]
+        (is (= ["000" "123" "456" "789"] updated-phone))
+        (is (match-statement
+             {:update :mups_unique_lookup_secondaries_test
+              :set-columns [[:phone [["000"] +]]
+                            [:phone [+ ["789"]]]]
+              :where [[:= :org_id org-id]
+                      [:= :id id]]
+              :using [[:timestamp ts-before-change]]}
+             stmts))))
+    (testing "adding to and removing from lists"
+      (let [{ts-before-change :ts-before
+             stmts :stmts
+             {updated-phone :phone} :db-record
+             :as _} (alter-record-and-return-stmts
+                     (fn [r]
+                       (update r :phone #(->> % (remove #{"123"}) (cons "059")))))
+            expected ["059" "000" "456" "789"]]
+        (is (= expected updated-phone))
+        (is (match-statement
+             {:update :mups_unique_lookup_secondaries_test
+              :set-columns [[:phone expected]]
+              :where [[:= :org_id org-id]
+                      [:= :id id]]
+              :using [[:timestamp ts-before-change]]}
+             stmts))))
+    (testing "reordering lists"
+      (let [{ts-before-change :ts-before
+             stmts :stmts
+             {updated-phone :phone} :db-record
+             :as _} (alter-record-and-return-stmts
+                     (fn [r]
+                       (update r :phone sort)))
+            expected ["000" "059" "456" "789"]]
+        (is (= expected updated-phone))
+        (is (match-statement
+             {:update :mups_unique_lookup_secondaries_test
+              :set-columns [[:phone expected]]
+              :where [[:= :org_id org-id]
+                      [:= :id id]]
+              :using [[:timestamp ts-before-change]]}
+             stmts))))
+    (testing "only adding to maps"
+      (let [{ts-before-change :ts-before
+             stmts :stmts
+             {updated-dept :dept} :db-record
+             :as _} (alter-record-and-return-stmts
+                     (fn [r]
+                       (update r :dept assoc "mgnt" 2)))]
+        (is (= {"hr" 0, "dev" 1, "mgnt" 2} updated-dept))
+        (is (match-statement
+             {:update :mups_unique_lookup_secondaries_test
+              :set-columns [[:dept [+ {"mgnt" 2}]]]
+              :where [[:= :org_id org-id]
+                      [:= :id id]]
+              :using [[:timestamp ts-before-change]]}
+             stmts))))
+    (testing "adding to and removing from maps"
+      (let [{ts-before-change :ts-before
+             stmts :stmts
+             {updated-dept :dept} :db-record
+             :as _} (alter-record-and-return-stmts
+                     (fn [r]
+                       (update r :dept #(-> % (dissoc "mgnt") (assoc "sales" 2)))))
+            expected {"hr" 0, "dev" 1, "sales" 2}]
+        (is (= expected updated-dept))
+        (is (match-statement
+             {:update :mups_unique_lookup_secondaries_test
+              :set-columns [[:dept expected]]
+              :where [[:= :org_id org-id]
+                      [:= :id id]]
               :using [[:timestamp ts-before-change]]}
              stmts))))))

@@ -9,75 +9,81 @@
   (:import
    [er_cassandra.model.types Entity]))
 
-(defn non-positional-diff
-  "Returns a [[diff]] of the unique values in the given collections. If the
-  given collections don't have unique value constraints—e.g. aren’t maps or
-  sets—they will be coerced to sets before being diffed with the results
-  returned as a matching collection type to the input.
+(defn contains-subseq?
+  "Returns the starting index of `ss` within `xs` or `nil` if `xs` does not
+  contain `ss`
 
-  This gives the `fn` it’s non-positional characteristics: collections are
-  compared based on the contents but not the order of those contents even if the
-  collections have ordering semantics.
+      (contains-subseq? [1 2 3 4 5 6] [1 2 3])
+      => 0
 
-  Returns a [[diff]] three element tuple of:
+      (contains-subseq? [1 2 3 4 5 6] [3 4 5])
+      => 2
 
-      [<key/value pairs or values only in `x`>
-      [<key/value pairs or values only in `y`>
-       <key/value pairs or values common to both>]
+      (contains-subseq? [3 4 5] [5 4])
+      => nil
 
-  Given two maps this `fn` behaves as per a normal [[diff]]:
+  Useful if you need to determine if a list/vector has been prepended and/or
+  appended to but retains all of its original elements in the same order."
+  ([xs ss]
+   (contains-subseq? 0 (vec xs) (vec ss)))
+  ([i xs ss]
+   (cond
+     (> (count ss) (count xs)) nil
+     (= ss (subvec xs 0 (count ss))) i
+     :else (recur (inc i) (subvec xs 1) ss))))
 
-      (non-positional-diff
-       {:a 1
-        :b 2
-        :c 3}
-       {:a 2
-        :b 2
-        :d 4})
-      => [;; only in `x`
-          {:a 1
-           :c 3}
-          ;; only in `y`
-          {:a 2
-           :d 4}
-          ;; common
-          {:b 2}]
+(defn cassandra-list-collection-diff
+  [empty x y]
+  (let [subset-offset (contains-subseq? y x)
+        ensure-type-match (if (vector? empty)
+                            #(vec %)
+                            #(if (list? %) % (apply list %)))]
+    (t/map->CollectionColumnDiff
+     (if subset-offset
+       {:intersection (ensure-type-match x)
+        :prepended (ensure-type-match (take subset-offset y))
+        :appended (ensure-type-match (drop (+ subset-offset (count x)) y))
+        :removed empty}
+       {:intersection empty
+        :prepended empty
+        :appended (ensure-type-match y)
+        :removed (ensure-type-match x)}))))
 
-  Given two `seq`s that can be coerced to Sets the behavior differs:
+(defn cassandra-mapset-collection-diff
+  [empty x y]
+  (let [[removed added intersection] (diff x y)
+        added-keyset (if (map? added)
+                       (-> added keys set)
+                       (or added empty))
+        removed-keyset (if (map? removed)
+                         (-> removed
+                             keys
+                             set
+                             ;; need to omit 'only in x' keys
+                             ;; for which we have a new value in y
+                             (set/difference added-keyset))
+                         (or removed #{}))]
+    (t/map->CollectionColumnDiff
+     {:intersection (into empty intersection)
+      :prepended empty
+      :appended (into empty added)
+      :removed removed-keyset})))
 
-      (non-positional-diff
-       [1 2 3 4]
-       '(2 3 1 5))
-      => [;; only in `x`
-          [4]
-          ;; only in `y`
-          [5]
-          ;; common
-          [1 2 3]]
-
-  Compared to a traditional [[diff]] which would yield:
-
-      (diff
-       [1 2 3 4]
-       '(2 3 1 5))
-      => [;; no values are in common positions so the entire collection is ‘different’
-          [1 2 3 4]
-          [2 3 1 5]
-          nil]
-
-  Note that in the above example the returned tuple contains vectors as the
-  first argument, `x`, is a vector."
+(defn collection-diff
   [x y]
-  (let [coll-x (if (map? x) x (set x))
-        coll-y (if (map? y) y (set y))
-        empty (or (empty x) (empty y))
-        results (diff coll-x coll-y)]
-    (map
-     (fn [xs]
-       (if (or (map? x) (set? x))
-         xs
-         (into empty xs)))
-     results)))
+  (let [empty (or (empty x) (empty y))
+        list-like? (sequential? empty)]
+    (if list-like?
+      (cassandra-list-collection-diff empty x y)
+      (cassandra-mapset-collection-diff empty x y))))
+
+(defn collection-changed?
+  [{prpnd :prepended
+    appnd :appended
+    rmved :removed}]
+  (or (seq prpnd)
+      (seq appnd)
+      (seq rmved)))
 
 (defn change-cols
   "returns non-key columns which have changes between
@@ -94,57 +100,35 @@
          (filter
           #(not= (get old-record %) (get record %))))))
 
-(defn as-coll-without-nils
-  [xs]
-  (if (or (nil? xs) (map? xs))
-    xs
-    (into
-     (empty xs)
-     (filter identity xs))))
-
 (defn diff-col-value
-  "Given the old and new values for a column returns either:
+  "Given the old and new values for a column returns:
 
-  * The new value, if neither value is a collection.
-  * A [[CollectionColumnDiff]] record if either value is a collection.
+  * nil - if there is no change
+  * [::change new-val] - if neither value is a collection.
+  * [::change <CollectionColumnDiff>] - if either value is a collection.
 
-  The [[CollectionColumnDiff]] record will consist of:
+  The <CollectionColumnDiff> record will consist of:
 
   * `:intersection` the values in both the old and new collection
-  * `+` the values added
-  * `-` the values removed
+  * `:prepended` the values added to the _beginning_ of the collection
+  * `:appended` the values added to the _end_ of the collection
+  * `:removed` the values removed
 
   In all cases the value of the field will be the same collection type as that
   of the underlying column.
 
-  Note that the later two keys above are the Clojure core `fn`s `+` and `-`,
-  these are used as keys as Hayt recognizes them and can translate them to the
-  equivalent CQL.
+  (Note that maps and sets have no concept of a ‘beginning’ or ‘end’ and as such
+  any added values will always be treated as appends.)
 
-  These [[CollectionColumnDiff]] values are used during statement preparation to
-  efficiently construct CQL `SET column = column [+-] values` statement
-  fragments which, as they alter the existing column value rather than replace
-  it, do not result in the generation of tombstone entries."
+  These <CollectionColumnDiff> values are used during statement preparation to
+  construct the efficient—and tombstone avoiding—update statements."
   [old-v new-v]
   (if (or (coll? old-v) (coll? new-v))
-    (let [[removed added intsx] (non-positional-diff old-v new-v)
-          intsx-set (or (as-coll-without-nils intsx) (empty (or old-v new-v)))
-          added-set (as-coll-without-nils added)
-          removed-set (if (map? removed)
-                        (set/difference
-                         (set (keys removed))
-                         (set (keys added)))
-                        (as-coll-without-nils removed))
-          changed? (or (seq added-set) (seq removed-set))]
-      (when changed?
-        (t/map->CollectionColumnDiff
-         (merge
-          {:intersection intsx-set}
-          (when (seq added-set)
-            {+ added-set})
-          (when (seq removed-set)
-            {- removed-set})))))
-    new-v))
+    (let [ccd (collection-diff old-v new-v)]
+      (when (collection-changed? ccd)
+        [::changed ccd]))
+    (when (not= old-v new-v)
+      [::changed new-v])))
 
 (defn minimal-change-for-table
   "return a minimal change record for a table - removing columns
@@ -166,13 +150,8 @@
             change-cols (reduce
                          (fn [rs [k v]]
                            (let [ov (get old-record k)
-                                 dv (diff-col-value ov v)
-                                 niled? (and (nil? v) (some? ov))
-                                 coll-col? (or (coll? ov) (coll? v))
-                                 val-change? (or niled? (some? dv))
-                                 coll-change? (and coll-col? (seq dv))
-                                 real-change? (if coll-col? coll-change? val-change?)]
-                             (if real-change?
+                                 [changed? dv] (diff-col-value ov v)]
+                             (if changed?
                                (assoc rs k dv)
                                rs)))
                          {}
@@ -189,11 +168,11 @@
      (let [ov (get old-record k)
            coll-col? (or (coll? ov) (coll? nv))
            tombstone-nil? (and (nil? ov) (nil? nv))
-           coll-change (when coll-col?
-                         (diff-col-value ov nv))]
+           [coll-changed? coll-change] (when coll-col?
+                                         (diff-col-value ov nv))]
        (cond
          tombstone-nil? rs
-         coll-col? (if (seq coll-change)
+         coll-col? (if coll-changed?
                      (assoc rs k coll-change)
                      rs)
          (or (some? ov) (some? nv)) (assoc rs k nv)

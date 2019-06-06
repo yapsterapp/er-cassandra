@@ -19,14 +19,52 @@
   (:import
    [qbits.hayt.cql CQLRaw CQLFn]))
 
+(s/defn placeholder-kw
+  "a prepared-statement placeholder keyword"
+  [prefix key]
+  (->> key name (str (name prefix) "_") keyword))
+
 (defn full-coll-from-change
   [{intsx :intersection
-    added +}]
-  (cond
-    (empty? intsx) added
-    (empty? added) intsx
-    (map? intsx) (merge intsx added)
-    :else (into intsx added)))
+    prepended :prepended
+    appended :appended}]
+  (reduce into [intsx prepended appended]))
+
+(defn coll-col-diff->update
+  ([rs k ccd]
+   (coll-col-diff->update rs k ccd false))
+  ([rs
+    k
+    {prpnd :prepended
+     appnd :appended
+     remvd :removed
+     :as ccd}
+    ;; I don't like the fact that these options only differ by a single char 😬
+    {prepare? :prepare?
+     prepared? :prepared?}]
+   (let [has-new-elems? (boolean (or (seq prpnd) (seq appnd)))
+         has-removed-elems? (boolean (seq remvd))
+         prpnd-prep-kw (placeholder-kw :set_prepend k)
+         appnd-prep-kw (placeholder-kw :set_append k)
+         set-prep-kw (placeholder-kw :set k)]
+     (if (and has-new-elems? (not has-removed-elems?))
+       (cond-> rs
+         (seq prpnd) (conj
+                      (cond
+                        prepared? [prpnd-prep-kw prpnd]
+                        prepare?  [k [prpnd-prep-kw +]]
+                        :else     [k [prpnd +]]))
+         (seq appnd) (conj
+                      (cond
+                        prepared? [appnd-prep-kw appnd]
+                        prepare?  [k [+ appnd-prep-kw]]
+                        :else     [k [+ appnd]])))
+       (conj
+        rs
+        (cond
+          prepared? [set-prep-kw (full-coll-from-change ccd)]
+          prepare?  [k set-prep-kw]
+          :else     [k (full-coll-from-change ccd)]))))))
 
 (defn combine-where
   [& clauses]
@@ -59,11 +97,6 @@
                (when columns (apply h/columns columns))
                (when order-by (apply h/order-by order-by))
                (when limit (h/limit limit))))))
-
-(s/defn placeholder-kw
-  "a prepared-statement placeholder keyword"
-  [prefix key]
-  (->> key name (str (name prefix) "_") keyword))
 
 (s/defn prepare-record-placeholders
   "replace the values in a record with prepared-statement placeholders"
@@ -231,12 +264,7 @@
         set-cols (reduce
                   (fn [rs [k v]]
                     (if (t/is-collection-column-diff? v)
-                      (apply
-                       conj
-                       rs
-                       (map
-                        (fn [[op vs]] [k [op vs]])
-                        (select-keys v [+ -])))
+                      (coll-col-diff->update rs k v)
                       (conj rs [k v])))
                   []
                   raw-cols)
@@ -255,10 +283,7 @@
   (reduce
    (fn [rs [k v]]
      (if (t/is-collection-column-diff? v)
-       (conj
-        rs
-        [k [+ (placeholder-kw :set_add k)]]
-        [k [- (placeholder-kw :set_rem k)]])
+       (coll-col-diff->update rs k v {:prepare? true})
        (conj rs [k (placeholder-kw :set k)])))
    []
    set-cols))
@@ -268,12 +293,7 @@
   (reduce
    (fn [rs [k v]]
      (if (t/is-collection-column-diff? v)
-       (let [{added +
-              removed -} v]
-         (assoc
-          rs
-          (placeholder-kw :set_add k) added
-          (placeholder-kw :set_rem k) removed))
+       (coll-col-diff->update rs k v {:prepared? true})
        (assoc rs (placeholder-kw :set k) v)))
    {}
    set-cols))

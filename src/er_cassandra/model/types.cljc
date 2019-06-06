@@ -103,14 +103,19 @@
 ;; a diff of old/new values during statement preparation, so that these diffs
 ;; can be easily discernible from ordinary values we use this record type and
 ;; schema:
-(defrecord CollectionColumnDiff [intersection])
+(defrecord CollectionColumnDiff [intersection prepended appended removed])
+
+(def collection-column-diff-keys (-> (map->CollectionColumnDiff {}) keys set))
 
 (s/defschema CollectionColumnDiffSchema
   (s/constrained
    (s/record
     CollectionColumnDiff
-    {:intersection (s/pred coll?)
-     (s/enum + -) (s/pred coll?)})
+    (merge
+     {:intersection (s/pred coll?)}
+     (zipmap
+      (map s/optional-key (disj collection-column-diff-keys :intersection))
+      (repeat (s/maybe (s/pred coll?))))))
    (fn [ccd]
      (let [[first-val & other-vals] (vals ccd)
            first-coll-type (type first-val)]
@@ -124,7 +129,7 @@
    (instance? CollectionColumnDiff v)
    (and
     (map? v)
-    (set/superset? #{:intersection + -} (set (keys v))))))
+    (set/superset? collection-column-diff-keys (set (keys v))))))
 
 (s/defschema MaterializedViewSchema
   {(s/optional-key :view?) s/Bool})

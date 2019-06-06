@@ -6,7 +6,16 @@
    [er-cassandra.model.types :as t]
    [er-cassandra.model.alia.minimal-change :as sut]))
 
-(defn ->CCD [m] (t/map->CollectionColumnDiff m))
+(defn ->CCD
+  [{intsx :intersection
+    :as ccd}]
+  (let [empty (empty intsx)]
+    (t/map->CollectionColumnDiff
+     (merge
+      {:prepended empty
+       :appended empty
+       :removed (if (map? empty) #{} empty)}
+      ccd))))
 
 (defn expect-no-change-for-nil-collection-col
   "empty collections should be treated as equivalent to nil and result in no change"
@@ -32,90 +41,101 @@
       (expect-no-change-for-nil-collection-col fnut {}))
     (testing "with only added elems"
       (testing "(sets)"
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection #{} + #{:foofoo}})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection #{} :appended #{:foofoo}})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo nil}
                 {:org_id 0 :id 10 :foo #{:foofoo}})))
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection #{} + #{:foofoo}})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection #{} :appended #{:foofoo}})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo #{}}
                 {:org_id 0 :id 10 :foo #{:foofoo}}))))
       (testing "(lists)"
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection '() + '(:foofoo)})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection '() :appended '(:foofoo)})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo nil}
                 {:org_id 0 :id 10 :foo '(:foofoo)})))
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection '() + '(:foofoo)})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection '() :appended '(:foofoo)})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo '()}
                 {:org_id 0 :id 10 :foo '(:foofoo)}))))
+      ;; note: not extensively testing lists as the paths should be the same as for vectors
       (testing "(vectors)"
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection [] + [:foofoo]})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection [] :appended [:foofoo]})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo nil}
                 {:org_id 0 :id 10 :foo [:foofoo]})))
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection [] + [:foofoo]})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection [] :appended [:foofoo]})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo []}
-                {:org_id 0 :id 10 :foo [:foofoo]}))))
+                {:org_id 0 :id 10 :foo [:foofoo]})))
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection [:foofoo] :appended [:barbar]})}
+               (fnut
+                {:key [[:org_id] :id]}
+                {:org_id 0 :id 10 :foo [:foofoo]}
+                {:org_id 0 :id 10 :foo [:foofoo :barbar]})))
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection [:foofoo] :prepended [:bazbaz]})}
+               (fnut
+                {:key [[:org_id] :id]}
+                {:org_id 0 :id 10 :foo [:foofoo]}
+                {:org_id 0 :id 10 :foo [:bazbaz :foofoo]}))))
       (testing "(maps)"
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection {} + {:foofoo 10}})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection {} :appended {:foofoo 10}})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo nil}
                 {:org_id 0 :id 10 :foo {:foofoo 10}})))
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection {} + {:foofoo 10}})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection {} :appended {:foofoo 10}})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo {}}
                 {:org_id 0 :id 10 :foo {:foofoo 10}})))))
     (testing "with only removed elems"
       (testing "(sets)"
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection #{} - #{:foofoo}})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection #{} :removed #{:foofoo}})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo #{:foofoo}}
                 {:org_id 0 :id 10 :foo nil})))
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection #{} - #{:foofoo}})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection #{} :removed #{:foofoo}})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo #{:foofoo}}
                 {:org_id 0 :id 10 :foo #{}}))))
       (testing "(lists)"
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection '() - '(:foofoo)})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection '() :removed '(:foofoo)})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo '(:foofoo)}
                 {:org_id 0 :id 10 :foo nil})))
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection '() - '(:foofoo)})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection '() :removed '(:foofoo)})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo '(:foofoo)}
                 {:org_id 0 :id 10 :foo '()}))))
       (testing "(vectors)"
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection [] - [:foofoo]})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection [] :removed [:foofoo]})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo [:foofoo]}
                 {:org_id 0 :id 10 :foo nil})))
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection [] - [:foofoo]})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection [] :removed [:foofoo]})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo [:foofoo]}
                 {:org_id 0 :id 10 :foo []}))))
       (testing "(maps)"
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection {} - #{:foofoo}})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection {} :removed #{:foofoo}})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo {:foofoo 10}}
                 {:org_id 0 :id 10 :foo nil})))
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection {} - #{:foofoo}})}
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection {} :removed #{:foofoo}})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo {:foofoo 10}}
@@ -123,33 +143,53 @@
     (testing "with added removed and kept elems"
       (testing "(sets)"
         (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection #{:barbaz}
-                                              + #{:foofoo}
-                                              - #{:barbar}})}
+                                              :appended #{:foofoo}
+                                              :removed #{:barbar}})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo #{:barbaz :barbar}}
                 {:org_id 0 :id 10 :foo #{:barbaz :foofoo}}))))
       (testing "(lists)"
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection '(:barbaz)
-                                              + '(:foofoo)
-                                              - '(:barbar)})}
+        ;; lists that aren't complete supersets of the prior value are replaced in whole
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection '()
+                                              :appended '(:barbar :foofoo)
+                                              :removed '(:barbaz :barbar)})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo '(:barbaz :barbar)}
-                {:org_id 0 :id 10 :foo '(:barbaz :foofoo)}))))
+                {:org_id 0 :id 10 :foo '(:barbar :foofoo)})))
+        ;; lists that are complete supersets of the prior value have things prepended/appended
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection '(:barbar :foofoo)
+                                              :prepended '(:barbaz)
+                                              :appended '(:foobar)
+                                              :removed '()})}
+               (fnut
+                {:key [[:org_id] :id]}
+                {:org_id 0 :id 10 :foo '(:barbar :foofoo)}
+                {:org_id 0 :id 10 :foo '(:barbaz :barbar :foofoo :foobar)}))))
       (testing "(vectors)"
-        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection [:barbaz]
-                                              + [:foofoo]
-                                              - [:barbar]})}
+        ;; vectors that aren't complete supersets of the prior value are replaced in whole
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection []
+                                              :appended [:barbar :foofoo]
+                                              :removed [:barbaz :barbar]})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo [:barbaz :barbar]}
-                {:org_id 0 :id 10 :foo [:barbaz :foofoo]}))))
+                {:org_id 0 :id 10 :foo [:barbar :foofoo]})))
+        ;; vectors that are complete supersets of the prior value have things prepended/appended
+        (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection [:barbar :foofoo]
+                                              :prepended [:barbaz]
+                                              :appended [:foobar]
+                                              :removed []})}
+               (fnut
+                {:key [[:org_id] :id]}
+                {:org_id 0 :id 10 :foo [:barbar :foofoo]}
+                {:org_id 0 :id 10 :foo [:barbaz :barbar :foofoo :foobar]}))))
       (testing "(maps)"
         (is (= {:org_id 0 :id 10 :foo (->CCD {:intersection {:barbaz 50}
-                                              + {:foofoo 10
-                                                 :bazbaz 30}
-                                              - #{:barbar}})}
+                                              :appended {:foofoo 10
+                                                         :bazbaz 30}
+                                              :removed #{:barbar}})}
                (fnut
                 {:key [[:org_id] :id]}
                 {:org_id 0 :id 10 :foo {:barbaz 50 :bazbaz 20 :barbar 20}}
