@@ -204,12 +204,20 @@
          sort
          vec)))
 
+(defn tables-to-truncate [tables]
+  (let [protected-tables #{"schema_migrations" "migrations"} ;; don't truncate these
+        tt-truncate (filterv (fn [t]
+                               (not (contains? protected-tables
+                                               (some-> t name))))
+                             tables)]
+    tt-truncate))
+
 (defn truncate-test-tables
   "given a session truncate the tables given. only works in _test
    keyspaces"
   [session & tables]
   (let [ks (s/keyspace session)
-        tables (filterv #(not= "schema_migrations" (some-> % name)) tables)]
+        tables (tables-to-truncate tables)]
 
     (when-not (str/ends-with? (name ks) "_test")
       (throw (ex-info "truncate-test-tables is only for *_test keyspaces"

@@ -31,6 +31,8 @@
                   :exclusions [org.clojure/clojure
                                org.clojure/tools.logging
                                org.clojure/java.classpath]]
+                 [joplin.core "0.3.11"]
+                 [joplin.cassandra "0.3.11"]
                  [com.cognitect/transit-clj "0.8.313"]
                  [employeerepublic/promisespromises "_"]]
 
