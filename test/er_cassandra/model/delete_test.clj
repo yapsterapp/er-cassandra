@@ -5,11 +5,8 @@
    [clojure.test :as test :refer [deftest is are testing use-fixtures]]
    [schema.test :as st]
    [clj-uuid :as uuid]
-   [manifold.stream :as stream]
-   [er-cassandra.session.alia :as als]
-   [er-cassandra.record :as r]
+   [prpr.stream :as stream]
    [er-cassandra.model :as m]
-   [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]))
 
 (use-fixtures :once st/validate-schemas)

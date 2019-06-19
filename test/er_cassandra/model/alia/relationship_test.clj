@@ -11,14 +11,13 @@
    [clojure.test :as test :refer [deftest is are testing use-fixtures]]
    [schema.test :as st]
    [clj-uuid :as uuid]
-   [manifold.stream :as s]
    [manifold.deferred :as d]
    [er-cassandra.model.model-session :as ms]
-   [er-cassandra.record :as r]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
    [er-cassandra.model.alia.relationship :as rel]
-   [prpr.promise :as pr])
+   [prpr.promise :as pr]
+   [prpr.stream :as s])
   (:import
    [clojure.lang ExceptionInfo]))
 

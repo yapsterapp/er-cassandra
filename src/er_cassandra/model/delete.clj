@@ -4,7 +4,7 @@
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
    [manifold.deferred :as d]
-   [manifold.stream :as s]
+   [prpr.stream :as s]
    [er-cassandra.model.model-session :as ms]
    [er-cassandra.model.util :refer [combine-responses]])
   (:import

@@ -1,20 +1,9 @@
 (ns er-cassandra.record.statement
   (:require
-   [plumbing.core :refer [assoc-when]]
-   [taoensso.timbre :refer [trace debug info warn error]]
    [schema.core :as s]
-   [clojure.set :as set]
-   [manifold.deferred :as d]
-   [manifold.stream :as stream]
    [qbits.hayt :as h]
-   [er-cassandra.util.vector :as v]
    [er-cassandra.key :refer [flatten-key extract-key-equality-clause]]
    [er-cassandra.model.types :as t]
-   [er-cassandra.session :as session]
-   [prpr.promise :as pr :refer [ddo]]
-   [cats.context :refer [with-context]]
-   [cats.core :refer [return]]
-   [cats.labs.manifold :refer [deferred-context]]
    [er-cassandra.record.schema :as sch])
   (:import
    [qbits.hayt.cql CQLRaw CQLFn]))

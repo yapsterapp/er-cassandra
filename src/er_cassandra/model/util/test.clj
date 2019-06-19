@@ -1,17 +1,15 @@
 (ns er-cassandra.model.util.test
   (:require
-   [clojure.test :as t]
-   [taoensso.timbre :refer [trace debug info warn error]]
-   [deferst.core :as deferst :refer [defsystem]]
+   [deferst.core :as deferst]
    [deferst.system :as sys]
-   [slf4j-timbre.configure :as logconf]
-   [manifold.stream :as stream]
+   [er-cassandra.model :as m]
+   [er-cassandra.model.alia.model-session :as ams]
+   [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.record :as r]
    [er-cassandra.session :as s]
-   [er-cassandra.model :as m]
-   [er-cassandra.model.model-session :as ms]
-   [er-cassandra.model.util.timestamp :as ts]
-   [er-cassandra.model.alia.model-session :as ams]))
+   [prpr.stream :as stream]
+   [slf4j-timbre.configure :as logconf]
+   [taoensso.timbre :refer [error]]))
 
 (def ^:dynamic *model-session* nil)
 

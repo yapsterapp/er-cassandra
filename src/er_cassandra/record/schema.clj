@@ -1,5 +1,6 @@
 (ns er-cassandra.record.schema
   (:require
+   qbits.hayt.cql
    [schema.core :as s])
   (:import
    [qbits.hayt.cql CQLRaw CQLFn]))

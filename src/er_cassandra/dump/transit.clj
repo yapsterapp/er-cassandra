@@ -3,18 +3,11 @@
    [cats.core :as monad :refer [return]]
    [cats.labs.manifold :refer [deferred-context]]
    [cognitect.transit :as transit]
-   [clojure.edn :as edn]
    [clojure.java.io :as io]
-   [er-cassandra.record :as cass.r]
-   [er-cassandra.session :as cass.session]
-   [er-cassandra.schema :as cass.schema]
    [prpr.promise :as pr :refer [ddo]]
-   [prpr.stream :as pr.st]
+   [prpr.stream :as stream]
    [manifold.deferred :as d]
-   [manifold.stream :as stream]
-   [qbits.hayt :as h]
-   [taoensso.timbre :as timbre :refer [info]]
-   [taoensso.timbre :refer [warn]])
+   [taoensso.timbre :as timbre :refer [info]])
   (:import
    [com.cognitect.transit WriteHandler ReadHandler]
    [java.io EOFException]))
@@ -75,7 +68,7 @@
                         (fn [r]
                           (swap! counter-a update-counter-fn)
                           (transit/write w r)))
-                       (pr.st/count-all-throw
+                       (stream/count-all-throw
                         ::record-s->transit-file))]
 
     (.close out)

@@ -9,22 +9,19 @@
    [er-cassandra.key :as k]
    [er-cassandra.model.alia.delete :as alia.delete]
    [er-cassandra.model.alia.fn-schema :as fns]
-   [er-cassandra.model.alia.lookup :as l]
+   [er-cassandra.model.alia.lookup :as lookup]
    [er-cassandra.model.alia.minimal-change :as min.ch]
    [er-cassandra.model.alia.unique-key :as unique-key]
    [er-cassandra.model.callbacks :as cb]
    [er-cassandra.model.types :as t]
-   [er-cassandra.model.types.change :as t.change]
-   [er-cassandra.model.util :as util :refer [combine-responses]]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.record :as r]
-   [manifold.stream :as stream]
    [prpr.promise :as pr :refer [ddo]]
-   [schema.core :as s]
-   [er-cassandra.model.alia.lookup :as lookup]
-   [taoensso.timbre :refer [warn error]])
-  (:import er_cassandra.model.model_session.ModelSession
-           er_cassandra.model.types.Entity))
+   [prpr.stream :as stream]
+   [schema.core :as s])
+  (:import
+   [er_cassandra.model.model_session ModelSession]
+   [er_cassandra.model.types Entity]))
 
 (s/defn upsert-index-record
   "insert an index record - doesn't support LWTs, :where etc
@@ -141,7 +138,7 @@
    old-record :- t/MaybeRecordSchema
    new-record :- t/MaybeRecordSchema
    opts :- fns/UpsertOptsWithTimestampSchema]
-  (ddo [s-changes (l/generate-secondary-changes-for-table
+  (ddo [s-changes (lookup/generate-secondary-changes-for-table
                    session
                    entity
                    table

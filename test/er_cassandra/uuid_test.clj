@@ -6,7 +6,7 @@
    [clojure.test :as t :refer [deftest testing is use-fixtures]]
    [clj-time.coerce :as tc]
    [clj-uuid :as uuid]
-   [manifold.stream :as stream]))
+   [prpr.stream :as stream]))
 
 (use-fixtures :each (tu/with-session-fixture))
 

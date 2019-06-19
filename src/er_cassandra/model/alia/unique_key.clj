@@ -1,30 +1,21 @@
 (ns er-cassandra.model.alia.unique-key
   (:require
-   [cats
-    [context :refer [with-context]]
-    [core :as monad :refer [mlet return]]]
+   [cats.core :as monad :refer [return]]
    [cats.labs.manifold :refer [deferred-context]]
    [clojure.set :as set]
-   [er-cassandra
-    [key :as k]
-    [record :as r]]
-   [er-cassandra.model
-    [error :as e]
-    [types :as t]
-    [util :refer [combine-responses create-lookup-record]]]
-   [er-cassandra.model.alia
-    [fn-schema :as fns]
-    [lookup :as l]]
-   [manifold.stream :as stream]
-   [prpr.promise :as pr :refer [ddo]]
-   [schema.core :as s]
-   [taoensso.timbre :refer [info warn]]
-   [er-cassandra.model.alia.minimal-change :as min.ch]
+   [er-cassandra.key :as k]
+   [er-cassandra.model.alia.fn-schema :as fns]
    [er-cassandra.model.alia.lookup :as lookup]
-   [er-cassandra.model.types :as t ])
+   [er-cassandra.model.alia.minimal-change :as min.ch]
+   [er-cassandra.model.error :as e]
+   [er-cassandra.model.types :as t]
+   [er-cassandra.record :as r]
+   [prpr.promise :as pr :refer [ddo]]
+   [prpr.stream :as stream]
+   [schema.core :as s])
   (:import
-   [er_cassandra.model.types Entity]
-   [er_cassandra.model.model_session ModelSession]))
+   [er_cassandra.model.model_session ModelSession]
+   [er_cassandra.model.types Entity]))
 
 (defn applied?
   [lwt-response]

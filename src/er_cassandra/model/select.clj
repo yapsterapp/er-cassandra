@@ -1,16 +1,12 @@
 (ns er-cassandra.model.select
   (:require [manifold.deferred :as d]
-            [manifold.stream :as s]
+            [prpr.stream :as s]
             [cats.core :refer [mlet return]]
             [cats.context :refer [with-context]]
             [cats.labs.manifold :refer [deferred-context]]
             [er-cassandra.model.callbacks :as cb]
             [er-cassandra.model.types :as t]
-            [er-cassandra.model.model-session :as ms]
-            [er-cassandra.model.util
-             :refer [combine-responses
-                     combine-seq-responses]]
-            [er-cassandra.record.sorted-stream :as r.ss])
+            [er-cassandra.model.model-session :as ms])
   (:import
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))

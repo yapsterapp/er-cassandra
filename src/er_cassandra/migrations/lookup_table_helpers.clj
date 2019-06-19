@@ -2,8 +2,8 @@
   (:require
    [clojure.set :as set]
    [er-cassandra.record :as r]
-   [manifold.stream :as stream]
-   [prpr.promise :refer [ddo]]))
+   [prpr.promise :refer [ddo]]
+   [prpr.stream :as stream]))
 
 (defn populate-lookup-table
   [cassandra

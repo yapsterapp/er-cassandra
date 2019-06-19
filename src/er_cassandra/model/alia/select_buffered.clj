@@ -1,17 +1,15 @@
 (ns er-cassandra.model.alia.select-buffered
-  (:require [manifold.deferred :as d]
-            [manifold.stream :as stream]
-            [cats.core :refer [mlet return]]
-            [cats.context :refer [with-context]]
-            [cats.labs.manifold :refer [deferred-context]]
-            [er-cassandra.session :as s]
-            [er-cassandra.key :as k]
-            [er-cassandra.record :as r]
-            [er-cassandra.model.types :as t]
-            [er-cassandra.model.model-session :as ms]
-            [er-cassandra.util.vector :as v]
-            [er-cassandra.model.util :as util]
-            [er-cassandra.model.alia.select :as select])
+  (:require
+   [cats.context :refer [with-context]]
+   [cats.core :refer [mlet return]]
+   [cats.labs.manifold :refer [deferred-context]]
+   [er-cassandra.key :as k]
+   [er-cassandra.model.alia.select :as select]
+   [er-cassandra.model.model-session :as ms]
+   [er-cassandra.model.types :as t]
+   [er-cassandra.record :as r]
+   [er-cassandra.util.vector :as v]
+   [prpr.stream :as stream])
   (:import
    [er_cassandra.model.model_session ModelSession]
    [er_cassandra.model.types Entity]))

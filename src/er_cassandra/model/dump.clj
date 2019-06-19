@@ -1,26 +1,15 @@
 (ns er-cassandra.model.dump
   (:require
    [cats.core :as monad :refer [return]]
-   [cats.labs.manifold :refer [deferred-context]]
-   [cognitect.transit :as transit]
-   [clojure.edn :as edn]
-   [clojure.java.io :as io]
-   [er-cassandra.record :as cass.r]
    [er-cassandra.model :as cass.m]
    [er-cassandra.model.callbacks :as cass.cb]
    [er-cassandra.session :as cass.session]
-   [er-cassandra.schema :as cass.schema]
    [er-cassandra.model.types :as cass.t]
    [prpr.promise :as prpr :refer [ddo]]
-   [prpr.stream :as prpr.stream]
-   [manifold.deferred :as d]
-   [manifold.stream :as stream]
+   [prpr.stream :as stream]
    [qbits.hayt :as h]
-   [taoensso.timbre :as timbre :refer [info]]
-   [taoensso.timbre :refer [warn]]
    [er-cassandra.dump.tables :as dump.tables]
-   [er-cassandra.dump.transit :as dump.transit]
-   [prpr.stream :as prpr.stream]))
+   [er-cassandra.dump.transit :as dump.transit]))
 
 
 
@@ -72,7 +61,7 @@
                         cassandra
                         (h/truncate
                          (dump.tables/keyspace-table-name keyspace table)) {})))
-         (prpr.stream/count-all-throw
+         (stream/count-all-throw
           ::truncate-all-entity-tables))))
 
 (defn load-record-s->entity
@@ -120,7 +109,7 @@
                             {::cass.t/skip-protect true}
                             cassandra-opts))))
                        (stream/realize-each)
-                       (prpr.stream/count-all-throw
+                       (stream/count-all-throw
                         ::load-record-s->entity))]
 
     (when notify-s
@@ -171,5 +160,5 @@
                      directory
                      cassandra-opts
                      %))
-       (prpr.stream/count-all-throw
+       (stream/count-all-throw
         ::load-entities)))

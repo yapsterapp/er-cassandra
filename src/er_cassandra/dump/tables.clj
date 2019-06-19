@@ -1,20 +1,14 @@
 (ns er-cassandra.dump.tables
   (:require
    [cats.core :as monad :refer [return]]
-   [cats.labs.manifold :refer [deferred-context]]
-   [cognitect.transit :as transit]
-   [clojure.edn :as edn]
    [clojure.java.io :as io]
    [er-cassandra.record :as cass.r]
    [er-cassandra.session :as cass.session]
    [er-cassandra.schema :as cass.schema]
    [prpr.promise :as pr :refer [ddo]]
-   [prpr.stream :as pr.st]
-   [manifold.deferred :as d]
-   [manifold.stream :as stream]
+   [prpr.stream :as stream]
    [qbits.hayt :as h]
    [taoensso.timbre :as timbre :refer [info]]
-   [taoensso.timbre :refer [warn]]
    [er-cassandra.dump.transit :as d.t])
   (:import
    [com.cognitect.transit WriteHandler ReadHandler]
@@ -137,7 +131,7 @@
                               :notify-s (d.t/log-notify-stream)}
                              r-s))))
                        (stream/realize-each)
-                       (pr.st/count-all-throw
+                       (stream/count-all-throw
                         ::dump-tables))]
     (info "dump-tables dumped" table-cnt "tables - FINISHED")
     (return table-cnt)))
@@ -258,7 +252,7 @@
                              table
                              r))))
                        (stream/realize-each)
-                       (pr.st/count-all-throw
+                       (stream/count-all-throw
                         ::load-record-s->table))]
 
     (when notify-s
@@ -312,7 +306,7 @@
                              {:notify-s (d.t/log-notify-stream)}
                              r-s))))
                        (stream/realize-each)
-                       (pr.st/count-all-throw
+                       (stream/count-all-throw
                         ::load-table))]
     (info "load-tables loaded " table-cnt "tables - FINISHED")
     (return table-cnt)))

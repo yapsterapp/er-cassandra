@@ -5,13 +5,9 @@
    [clojure.test :as test :refer [deftest is are testing use-fixtures]]
    [schema.test :as st]
    [clj-uuid :as uuid]
-   [manifold.stream :as stream]
-   [er-cassandra.session.alia :as als]
-   [er-cassandra.record :as r]
    [er-cassandra.model :as m]
    [er-cassandra.model.util.timestamp :as ts]
    [er-cassandra.model.types :as t]
-   [prpr.promise :as pr]
    [er-cassandra.model.model-session :as ms]))
 
 

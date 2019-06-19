@@ -3,9 +3,7 @@
    [cats.core :refer [mlet return]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
-   [manifold.deferred :as d]
-   [manifold.stream :as s]
-   [er-cassandra.model.util :refer [combine-responses]]
+   [prpr.stream :as s]
    [er-cassandra.model.model-session :as ms])
   (:import
    [er_cassandra.model.types Entity]
