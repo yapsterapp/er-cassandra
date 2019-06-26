@@ -8,7 +8,6 @@
    [er-cassandra.model.alia.fn-schema :as fns]
    [er-cassandra.model.types :as t]
    [er-cassandra.record.schema :as rs]
-   [er-cassandra.util.stream :as stu]
    [manifold.deferred :as d]
    [prpr.promise :as pr :refer [ddo]]
    [prpr.stream :as st]
@@ -381,12 +380,6 @@
 
       (return deferred-context trs))))
 
-(defn only-error
-  "given a Deferred keep only errors, otherwise returning Deferred<nil>"
-  [dv]
-  (-> dv
-      (d/chain (fn [v] (when (instance? Throwable v) v)))))
-
 (s/defn denormalize-rel
   "denormalizes a single relationship"
   [session :- ModelSession
@@ -429,7 +422,13 @@
 
                ;; consumes the whole stream, returns the first error
                ;; or nil if no errors
-               maybe-err (stu/keep-stream-error denorms)]
+               maybe-err (d/catch
+                          (st/reduce-all-throw
+                           ::denormalize-rel
+                           (constantly nil)
+                           nil ;; needed in case the stream only has a single value
+                           denorms)
+                          identity)]
 
           ;; if there are errors, return the first as an exemplar
           (if (nil? maybe-err)
