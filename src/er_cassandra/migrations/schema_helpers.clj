@@ -61,9 +61,7 @@
   (schema/enum nil :leveled :size-tiered))
 
 (schema/defschema CassandraColumnType
-  (schema/conditional
-   keyword? schema/Keyword
-   string? schema/Str))
+  schema/Keyword)
 
 (schema/defschema CassandraClusteringOrderDirection
   (apply schema/enum clustering-order-directions))
@@ -85,8 +83,8 @@
    :primary-key t/PrimaryKeySchema
    :columns [[(schema/one schema/Keyword :name)
               (schema/one CassandraColumnType :type)]]
-   :compaction CassandraTableCompaction
-   :clustering-order CassandraClusteringOrder})
+   (schema/optional-key :compaction) CassandraTableCompaction
+   (schema/optional-key :clustering-order) CassandraClusteringOrder})
 
 (defn all-primary-key-columns-exist?
   [columns primary-key]
@@ -94,6 +92,10 @@
     (every?
      #(contains? column-names %)
      (flatten primary-key))))
+
+(defn all-columns-are-keywords?
+  [columns]
+  (every? keyword? columns))
 
 (defn primary-key-contains-clustering-order-cols?
   [primary-key clustering-order]
@@ -105,7 +107,7 @@
      #(contains? primary-key-cols %)
      clustering-order-cols)))
 
-(schema/defn create-table
+(schema/defn ^:always-validate create-table
   [{v-name :name
     v-primary-key :primary-key
     v-columns :columns
@@ -118,6 +120,10 @@
                (pr-str table-definition)))
   (assert (all-primary-key-columns-exist? (map first v-columns) v-primary-key)
           (str "not all primary key columns are defined!"
+               "\n\n"
+               (pr-str table-definition)))
+  (assert (all-columns-are-keywords? (map first v-columns))
+          (str "column names must be keywords!"
                "\n\n"
                (pr-str table-definition)))
   (assert (primary-key-contains-clustering-order-cols? v-primary-key v-clustering-order)
@@ -157,10 +163,10 @@
    :from schema/Str
    :primary-key t/PrimaryKeySchema
    :selected-columns [schema/Keyword]
-   :compaction CassandraTableCompaction
-   :clustering-order CassandraClusteringOrder})
+   (schema/optional-key :compaction) CassandraTableCompaction
+   (schema/optional-key :clustering-order) CassandraClusteringOrder})
 
-(schema/defn create-view
+(schema/defn ^:always-validate create-view
   [{v-name :name
     v-from :from
     v-primary-key :primary-key
@@ -174,6 +180,10 @@
                (pr-str view-definition)))
   (assert (all-primary-key-columns-exist? v-selected-columns v-primary-key)
           (str "views must include all primary key columns"
+               "\n\n"
+               (pr-str view-definition)))
+  (assert (all-columns-are-keywords? v-selected-columns)
+          (str "column names must be keywords!"
                "\n\n"
                (pr-str view-definition)))
   (assert (primary-key-contains-clustering-order-cols? v-primary-key v-clustering-order)

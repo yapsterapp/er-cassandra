@@ -36,7 +36,7 @@ are supported
 
 Model API calls return Manifold `Deferred` results, with the `-buffered` fns returning `Deferred<Stream>`s of records
 
-```
+```clojure
 (require '[er-cassandra.model :as m])
 
 (m/defentity Users
@@ -103,7 +103,7 @@ You can use the session to directly execute CQL strings or [Hayt](https://github
 
 Record API calls return Manifold `Deferred` results, with the `-buffered` fns returning `Deferred<Stream>`s of records
 
-```
+```clojure
 (require '[er-cassandra.session :as s])
 (require '[er-cassandra.session.alia :as alia-session])
 (require '[er-cassandra.record :as r])
@@ -148,7 +148,7 @@ To use _drift_ migrations you will need to install _er-cassandra_ as a
 dependency and the _drift_ plugin into your
 project
 
-```
+```clojure
 {:dependencies [...
                 [employeerepublic/er-cassandra "0.3.0" ]
                 ...}
@@ -160,7 +160,7 @@ project
 and create a _drift_ config namespace like this one, which puts the migrations in
 `migrations/api/migrations_cassandra`
 
-```
+```clojure
 (ns config.migrate-config
   (:require [er-cassandra.drift.migrate-config :as mc]
             [api.main :as a]))
@@ -185,7 +185,7 @@ lein migrate --version 20150804151456
 migrations are created with empty `up` and `down` functions - fill
 these in to implement the migration like this -
 
-```
+```clojure
 (ns api.migrations-cassandra.20150804151456-create-users
   (:require [qbits.alia :as alia]
             [qbits.hayt :as h]
