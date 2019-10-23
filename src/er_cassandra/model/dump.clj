@@ -95,8 +95,8 @@
            entity)
 
         total-cnt (->> r-s
-                       (stream/buffer 50)
-                       (stream/map
+                       (stream/map-concurrently
+                        50
                         (fn [r]
                           (swap! counter-a update-counter-fn)
 
@@ -108,7 +108,6 @@
                            (merge
                             {::cass.t/skip-protect true}
                             cassandra-opts))))
-                       (stream/realize-each)
                        (stream/count-all-throw
                         ::load-record-s->entity))]
 
@@ -154,11 +153,12 @@
    entities]
   (->> entities
        (stream/->source)
-       (stream/buffer 5)
-       (stream/map #(load-entity
-                     cassandra
-                     directory
-                     cassandra-opts
-                     %))
+       (stream/map-concurrently
+        5
+        #(load-entity
+          cassandra
+          directory
+          cassandra-opts
+          %))
        (stream/count-all-throw
         ::load-entities)))

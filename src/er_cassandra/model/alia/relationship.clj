@@ -389,7 +389,7 @@
    source-record :- t/MaybeRecordSchema
    denorm-rel-kw :- s/Keyword
    denorm-rel :- t/DenormalizationRelationshipSchema
-   opts :- fns/DenormalizeOptsSchema]
+   {buffer-size :buffer-size :as opts} :- fns/DenormalizeOptsSchema]
   (let [dvs  (when (some? source-record)
                (extract-denorm-vals denorm-rel old-source-record source-record))]
     ;; (warn "denormalize-rel" {:dvs dvs})
@@ -409,16 +409,17 @@
 
                ;; a (hopefully empty) stream of any errors from denormalization
                :let [denorms (->> trs
-                                  (st/buffer (or (:buffer-size opts) 25))
-                                  (st/map #(denormalize-to-target-record
-                                            session
-                                            source-entity
-                                            target-entity
-                                            old-source-record
-                                            source-record
-                                            denorm-rel
-                                            %
-                                            opts)))]
+                                  (st/map-concurrently
+                                   (or buffer-size 25)
+                                   #(denormalize-to-target-record
+                                     session
+                                     source-entity
+                                     target-entity
+                                     old-source-record
+                                     source-record
+                                     denorm-rel
+                                     %
+                                     opts)))]
 
                ;; consumes the whole stream, returns the first error
                ;; or nil if no errors
