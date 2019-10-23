@@ -117,8 +117,8 @@
    tables]
   (ddo [:let [table-s (stream/->source tables)]
         table-cnt (->> table-s
-                       (stream/buffer 5)
-                       (stream/map
+                       (stream/map-concurrently
+                        3
                         (fn [t]
                           (ddo [r-s (table->record-s
                                      cassandra
@@ -130,7 +130,6 @@
                              {:stream-name (name t)
                               :notify-s (d.t/log-notify-stream)}
                              r-s))))
-                       (stream/realize-each)
                        (stream/count-all-throw
                         ::dump-tables))]
     (info "dump-tables dumped" table-cnt "tables - FINISHED")
@@ -233,8 +232,8 @@
             (keyspace-table-name keyspace table)) {})
 
         total-cnt (->> r-s
-                       (stream/buffer 50)
-                       (stream/map
+                       (stream/map-concurrently
+                        50
                         (fn [r]
                           (swap! counter-a update-counter-fn)
 
@@ -251,7 +250,6 @@
                              keyspace
                              table
                              r))))
-                       (stream/realize-each)
                        (stream/count-all-throw
                         ::load-record-s->table))]
 
@@ -295,8 +293,8 @@
    tables]
   (ddo [:let [table-s (stream/->source tables)]
         table-cnt (->> table-s
-                       (stream/buffer 3)
-                       (stream/map
+                       (stream/map-concurrently
+                        3
                         (fn [[t-n f]]
                           (ddo [r-s (d.t/transit-file->record-s f)]
                             (load-record-s->table
@@ -305,7 +303,6 @@
                              t-n
                              {:notify-s (d.t/log-notify-stream)}
                              r-s))))
-                       (stream/realize-each)
                        (stream/count-all-throw
                         ::load-table))]
     (info "load-tables loaded " table-cnt "tables - FINISHED")

@@ -4,6 +4,7 @@
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
    [manifold.deferred :as d]
+   [prpr.promise :as promise :refer [ddo]]
    [prpr.stream :as s]
    [er-cassandra.model.model-session :as ms]
    [er-cassandra.model.util :refer [combine-responses]])
@@ -33,19 +34,15 @@
     key
     record-stream
     {:keys [buffer-size] :as opts}]
-   (with-context deferred-context
-     (->> record-stream
-          ((fn [s]
-             (if buffer-size
-               (s/buffer buffer-size s)
-               s)))
-          (s/map #(delete session entity key % (dissoc opts :buffer-size)))
-          return))))
+   (->> record-stream
+        (s/map-concurrently
+         (or buffer-size 25)
+         #(delete session entity key % (dissoc opts :buffer-size)))
+        (return deferred-context))))
 
 (defn delete-many
   "issue one delete query for each record and combine the responses"
   [^ModelSession session ^Entity entity key records]
-  (with-context deferred-context
-    (mlet [dr-s (delete-buffered session entity key records)]
-      (->> dr-s
-           (s/reduce conj [])))))
+  (ddo [dr-s (delete-buffered session entity key records)]
+    (->> dr-s
+         (s/reduce conj []))))
