@@ -84,7 +84,8 @@
    :columns [[(schema/one schema/Keyword :name)
               (schema/one CassandraColumnType :type)]]
    (schema/optional-key :compaction) CassandraTableCompaction
-   (schema/optional-key :clustering-order) CassandraClusteringOrder})
+   (schema/optional-key :clustering-order) CassandraClusteringOrder
+   (schema/optional-key :default-ttl) schema/Num})
 
 (defn all-primary-key-columns-exist?
   [columns primary-key]
@@ -113,6 +114,7 @@
     v-columns :columns
     v-compaction :compaction
     v-clustering-order :clustering-order
+    v-default-ttl :default-ttl
     :as table-definition} :- CreateTable]
   (assert (every? some? [v-name v-primary-key v-columns])
           (str "invalid table definition"
@@ -142,10 +144,13 @@
                          nil leveled-compaction-clause
                          :leveled leveled-compaction-clause
                          :size-tiered size-tiered-compaction-clause)
+        default-ttl-str (when (some? v-default-ttl)
+                          (str "default_time_to_live = " v-default-ttl))
         with-strs (filter
                    identity
                    [clustering-order-str
-                    compaction-str])]
+                    compaction-str
+                    default-ttl-str])]
     (string/join
      " "
      ["create table if not exists" v-name "("
