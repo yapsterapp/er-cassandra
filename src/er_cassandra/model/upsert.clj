@@ -69,14 +69,14 @@
    (change-buffered session
                     entity
                     record-stream
-                    {:buffer-size 25}))
+                    {:buffer-size 5}))
   ([^ModelSession session
     ^Entity entity
     record-stream
     {:keys [buffer-size] :as opts}]
    (->> record-stream
         (s/map-concurrently
-         (or buffer-size 25)
+         (or buffer-size 5)
          (fn [[o-r r]]
            (change session
                    entity
