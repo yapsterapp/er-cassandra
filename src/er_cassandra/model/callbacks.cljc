@@ -17,7 +17,7 @@
             -after-save
             -deserialize
             -serialize]]
-   [taoensso.timbre :refer [info]])
+   [taoensso.timbre :refer [debug info]])
   #?(:clj
      (:import
       [er_cassandra.model.types Entity])))
@@ -136,29 +136,35 @@
                                  (get-in opts [callback-key]))
            callback-mfs (for [cb all-callbacks]
                           (fn [record]
-                            (cond
-                              (fn? cb)
-                              (cb record)
+                            (try
+                             (cond
+                               (fn? cb)
+                               (cb record)
 
-                              (satisfies? ICallback cb)
-                              (case callback-key
-                                :deserialize
-                                (-deserialize cb session entity record opts)
-                                :after-load
-                                (-after-load cb session entity record opts)
-                                ;; it's deliberate -before-delete doesn't get the session
-                                :before-delete
-                                (-before-delete cb entity record opts)
-                                :after-delete
-                                (-after-delete cb session entity record opts))
+                               (satisfies? ICallback cb)
+                               (case callback-key
+                                 :deserialize
+                                 (-deserialize cb session entity record opts)
+                                 :after-load
+                                 (-after-load cb session entity record opts)
+                                 ;; it's deliberate -before-delete doesn't get the session
+                                 :before-delete
+                                 (-before-delete cb entity record opts)
+                                 :after-delete
+                                 (-after-delete cb session entity record opts))
 
-                              :else
-                              (throw
-                               (ex-info
-                                "neither an fn or an ICallback"
-                                {:entity entity
-                                 :callback-key callback-key
-                                 :callback cb})))))]
+                               :else
+                               (throw
+                                (ex-info
+                                 "neither an fn or an ICallback"
+                                 {:entity entity
+                                  :callback-key callback-key
+                                  :callback cb})))
+                             (catch Exception ex
+                               (debug ex "Callback error for entity " (:class-name entity))
+                               (throw (ex-info "Callback exception"
+                                               {:entity (:class-name entity)
+                                                :record record} ex))))))]
        (with-context deferred-context
          (if (not-empty callback-mfs)
            (apply >>= (return record) callback-mfs)

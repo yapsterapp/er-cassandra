@@ -1,5 +1,6 @@
 (ns er-cassandra.model.callbacks.edn-codec
   (:require
+   [taoensso.timbre #?(:clj :refer :cljs :refer-macros) [debug]]
    #?(:clj [clojure.edn :as edn]
       :cljs [cljs.reader :as edn])))
 
@@ -33,15 +34,19 @@
      (let [col? (contains? r col)
            v (get r col)]
        ;;:completion_status [:started] nil
-       (cond
-         ;; i would prefer not to set the value if the key
-         ;; wasn't in the map, but lots of test breakage results
-         ;;
-         ;; UPDATE 20181018 mccraig - we gotta deal with the
-         ;; test breakage 'cos this is causing :attrs and
-         ;; :perms to get temporarily removed from :org_user
-         ;; records during import with consequent perms failures
-         (not col?) r
-         (nil? v) (assoc r col default-value)
-         (not (string? v)) r
-         :else (update r col #(edn/read-string reader-opts %)))))))
+       (try
+         (cond
+           ;; i would prefer not to set the value if the key
+           ;; wasn't in the map, but lots of test breakage results
+           ;;
+           ;; UPDATE 20181018 mccraig - we gotta deal with the
+           ;; test breakage 'cos this is causing :attrs and
+           ;; :perms to get temporarily removed from :org_user
+           ;; records during import with consequent perms failures
+           (not col?) r
+           (nil? v) (assoc r col default-value)
+           (not (string? v)) r
+           :else (update r col #(edn/read-string reader-opts %)))
+         (catch #?(:clj Exception :cljs Error) err
+           (debug err (str "Failed to deserialize value:" v))
+           (throw err)))))))
