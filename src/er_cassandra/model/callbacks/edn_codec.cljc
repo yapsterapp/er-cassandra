@@ -47,6 +47,6 @@
            (nil? v) (assoc r col default-value)
            (not (string? v)) r
            :else (update r col #(edn/read-string reader-opts %)))
-         (catch #?(:clj Exception :cljs Error) err
+         (catch #?(:clj Exception :cljs js/Error) err
            (debug err (str "Failed to deserialize value:" v))
            (throw err)))))))
