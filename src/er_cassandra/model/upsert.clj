@@ -3,6 +3,7 @@
    [cats.core :refer [mlet return]]
    [cats.context :refer [with-context]]
    [cats.labs.manifold :refer [deferred-context]]
+   [prpr.promise :as promise :refer [ddo]]
    [prpr.stream :as s]
    [er-cassandra.model.model-session :as ms])
   (:import
@@ -73,20 +74,16 @@
     ^Entity entity
     record-stream
     {:keys [buffer-size] :as opts}]
-   (with-context deferred-context
-     (->> record-stream
-          ((fn [s]
-             (if buffer-size
-               (s/buffer buffer-size s)
-               s)))
-          (s/map
-           (fn [[o-r r]]
-             (change session
-                     entity
-                     o-r
-                     r
-                     (dissoc opts :buffer-size))))
-          return))))
+   (->> record-stream
+        (s/map-concurrently
+         (or buffer-size 25)
+         (fn [[o-r r]]
+           (change session
+                   entity
+                   o-r
+                   r
+                   (dissoc opts :buffer-size))))
+        (return deferred-context))))
 
 (defn ^:deprecated upsert-buffered
   "upsert each record in a Stream<record>, optionally controlling
@@ -100,19 +97,15 @@
     ^Entity entity
     record-stream
     {:keys [buffer-size] :as opts}]
-   (with-context deferred-context
-     (->> record-stream
-          ((fn [s]
-             (if buffer-size
-               (s/buffer buffer-size s)
-               s)))
-          (s/map #(select-upsert session entity % (dissoc opts :buffer-size)))
-          return))))
+   (->> record-stream
+        (s/map-concurrently
+         (or buffer-size 25)
+         #(select-upsert session entity % (dissoc opts :buffer-size)))
+        (return deferred-context))))
 
 (defn ^:deprecated upsert-many
   "issue one upsert query for each record and combine the responses"
   [^ModelSession session ^Entity entity records]
-  (with-context deferred-context
-    (mlet [ups-s (upsert-buffered session entity records)]
-      (->> ups-s
-           (s/reduce conj [])))))
+  (ddo [ups-s (upsert-buffered session entity records)]
+    (->> ups-s
+         (s/reduce conj []))))

@@ -175,17 +175,13 @@
     record-stream
     {:keys [buffer-size] :as opts}]
    (->> record-stream
-        (stream/map
+        (stream/map-concurrently
+         (or buffer-size 25)
          (fn [r]
            (insert session
                    table
                    r
                    (dissoc opts :buffer-size))))
-        (stream/realize-each)
-        ((fn [s]
-           (if buffer-size
-             (stream/buffer buffer-size s)
-             s)))
         (return deferred-context))))
 
 (defn update
@@ -237,18 +233,14 @@
     record-stream
     {:keys [buffer-size] :as opts}]
    (->> record-stream
-        (stream/map
+        (stream/map-concurrently
+         (or buffer-size 25)
          (fn [r]
            (update session
                    table
                    key
                    r
                    (dissoc opts :buffer-size))))
-        (stream/realize-each)
-        ((fn [s]
-           (if buffer-size
-             (stream/buffer buffer-size s)
-             s)))
         (return deferred-context))))
 
 (defn delete
@@ -301,16 +293,12 @@
     record-or-key-value-stream
     {:keys [buffer-size] :as opts}]
    (->> record-or-key-value-stream
-        (stream/map
+        (stream/map-concurrently
+         (or buffer-size 25)
          (fn [r-or-kv]
            (delete session
                    table
                    key
                    r-or-kv
                    (dissoc opts :buffer-size))))
-        (stream/realize-each)
-        ((fn [s]
-           (if buffer-size
-             (stream/buffer buffer-size s)
-             s)))
         (return deferred-context))))
