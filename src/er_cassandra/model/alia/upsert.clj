@@ -537,7 +537,7 @@
                     session
                     entity
                     :before-save
-                    record
+                    nil
                     record
                     opts)
 
