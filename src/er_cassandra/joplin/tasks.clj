@@ -1,9 +1,16 @@
 (ns er-cassandra.joplin.tasks
   (:require [ragtime.protocols :refer [DataStore]]
+            [clj-time.format :as t.f]
+            [clj-time.coerce :as t.c]
             [qbits.hayt :as hayt]
             [joplin.core :as jcore]
             [er-cassandra.joplin.migration-helpers :as jmh]
-            [er-cassandra.model.model-session :as ms])
+            [er-cassandra.model.model-session :as ms]
+            [er_cassandra.model.alia.model-session]
+            [er-cassandra.record :as cass.r]
+            [cats.core :as monad]
+            [prpr.promise :as promise :refer [ddo]]
+            [prpr.stream :as stream])
   (:import (er_cassandra.model.alia.model_session AliaModelSession
                                                   AliaModelSpySession)))
 
@@ -48,7 +55,7 @@
        (sort-by :created_at)
        (map :id)))
 
-;; an alia SessionManager instance is required for joplin 
+;; an alia SessionManager instance is required for joplin
 ;; we want to use our own constructs instead
 ;; https://github.com/juxt/joplin/blob/master/joplin.cassandra/src/joplin/cassandra/database.clj#L32
 (extend-protocol DataStore
@@ -102,3 +109,35 @@
 ;; implement cass-create-migration in your project
 ;; with an appropriate target and scaffold.
 
+(def id-timestamp-formatter (t.f/formatter "YYYYMMddHHmmss"))
+
+(defn fix-migration-timestamp
+  [{id :id
+    created-at :created_at
+    :as migration}]
+  (let [[_ id-timestamp] (re-matches #"(\d+)-.*" id)
+        timestamp (t.f/parse
+                   id-timestamp-formatter
+                   id-timestamp)]
+    (assoc migration
+           :created_at
+           (t.c/to-date timestamp))))
+
+(defn fix-all-migration-timestamps*
+  [cass-session]
+  (ddo [migration-s (cass.r/select-buffered
+                     cass-session
+                     :migrations)]
+    (->> migration-s
+         (stream/map fix-migration-timestamp)
+         (cass.r/insert-buffered
+          cass-session
+          :migrations)
+         (monad/return))))
+
+(defn fix-all-migration-timestamps
+  [cass-session]
+  (ddo [fix-rs (fix-all-migration-timestamps* cass-session)]
+    (stream/count-all-throw
+     ::fix-all-migration-timestamps
+     fix-rs)))
