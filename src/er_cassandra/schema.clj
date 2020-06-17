@@ -79,3 +79,33 @@
                               (name type))
                              {})
             first)))
+
+(defn ^:private view-metadata-query
+  [keyspace view]
+  (h/select :system_schema.views
+            (h/where {:keyspace_name keyspace
+                      :view_name view})))
+
+(defn view-metadata
+  "returns a Deferred with metadata for the requested view (or nil)"
+  ([^Session session view]
+   (view-metadata session (session/keyspace session) view))
+  ([^Session session keyspace view]
+   (d/chain (session/execute session
+                             (view-metadata-query
+                              (name keyspace)
+                              (name view))
+                             {})
+            first)))
+
+(defn view-columns-metadata
+  "metadata for all columns of a view"
+  ([^Session session view]
+   (view-columns-metadata session (session/keyspace session) view))
+  ([^Session session keyspace view]
+   (session/execute session
+                    (table-columns-metadata-query
+                     (name keyspace)
+                     (name view))
+                    {})))
+
