@@ -13,7 +13,7 @@
 (defn change
   "change a single instance given the previous version of the instance
 
-   returns a Deferred<[updated-record key-failures]> where
+   returns a Deferred<[:upsert updated-record key-failures]> where
    updated-record is the record as currently in the db and key-failures
    in nil"
   ([^ModelSession session ^Entity entity old-record record]

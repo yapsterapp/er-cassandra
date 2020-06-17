@@ -570,7 +570,7 @@
    if record is nil - it's a delete,
    otherwise it's an upsert-changes*
 
-   returns Deferred<[record]>"
+   returns Deferred<[:upsert upserted-record failures]>"
   [session :- ModelSession
    entity :- Entity
    old-record :- t/MaybeRecordSchema
