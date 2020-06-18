@@ -1,8 +1,14 @@
 (ns er-cassandra.migrations.schema-helpers
   (:require
+   [clojure.set :as set]
    [clojure.string :as string]
    [schema.core :as schema]
-   [er-cassandra.model.types :as t]))
+   [er-cassandra.schema :as c*.schema]
+   [er-cassandra.session :as session]
+   [er-cassandra.model.types :as t]
+   [prpr.promise :as prpr])
+  (:import
+   [er_cassandra.session Session]))
 
 (defn index-str
   [col-groups]
@@ -226,3 +232,151 @@
       "primary key" primary-key-str
       (when (seq with-strs)
         (str "WITH " (string/join " AND " with-strs)))])))
+
+;;
+;; derivation from C* metadata
+;;
+
+(defn raw-compaction->compaction-definition
+  [{compaction-class "class" :as compaction}]
+  (case compaction-class
+    "org.apache.cassandra.db.compaction.LeveledCompactionStrategy"
+    :leveled
+
+    "org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy"
+    :size-tiered
+
+    #_else
+    nil))
+
+(defn derive-primary-key
+  [partitioning-cols clustering-cols]
+  (let [partition-key (reduce
+                       (fn [rs [_ n]]
+                         (conj rs n))
+                       []
+                       (sort-by first partitioning-cols))
+        clustering-key (reduce
+                        (fn [rs [_ n]]
+                          (conj rs n))
+                        []
+                        (sort-by first clustering-cols))]
+    (into [partition-key] clustering-key)))
+
+(defn derive-clustering-order
+  [clustering-cols]
+  (reduce
+   (fn [rs [_ n d]]
+     (conj rs [n d]))
+   []
+   (sort-by first clustering-cols)))
+
+(defn simple-col-type?
+  [t]
+  (not (re-find #"<" t)))
+
+(defn columns-metadata->columns-definitions
+  [metadata]
+  (loop [columns []
+         partitioning-cols []
+         clustering-cols []
+         [col-metadata & rest-metadata] metadata]
+    (let [{col-name-str :column_name
+           col-type-str :type
+           kind :kind
+           position :position
+           cluster-order-str :clustering_order} col-metadata
+          col-name (keyword col-name-str)
+          col-type (if (simple-col-type? col-type-str)
+                     (keyword col-type-str)
+                     col-type-str)
+          cluster-order (keyword cluster-order-str)
+          add-to-partition? (= "partition_key" kind)
+          add-to-cluster? (= "clustering" kind)
+          columns (conj columns [col-name col-type])
+          partitioning-cols (if add-to-partition?
+                              (conj partitioning-cols [position col-name])
+                              partitioning-cols)
+          clustering-cols (if add-to-cluster?
+                            (conj clustering-cols [position col-name cluster-order])
+                            clustering-cols)]
+      (if (empty? rest-metadata)
+        (reduce-kv
+         (fn [rs k v]
+           (if (seq v)
+             (assoc rs k v)
+             rs))
+         {}
+         {:columns columns
+          :primary-key (derive-primary-key partitioning-cols clustering-cols)
+          :clustering-order (derive-clustering-order clustering-cols)})
+        (recur columns partitioning-cols clustering-cols rest-metadata)))))
+
+(defn table-definition
+  ([^Session session table-name]
+   (table-definition session (session/keyspace session) table-name))
+  ([^Session session keyspace table-name]
+   (prpr/ddo
+    [{compaction :compaction
+      default-ttl :default_time_to_live
+      :as metadata} (c*.schema/table-metadata session keyspace table-name)
+     columns (c*.schema/table-columns-metadata session keyspace table-name)
+     :let [col-defs (columns-metadata->columns-definitions columns)
+           cmpct-def (raw-compaction->compaction-definition compaction)]]
+    (prpr/return
+     (merge
+      {:name table-name}
+      (when (some? cmpct-def)
+        {:compaction cmpct-def})
+      (when (some? default-ttl)
+        {:default-ttl default-ttl})
+      col-defs)))))
+
+(defn view-definition
+  ([^Session session view-name]
+   (view-definition session (session/keyspace session) view-name))
+  ([^Session session keyspace view-name]
+   (prpr/ddo
+    [{table-name :base_table_name
+      compaction :compaction
+      :as metadata} (c*.schema/view-metadata session keyspace view-name)
+     columns (c*.schema/view-columns-metadata session keyspace view-name)
+     :let [col-defs (columns-metadata->columns-definitions columns)
+           sel-cols (mapv first (:columns col-defs))
+           cmpct-def (raw-compaction->compaction-definition compaction)]]
+    (prpr/return
+     (merge
+      {:name view-name
+       :from table-name
+       :selected-columns sel-cols}
+      (when (some? cmpct-def)
+        {:compaction cmpct-def})
+      (dissoc col-defs :columns))))))
+
+;;
+;; some helpers for view updates
+;;
+
+(defn missing-selected-columns?
+  [{selected-columns :selected-columns}
+   columns]
+  (let [missing-cols (set/difference (set columns) (set selected-columns))]
+    (some-> (seq missing-cols) set)))
+
+(defn add-selected-columns-to-view
+  [{view-columns :selected-columns
+    :as view-def}
+   columns]
+  (let [cols-to-add (set/difference (set columns) (set view-columns))]
+    (if (seq cols-to-add)
+      (update view-def :selected-columns into cols-to-add)
+      view-def)))
+
+(defn drop-selected-columns-from-view
+  [{view-columns :selected-columns
+    :as view-def}
+   columns]
+  (let [cols-to-drop (set/intersection (set columns) (set view-columns))]
+    (if (seq cols-to-drop)
+      (update view-def :selected-columns (comp vec (partial remove cols-to-drop)))
+      view-def)))

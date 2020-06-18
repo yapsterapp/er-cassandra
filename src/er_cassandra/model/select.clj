@@ -1,6 +1,6 @@
 (ns er-cassandra.model.select
   (:require [manifold.deferred :as d]
-            [prpr.stream :as s]
+            [prpr [stream :as s] [promise :as pr]]
             [cats.core :refer [mlet return]]
             [cats.context :refer [with-context]]
             [cats.labs.manifold :refer [deferred-context]]
@@ -67,7 +67,15 @@
   ([^ModelSession session ^Entity entity key record-or-key-value opts]
    (with-context deferred-context
      (mlet [select-s (select-buffered session entity key record-or-key-value opts)]
-       (s/reduce conj [] select-s)))))
+           (pr/catch
+               (fn -err-handler [err]
+                 (ex-info "'select' failed"
+                          {:entity (:class-name entity)
+                           :key key
+                           :record-or-key-value record-or-key-value
+                           :opts opts}
+                          err))
+               (s/reduce conj [] select-s))))))
 
 (defn select-one
   "select a single record, using an index table if necessary"

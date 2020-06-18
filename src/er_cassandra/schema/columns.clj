@@ -1,11 +1,13 @@
 (ns er-cassandra.schema.columns
   (:require
+   [clojure.set :as set]
    [clojure.string :as str]
    [qbits.hayt :as h]
    [qbits.hayt.dsl :as cql]
+   [er-cassandra.migrations.schema-helpers :as cass.sch.help]
    [er-cassandra.session :as session]
    [er-cassandra.schema :as cass.sch]
-   [cats.core :refer [return]]
+   [cats.core :as monad :refer [return]]
    [prpr.promise :as prpr :refer [ddo]]))
 
 (defn check-no-keyspace
@@ -127,3 +129,34 @@
        table
        old-column-name
        new-column-name))))
+
+(defn add-selected-columns-to-view-if-not-exists
+  [cassandra view selected-columns]
+  (ddo [{view-columns :selected-columns
+         :as view-def} (cass.sch.help/table-definition cassandra view)
+        :let [cols-to-add (set/difference (set selected-columns) (set view-columns))
+              recreate-view? (boolean (seq cols-to-add))
+              new-view-def (when recreate-view?
+                             (update view-def :selected-columns into cols-to-add))]
+        _ (monad/when recreate-view?
+            (session/execute cassandra (cass.sch.help/drop-view view-def) {}))
+        _ (monad/when recreate-view?
+            (session/execute cassandra (cass.sch.help/create-view new-view-def) {}))]
+       (return (or new-view-def view-def))))
+
+(defn drop-selected-columns-from-view-if-exists
+  [cassandra view selected-columns]
+  (ddo [{view-columns :selected-columns
+         :as view-def} (cass.sch.help/table-definition cassandra view)
+        :let [cols-to-drop (set/intersection (set view-columns) (set selected-columns))
+              recreate-view? (boolean (seq cols-to-drop))
+              new-view-def (when recreate-view?
+                             (update
+                              view-def
+                              :selected-columns
+                              (comp vec (partial remove cols-to-drop))))]
+        _ (monad/when recreate-view?
+            (session/execute cassandra (cass.sch.help/drop-view view-def) {}))
+        _ (monad/when recreate-view?
+            (session/execute cassandra (cass.sch.help/create-view new-view-def) {}))]
+       (return (or new-view-def view-def))))
