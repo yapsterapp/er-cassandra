@@ -9,14 +9,16 @@
             [joplin.core :as jcore]
             [er-cassandra.joplin.migration-helpers :as jmh]
             [er-cassandra.model.model-session :as ms]
-            [taoensso.timbre :refer [trace debug info warn error]])
+            [taoensso.timbre :refer [trace debug info warn error]]
             [er_cassandra.model.alia.model-session]
             [er-cassandra.record :as cass.r]
             [cats.core :as monad]
             [prpr.promise :as promise :refer [ddo]]
             [prpr.stream :as stream])
-  (:import (er_cassandra.model.alia.model_session AliaModelSession
-                                                  AliaModelSpySession)))
+  (:import
+   [er_cassandra.model.alia.model_session
+    AliaModelSession
+    AliaModelSpySession]))
 
 (def migrator-formatter (t.f/formatter "YYYYMMddHHmmss"))
 (def migrations-table :migrations_v2)
@@ -35,7 +37,7 @@
 (defn get-full-migrator-id
   "Get a string with current date and time prepended"
   [id]
-  (let [time-formatter (partial f/unparse migrator-formatter)]
+  (let [time-formatter (partial t.f/unparse migrator-formatter)]
     (-> (t/now)
         time-formatter
         (str "-" id))))
