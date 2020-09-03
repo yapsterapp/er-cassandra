@@ -12,8 +12,10 @@
    [er_cassandra.model.model_session ModelSession]))
 
 (defn select-buffered
-  "select-buffered is now the fundamental select operation - this enables
-   running callbacks on the results stream sensibly"
+  "Returns a deferred of a stream
+
+   select-buffered is now the fundamental select operation - this enables
+   running callbacks on the results stream sensibly "
   ([^ModelSession session ^Entity entity]
    (select-buffered session entity {}))
 
