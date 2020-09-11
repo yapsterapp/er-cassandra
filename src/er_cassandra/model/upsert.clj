@@ -76,7 +76,7 @@
     {:keys [buffer-size] :as opts}]
    (->> record-stream
         (s/map-concurrently
-         (or buffer-size 25)
+         (or buffer-size 5)
          (fn [[o-r r]]
            (change session
                    entity
