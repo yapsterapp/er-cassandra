@@ -41,10 +41,13 @@
 
   [src]: https://github.com/apache/cassandra/blob/trunk/src/java/org/apache/cassandra/db/marshal/UUIDType.java"
   [a b]
-  (let [v-a (some-> a uuid/get-version)
-        v-b (some-> b uuid/get-version)
-        both-uuids? (and (some? v-a) (some? v-b))
-        same-uuid-version? (and both-uuids? (= v-a v-b))]
+  (let [a-uuid? (uuid? a)
+        b-uuid? (uuid? b)
+        both-uuids? (and a-uuid? b-uuid?)
+        v-a (and a-uuid? (uuid/get-version a))
+        v-b (and b-uuid? (uuid/get-version b))
+        same-uuid-version? (and both-uuids?
+                                (= v-a v-b))]
     (cond
       (and same-uuid-version? (= 1 v-a))
       (timeuuid-comparator a b)
@@ -56,7 +59,7 @@
       (compare v-a v-b)
 
       :else
-      (throw (ex-info "huh?" {:a a :b b})))))
+      (throw (ex-info "er-cassandra.uuid/cant-compare" {:a a :b b})))))
 
 (defprotocol ICassandraUUIDCompare
   (-compare [a b]))
@@ -72,15 +75,19 @@
         (< (count a) (count b)) -1
         (> (count a) (count b)) 1
         :else
-        (reduce (fn [r [a* b*]]
-                  (let [cr (-compare a* b*)]
-                    (if-not (zero? cr)
-                      (reduced cr)
-                      0)))
-                0
-                (map vector a b)))
+        (try
+          (reduce (fn [r [a* b*]]
+                    (let [cr (-compare a* b*)]
+                      (if-not (zero? cr)
+                        (reduced cr)
+                        0)))
+                  0
+                  (map vector a b))
+          (catch Exception x
+            (throw (ex-info "er-cassandra.uuid/cant-compare"
+                            {:a a :b b})))))
 
-      (throw (ex-info "vector compares only to vector"
+      (throw (ex-info "er-cassandra.uuid/cant-compare"
                       {:a a :b b}))))
 
   Object
