@@ -6,15 +6,17 @@
    [clojure.test :as t :refer [deftest testing is use-fixtures]]
    [clj-time.coerce :as tc]
    [clj-uuid :as uuid]
-   [prpr.stream :as stream]))
+   [prpr.stream :as stream])
+  (:import
+   [clojure.lang ExceptionInfo]))
 
 (use-fixtures :each (tu/with-session-fixture))
 
 (defn same-time-timeuuids
   []
   (let [t (uuid/v1)
-        low (sut/time->start-of-timeuuid t)
-        hi (sut/time->end-of-timeuuid t)]
+        low (sut/time->start-of-timeuuid (uuid/get-instant t))
+        hi (sut/time->end-of-timeuuid (uuid/get-instant t))]
     [low t hi]))
 
 (def contradictory-lex-timeuuids
@@ -85,7 +87,29 @@
       (is (< (sut/-compare
               [before "bar"]
               [before "foo"])
-             0)))))
+             0))))
+
+  (testing "comparing uuid with non-uuid fails"
+    (let [[_ t _] (same-time-timeuuids)
+          [r x] (try
+                  [(sut/-compare t "bar") nil]
+                  (catch Exception x
+                    [nil x]))]
+      (is (nil? r))
+      (is (= "er-cassandra.uuid/cant-compare" (some-> x .getMessage)))
+      (is (some? (ex-data x)))
+      (is (= {:a t :b "bar"} (ex-data x)))))
+
+  (testing "error during array compare reports whole array"
+    (let [[_ t _] (same-time-timeuuids)
+          [r x] (try
+                  [(sut/-compare [t] ["bar"]) nil]
+                  (catch Exception x
+                    [nil x]))]
+      (is (nil? r))
+      (is (= "er-cassandra.uuid/cant-compare" (some-> x .getMessage)))
+      (is (some? (ex-data x)))
+      (is (= {:a [t] :b ["bar"]} (ex-data x))))))
 
 (deftest -compare-mirrors-cassandra-test
   (let [_ (tu/create-table
