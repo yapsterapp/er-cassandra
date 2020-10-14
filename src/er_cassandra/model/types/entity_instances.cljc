@@ -39,5 +39,12 @@
 
 (defn decorate-with-entity-class
   [^Entity entity record]
-  (let [class-name (t/entity-class-name entity)]
-    (assoc record entity-instance-class-name-key class-name)))
+  (if-let [class-name (t/entity-class-name entity)]
+    (assoc record entity-instance-class-name-key class-name)
+    record))
+
+(defn dissoc-entity-class
+  [xs]
+  (if (map? xs)
+    (dissoc xs entity-instance-class-name-key)
+    xs))
