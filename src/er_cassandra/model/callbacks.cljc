@@ -27,17 +27,20 @@
    with their old-record values, unless the confirm-col is
    set and non-nil. always removes confirm-col"
   [confirm-col & cols]
-  (reify
-    ICallback
-    (-before-save [_ entity old-record record opts]
-      (cond
-        (::t/skip-protect opts) (dissoc record confirm-col)
-        (get record confirm-col) (dissoc record confirm-col)
-        :else (merge
-               record
-               (->> (for [c cols]
-                      [c (get old-record c)])
-                    (into {})))))))
+  (let [cols (set cols)]
+    (reify
+      ICallback
+      (-before-save [_ entity old-record record opts]
+        (cond
+          (::t/skip-protect opts) (dissoc record confirm-col)
+          (get record confirm-col) (dissoc record confirm-col)
+          :else (reduce
+                  (fn [record c]
+                    (cond-> record
+                      (contains? record c) (dissoc c)
+                      (contains? old-record c) (assoc c (get old-record c))))
+                  record
+                  cols))))))
 
 (defn create-updated-at-callback
   "create a callback which will set an :updated_at column

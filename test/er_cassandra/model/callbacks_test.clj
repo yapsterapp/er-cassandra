@@ -37,7 +37,7 @@
     (testing "callback error")))
 
 (deftest create-protect-columns-callback-test
-  (testing "nil's protected columns in a new record"
+  (testing "remove's protected columns in a new record"
     (let [s nil
           m (t/create-entity {:primary-table {:name :foos :key [:id]}
                               :callbacks {:before-save
@@ -53,7 +53,42 @@
               nil)]
 
       (is (= r
-             {:id 1000 :bar nil}))))
+             {:id 1000}))))
+
+  (testing "removes protected columns if not present in old record"
+    (let [s nil
+          m (t/create-entity {:primary-table {:name :foos :key [:id]}
+                              :callbacks {:before-save
+                                          [(sut/create-protect-columns-callback
+                                            :update-bar?
+                                            :bar)]}})
+          r @(sut/run-save-callbacks
+              s
+              m
+              :before-save
+              {:id 1000}
+              {:id 1000
+               :bar :barbar}
+              nil)]
+      (is (= r
+             {:id 1000}))))
+
+  (testing "omits protected columns if not present in either record"
+    (let [s nil
+          m (t/create-entity {:primary-table {:name :foos :key [:id]}
+                              :callbacks {:before-save
+                                          [(sut/create-protect-columns-callback
+                                            :update-bar?
+                                            :bar)]}})
+          r @(sut/run-save-callbacks
+              s
+              m
+              :before-save
+              nil
+              {:id 1000}
+              nil)]
+      (is (= r
+             {:id 1000}))))
 
   (testing "reverts protected columns to previous values in an updated record"
     (let [s nil
