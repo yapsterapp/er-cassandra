@@ -66,7 +66,10 @@
   ([^Session session table] (select-buffered session table {}))
 
   ([^Session session table {prepare? :prepare? :as opts}]
-   (ddo [:let [select-opts (select-keys opts [:columns :limit])
+   (ddo [:let [select-opts (select-keys opts [:columns
+                                              :limit
+                                              :where
+                                              :allow-filtering])
                select-stmt ((if prepare?
                               st/prepare-select-statement
                               st/select-statement)
