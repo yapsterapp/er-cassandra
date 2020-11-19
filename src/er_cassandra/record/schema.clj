@@ -57,16 +57,21 @@
   {(s/optional-key :consistency)
    ConsistencyLevelSchema})
 
-(s/defschema FullTableSelectOptsSchema
-  {(s/optional-key :columns) SelectColumnsSchema
+(s/defschema BaseTableSelectOptsSchema
+  {(s/optional-key :where) WhereSchema
+   (s/optional-key :columns) SelectColumnsSchema
    (s/optional-key :limit) LimitSchema})
+
+(s/defschema FullTableSelectOptsSchema
+  (merge
+   BaseTableSelectOptsSchema
+   {(s/optional-key :allow-filtering) s/Bool}))
 
 (s/defschema SelectOptsSchema
   (merge
-   FullTableSelectOptsSchema
+   BaseTableSelectOptsSchema
    PrepareOptSchema
-   {(s/optional-key :where) WhereSchema
-    (s/optional-key :order-by) OrderBySchema}))
+   {(s/optional-key :order-by) OrderBySchema}))
 
 (s/defschema SelectBufferedOptsSchema
   (merge

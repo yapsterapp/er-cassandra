@@ -15,83 +15,122 @@
 (use-fixtures :each (tu/with-session-fixture))
 
 (deftest select-statement-test
-  (testing "simplest select"
-    (is (=
-         {:select :foos :columns :* :where [[:= :id "foo"]]}
-         (sut/select-statement
-          :foos
-          :id
-          "foo"
-          {}))))
+  (testing "partition selects"
+    (testing "simplest select"
+      (is (=
+           {:select :foos :columns :* :where [[:= :id "foo"]]}
+           (sut/select-statement
+            :foos
+            :id
+            "foo"
+            {}))))
 
-  (testing "compound key"
-    (is (=
-         {:select :foos :columns :* :where [[:= :foo "foo"] [:= :bar "bar"]]}
-         (sut/select-statement
-          :foos
-          [[:foo] :bar]
-          ["foo" "bar"]
-          {}))))
+    (testing "compound key"
+      (is (=
+           {:select :foos :columns :* :where [[:= :foo "foo"] [:= :bar "bar"]]}
+           (sut/select-statement
+            :foos
+            [[:foo] :bar]
+            ["foo" "bar"]
+            {}))))
 
-  (testing "with columns"
-    (is (=
-         {:select :foos :columns [:id] :where [[:= :id "foo"]]}
-         (sut/select-statement
-          :foos
-          :id
-          "foo"
-          {:columns [:id]}))))
+    (testing "with columns"
+      (is (=
+           {:select :foos :columns [:id] :where [[:= :id "foo"]]}
+           (sut/select-statement
+            :foos
+            :id
+            "foo"
+            {:columns [:id]}))))
 
-  (testing "with extra where"
-    (is (=
-         {:select :foos :columns :* :where [[:= :id "foo"] [:= :bar "bar"]]}
-         (sut/select-statement
-          :foos
-          :id
-          "foo"
-          {:where [[:= :bar "bar"]]})))
-    (is (=
-         {:select :foos :columns :* :where [[:= :id "foo"] [:= :bar "bar"] [:= :baz "baz"]]}
-         (sut/select-statement
-          :foos
-          :id
-          "foo"
-          {:where [[:= :bar "bar"]
-                   [:= :baz "baz"]]}))))
+    (testing "with extra where"
+      (is (=
+           {:select :foos :columns :* :where [[:= :id "foo"] [:= :bar "bar"]]}
+           (sut/select-statement
+            :foos
+            :id
+            "foo"
+            {:where [[:= :bar "bar"]]})))
+      (is (=
+           {:select :foos :columns :* :where [[:= :id "foo"] [:= :bar "bar"] [:= :baz "baz"]]}
+           (sut/select-statement
+            :foos
+            :id
+            "foo"
+            {:where [[:= :bar "bar"]
+                     [:= :baz "baz"]]}))))
 
-  (testing "with order-by"
-    (is (=
-         {:select :foos :columns :* :where [[:= :id "foo"]] :order-by [[:foo :asc]]}
-         (sut/select-statement
-          :foos
-          :id
-          "foo"
-          {:order-by [[:foo :asc]]})))
-    (is (=
-         {:select :foos :columns :* :where [[:= :id "foo"]] :order-by [[:foo :asc] [:bar :desc]]}
-         (sut/select-statement
-          :foos
-          :id
-          "foo"
-          {:order-by [[:foo :asc] [:bar :desc]]}))))
+    (testing "with order-by"
+      (is (=
+           {:select :foos :columns :* :where [[:= :id "foo"]] :order-by [[:foo :asc]]}
+           (sut/select-statement
+            :foos
+            :id
+            "foo"
+            {:order-by [[:foo :asc]]})))
+      (is (=
+           {:select :foos :columns :* :where [[:= :id "foo"]] :order-by [[:foo :asc] [:bar :desc]]}
+           (sut/select-statement
+            :foos
+            :id
+            "foo"
+            {:order-by [[:foo :asc] [:bar :desc]]}))))
 
-  (testing "limit"
-    (is (=
-         {:select :foos :columns :* :where [[:= :id "foo"]] :limit 5000}
-         (sut/select-statement
-          :foos
-          :id
-          "foo"
-          {:limit 5000}))))
+    (testing "limit"
+      (is (=
+           {:select :foos :columns :* :where [[:= :id "foo"]] :limit 5000}
+           (sut/select-statement
+            :foos
+            :id
+            "foo"
+            {:limit 5000}))))
 
-  (testing "throws with unknown opt"
-    (is (thrown-with-msg? ExceptionInfo #"does not match schema"
-         {:select :foos :columns :* :where [[:= :id "foo"]]}
-         (sut/select-statement
-          :foos
-          :id
-          "foo"
-          {:blah true})))))
+    (testing "does not permit filtering"
+      (is (thrown-with-msg?
+           ExceptionInfo #"does not match schema"
+           (sut/select-statement
+            :foos
+            :id
+            "foo"
+            {:allow-filtering true}))))
+
+    (testing "throws with unknown opt"
+      (is (thrown-with-msg?
+           ExceptionInfo #"does not match schema"
+           (sut/select-statement
+            :foos
+            :id
+            "foo"
+            {:blah true})))))
+
+  (testing "table-scan selects"
+    (testing "simple table scan"
+      (is (= {:select :foos, :columns :*}
+             (sut/select-statement :foos {}))))
+    (testing "with extra where"
+      (is (= {:select :foos, :columns :* :where [[:= :bar "bar"] [:= :baz "baz"]]}
+             (sut/select-statement
+              :foos
+              {:where [[:= :bar "bar"] [:= :baz "baz"]]}))))
+    (testing "with limit"
+      (is (= {:select :foos, :columns :* :limit 5000}
+             (sut/select-statement :foos {:limit 5000}))))
+    (testing "does permit filtering"
+      (is (= {:select :foos
+              :columns :*
+              :where [[:= :bar "bar"] [:= :baz "baz"]]
+              :allow-filtering true}
+             (sut/select-statement
+              :foos
+              {:where [[:= :bar "bar"] [:= :baz "baz"]]
+               :allow-filtering true}))))
+    (testing "throws with unknown opt"
+      (is (thrown-with-msg?
+           ExceptionInfo #"does not match schema"
+           {:select :foos :columns :*}
+           (sut/select-statement
+            :foos
+            {:blah true}))))))
 
 (deftest insert-statement-test
   (testing "simple insert"

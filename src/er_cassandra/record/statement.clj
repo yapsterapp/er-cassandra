@@ -66,11 +66,17 @@
   "returns a Hayt select statement"
 
   ([table :- s/Keyword
-    {:keys [limit columns] :as opts} :- sch/FullTableSelectOptsSchema]
+    {:keys [where limit columns allow-filtering] :as opts} :- sch/FullTableSelectOptsSchema]
 
-   (h/select table
-             (when columns (apply h/columns columns))
-             (when limit (h/limit limit))))
+   (let [where-clause (if (sequential? (first where))
+                        where ;; it's already a seq of conditions
+                        (when (not-empty where) [where]))]
+
+     (h/select table
+               (when where-clause (h/where where-clause))
+               (when columns (apply h/columns columns))
+               (when limit (h/limit limit))
+               (when (some? allow-filtering) (h/allow-filtering allow-filtering)))))
 
   ([table :- s/Keyword
     key :- sch/KeySchema
