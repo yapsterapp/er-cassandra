@@ -33,49 +33,68 @@
   (transit/read-handler-map
    custom-transit-read-handlers))
 
+(defn log-notify-stream
+  "returns a notify-s which expects [stream-name count drained?] records
+   and logs them with the supplied level"
+  ([] (log-notify-stream :info))
+  ([level]
+   (let [s (stream/stream 100)]
+     (stream/consume
+      (fn [[stream-name count drained?]]
+        (if drained?
+          (timbre/log level stream-name count "FINISHED")
+          (timbre/log level stream-name count))
+        )
+      s)
+     s)))
+
 (defn record-s->transit-file
   "write a stream of records to a file as transit"
-  [f
-   {:keys [stream-name
-           notify-s
-           notify-cnt]
-    :as opts}
-   r-s]
-  (ddo [:let [out (-> f io/file io/output-stream)
-              w (transit/writer out
-                                :msgpack
-                                {:handlers transit-write-handler-map})
-              notify-cnt (or notify-cnt 10000)
-              counter-a (atom 0)
+  ([f r-s] (record-s->transit-file f {} r-s))
+  ([f
+    {stream-name :stream-name
+     notify-s :notify-s
+     notify-cnt :notify-cnt
+     :as opts}
+    r-s]
+   (ddo [:let [stream-name (or stream-name f)
+               notify-s (or notify-s (log-notify-stream))
+               notify-cnt (or notify-cnt 10000)
 
-              update-counter-fn (fn [cnt]
-                                  (let [nc (inc cnt)]
-                                    (when (and
-                                           notify-s
-                                           (= 0 (mod nc notify-cnt)))
-                                      (stream/try-put!
-                                       notify-s
-                                       [stream-name nc]
-                                       0))
-                                    nc))
+               out (-> f io/file io/output-stream)
+               w (transit/writer out
+                                 :msgpack
+                                 {:handlers transit-write-handler-map})
+               counter-a (atom 0)
 
-              no-buffer-s (stream/stream)
-              _ (stream/connect r-s no-buffer-s)]
+               update-counter-fn (fn [cnt]
+                                   (let [nc (inc cnt)]
+                                     (when (and
+                                            notify-s
+                                            (= 0 (mod nc notify-cnt)))
+                                       (stream/try-put!
+                                        notify-s
+                                        [stream-name nc]
+                                        0))
+                                     nc))
 
-        total-cnt (->> no-buffer-s
-                       (stream/realize-each)
-                       (stream/map
-                        (fn [r]
-                          (swap! counter-a update-counter-fn)
-                          (transit/write w r)))
-                       (stream/count-all-throw
-                        ::record-s->transit-file))]
+               no-buffer-s (stream/stream)
+               _ (stream/connect r-s no-buffer-s)]
 
-    (.close out)
-    (when notify-s
-      (stream/put! notify-s [stream-name total-cnt :drained])
-      (stream/close! notify-s))
-    (return total-cnt)))
+         total-cnt (->> no-buffer-s
+                        (stream/realize-each)
+                        (stream/map
+                         (fn [r]
+                           (swap! counter-a update-counter-fn)
+                           (transit/write w r)))
+                        (stream/count-all-throw
+                         ::record-s->transit-file))]
+
+     (.close out)
+     (when notify-s
+       (stream/put! notify-s [stream-name total-cnt :drained])
+       (stream/close! notify-s))
+     (return total-cnt))))
 
 (defn transit-file->record-s
   "uses a thread to read EDN from a file and return a stream of records
@@ -105,18 +124,3 @@
       (fn [] (stream/close! s)))
 
     (return deferred-context s)))
-
-(defn log-notify-stream
-  "returns a notify-s which expects [stream-name count drained?] records
-   and logs them with the supplied level"
-  ([] (log-notify-stream :info))
-  ([level]
-   (let [s (stream/stream 100)]
-     (stream/consume
-      (fn [[stream-name count drained?]]
-        (if drained?
-          (timbre/log level stream-name count "FINISHED")
-          (timbre/log level stream-name count))
-        )
-      s)
-     s)))
