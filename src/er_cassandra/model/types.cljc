@@ -359,6 +359,10 @@
   [^Entity entity]
   (:class-name entity))
 
+(defn entity-primary-table
+  [^Entity entity]
+  (get-in entity [:primary-table :name]))
+
 (defn uber-key
   [^Entity entity]
   (get-in entity [:primary-table :key]))
