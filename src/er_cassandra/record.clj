@@ -166,7 +166,7 @@
      (return r))))
 
 (defn insert-buffered
-  "insert a stream of records"
+  "Returns a deferred of a stream of insert results."
   ([^Session session table record-stream]
    (insert-buffered session
                     table
