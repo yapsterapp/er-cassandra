@@ -155,3 +155,11 @@
        (= false
           (t/contains-key-cols-for-table?
            m {} foos-by-bar))))))
+
+(deftest extract-uber-key-value-throws-nil-uberkey-exception-on-invalid-value-test
+  (let [e (foos-all-table-types-entity)]
+    (is (t/nil-uberkey-error?
+         (try
+           (t/extract-uber-key-value e [])
+           (catch Exception ex
+             ex))))))

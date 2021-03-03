@@ -435,3 +435,7 @@
   (k/extract-key-equality-clause
    (get-in entity [:primary-table :key])
    record))
+
+(defn nil-uberkey-error?
+  [ex]
+  (some->> ex ex-data :cause (= ::nil-uberkey)))
