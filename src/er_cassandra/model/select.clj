@@ -96,7 +96,7 @@
                       key
                       record-or-key-value
                       (merge opts {:limit 1}))]
-       (s/take! select-s)))))
+       (s/err-take! select-s)))))
 
 (defn select-one-instance
   "select a single record, unless the record is already a record retrieved

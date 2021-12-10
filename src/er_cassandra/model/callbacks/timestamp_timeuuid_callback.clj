@@ -14,6 +14,7 @@
   "adds a created-at timeuuid timestamp to a record - ignores
    modificiations to the column (preserving the old value),
    unless explicitly instructed to override with override-col"
+  ([] (created-at-timeuuid-callback :created_at_timeuuid))
   ([created-at-timeuuid-col]
    (created-at-timeuuid-callback created-at-timeuuid-col nil))
   ([created-at-timeuuid-col override-col]
@@ -58,6 +59,7 @@
   "adds a created-at timestamp to a record - ignores
    modificiations to the column (preserving the old value),
    unless explicitly instructed to override with override-col"
+  ([] (created-at-callback :created_at))
   ([created-at-col]
    (created-at-callback created-at-col nil))
   ([created-at-col override-col]
