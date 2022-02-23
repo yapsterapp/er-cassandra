@@ -1,15 +1,39 @@
 (ns er-cassandra.model.select
-  (:require [manifold.deferred :as d]
-            [prpr [stream :as s] [promise :as pr]]
-            [cats.core :refer [mlet return]]
-            [cats.context :refer [with-context]]
-            [cats.labs.manifold :refer [deferred-context]]
-            [er-cassandra.model.callbacks :as cb]
-            [er-cassandra.model.types :as t]
-            [er-cassandra.model.model-session :as ms])
+  (:require
+   [prpr.stream :as s ]
+   [prpr.promise :as pr :refer [ddo return-pr]]
+   [er-cassandra.model.callbacks :as cb]
+   [er-cassandra.model.types :as t]
+   [er-cassandra.model.model-session :as ms])
   (:import
    [er_cassandra.model.types Entity]
    [er_cassandra.model.model_session ModelSession]))
+
+(defn- record-stream-after-load
+  [session entity opts r-s]
+  (->> r-s
+       (s/map (fn [mi]
+                (cond
+
+                  (ms/entity-instance? mi)
+                  (cb/chain-callbacks
+                   session
+                   entity
+                   [:deserialize :after-load]
+                   mi
+                   opts)
+
+                  ;; alia puts cassandra errors onto the stream... if we
+                  ;; wrap them in StreamErrors then they propagate
+                  ;; correctly
+                  (instance? Throwable mi)
+                  (s/->StreamError mi)
+
+                  :else
+                  mi)))
+       (s/realize-each)
+       ;; (r.ss/maybe-sorted-stream opts)
+       (return-pr)))
 
 (defn select-buffered
   "Returns a deferred of a stream
@@ -20,21 +44,9 @@
    (select-buffered session entity {}))
 
   ([^ModelSession session ^Entity entity opts]
-   (with-context deferred-context
-     (mlet [strm (ms/-select-buffered session entity opts)]
-       (->> strm
-            (s/map (fn [mi]
-                     (if (ms/entity-instance? mi)
-                       (cb/chain-callbacks
-                        session
-                        entity
-                        [:deserialize :after-load]
-                        mi
-                        opts)
-                       mi)))
-            s/realize-each
-            ;; (r.ss/maybe-sorted-stream opts)
-            return))))
+   (ddo [strm (ms/-select-buffered session entity opts)]
+
+        (record-stream-after-load session entity opts strm)))
 
   ;; can't provide an arity which auto-selects the uber-key, because it's
   ;; already used for a full-table select
@@ -43,21 +55,9 @@
    (select-buffered session entity key record-or-key-value {}))
 
   ([^ModelSession session ^Entity entity key record-or-key-value opts]
-   (with-context deferred-context
-     (mlet [strm (ms/-select-buffered session entity key record-or-key-value opts)]
-       (->> strm
-            (s/map (fn [mi]
-                     (if (ms/entity-instance? mi)
-                       (cb/chain-callbacks
-                        session
-                        entity
-                        [:deserialize :after-load]
-                        mi
-                        opts)
-                       mi)))
-            s/realize-each
-            ;; (r.ss/maybe-sorted-stream opts)
-            return)))))
+   (ddo [strm (ms/-select-buffered session entity key record-or-key-value opts)]
+
+        (record-stream-after-load session entity opts strm))))
 
 (defn select
   ([^ModelSession session ^Entity entity record-or-key-value]
@@ -67,17 +67,21 @@
    (select session entity key record-or-key-value {}))
 
   ([^ModelSession session ^Entity entity key record-or-key-value opts]
-   (with-context deferred-context
-     (mlet [select-s (select-buffered session entity key record-or-key-value opts)]
-           (pr/catch
-               (fn -err-handler [err]
-                 (ex-info "'select' failed"
-                          {:entity (:class-name entity)
-                           :key key
-                           :record-or-key-value record-or-key-value
-                           :opts opts}
-                          err))
-               (s/reduce conj [] select-s))))))
+
+   (pr/catchall
+    (ddo [select-s (select-buffered
+                    session entity key record-or-key-value opts)]
+         (s/reduce conj [] select-s))
+
+    (fn -err-handler [err]
+      (throw
+       (ex-info
+        "select failed"
+        {:entity (:class-name entity)
+         :key key
+         :record-or-key-value record-or-key-value
+         :opts opts}
+        err))))))
 
 (defn select-one
   "select a single record, using an index table if necessary"
@@ -89,14 +93,13 @@
    (select-one session entity key record-or-key-value {}))
 
   ([^ModelSession session ^Entity entity key record-or-key-value opts]
-   (with-context deferred-context
-     (mlet [select-s (select-buffered
-                      session
-                      entity
-                      key
-                      record-or-key-value
-                      (merge opts {:limit 1}))]
-       (s/err-take! select-s)))))
+   (ddo [select-s (select-buffered
+                   session
+                   entity
+                   key
+                   record-or-key-value
+                   (merge opts {:limit 1}))]
+        (s/err-take! select-s))))
 
 (defn select-one-instance
   "select a single record, unless the record is already a record retrieved
@@ -108,10 +111,9 @@
    (select-one-instance session entity key record-or-key-value {}))
 
   ([^ModelSession session ^Entity entity key record-or-key-value opts]
-   (with-context deferred-context
-     (if (ms/entity-instance? record-or-key-value)
-       (return record-or-key-value)
-       (select-one session entity key record-or-key-value opts)))))
+   (if (ms/entity-instance? record-or-key-value)
+     (return-pr record-or-key-value)
+     (select-one session entity key record-or-key-value opts))))
 
 (defn ensure-one
   "select a single record erroring the response if there is no record"
@@ -122,21 +124,21 @@
    (ensure-one session entity key record-or-key-value {}))
 
   ([^ModelSession session ^Entity entity key record-or-key-value opts]
-   (with-context deferred-context
-     (mlet [r (select-one session
-                          entity
-                          key
-                          record-or-key-value
-                          opts)]
-       (if r
-         (return r)
-         (d/error-deferred (ex-info
-                            "no record"
-                            {:reason [:fail
-                                      {:entity entity
-                                       :key key
-                                       :record-or-key-value record-or-key-value}
-                                      :no-matching-record]})))))))
+   (ddo [r (select-one session
+                       entity
+                       key
+                       record-or-key-value
+                       opts)]
+        (if r
+          (return-pr r)
+          (throw
+           (ex-info
+            "no record"
+            {:reason [:fail
+                      {:entity entity
+                       :key key
+                       :record-or-key-value record-or-key-value}
+                      :no-matching-record]}))))))
 
 (defn ensure-one-instance
   "select-one-instance but errors if there is no record"
@@ -147,10 +149,9 @@
    (ensure-one-instance session entity key record-or-key-value {}))
 
   ([^ModelSession session ^Entity entity key record-or-key-value opts]
-   (with-context deferred-context
-     (if (ms/entity-instance? record-or-key-value)
-         (return record-or-key-value)
-         (ensure-one session entity key record-or-key-value opts)))))
+   (if (ms/entity-instance? record-or-key-value)
+     (return-pr record-or-key-value)
+     (ensure-one session entity key record-or-key-value opts))))
 
 (defn select-many-buffered
   "issue one select-one query for each record-or-key-value and combine
@@ -167,7 +168,7 @@
                  (select-one session entity key record-or-key-value opts)))
         (s/realize-each)
         (s/filter some?)
-        return)))
+        (return-pr))))
 
 (defn select-many
   "issue one select-one query for each record-or-key-value and combine
@@ -179,14 +180,13 @@
    (select-many session entity key record-or-key-values {}))
 
   ([^ModelSession session ^Entity entity key record-or-key-values opts]
-   (with-context deferred-context
-     (mlet [sm-s (select-many-buffered
-                  session
-                  entity
-                  key
-                  record-or-key-values
-                  opts)]
-       (s/reduce conj [] sm-s)))))
+   (ddo [sm-s (select-many-buffered
+               session
+               entity
+               key
+               record-or-key-values
+               opts)]
+        (s/reduce conj [] sm-s))))
 
 (defn select-many-instances-buffered
   "select-many records, unless the record-or-key-values were already
@@ -199,13 +199,12 @@
    (select-many-instances-buffered session entity key record-or-key-values {}))
 
   ([^ModelSession session ^Entity entity key record-or-key-values opts]
-   (with-context deferred-context
-     (->> record-or-key-values
-          (s/map (fn [record-or-key-value]
-                   (select-one-instance session entity key record-or-key-value opts)))
-          (s/realize-each)
-          (s/filter some?)
-          return))))
+   (->> record-or-key-values
+        (s/map (fn [record-or-key-value]
+                 (select-one-instance session entity key record-or-key-value opts)))
+        (s/realize-each)
+        (s/filter some?)
+        (return-pr))))
 
 (defn select-many-instances
   "select-many records, unless the record-or-key-values were already
@@ -218,14 +217,13 @@
    (select-many-instances session entity key record-or-key-values {}))
 
   ([^ModelSession session ^Entity entity key record-or-key-values opts]
-   (with-context deferred-context
-     (mlet [smib-s (select-many-instances-buffered
-                    session
-                    entity
-                    key
-                    record-or-key-values
-                    opts)]
-       (s/reduce conj [] smib-s)))))
+   (ddo [smib-s (select-many-instances-buffered
+                 session
+                 entity
+                 key
+                 record-or-key-values
+                 opts)]
+        (s/reduce conj [] smib-s))))
 
 (defn select-many-cat-buffered
   "issue one select query for each record-or-key-value and concatenate
@@ -237,14 +235,13 @@
    (select-many-cat-buffered session entity key record-or-key-values {}))
 
   ([^ModelSession session ^Entity entity key record-or-key-values opts]
-   (with-context deferred-context
-     (->> (or record-or-key-values '())
-          (s/map (fn [record-or-key-value]
-                   (select-buffered session entity key record-or-key-value opts)))
-          (s/realize-each)
-          (s/concat)
-          (s/filter some?)
-          return))))
+   (->> (or record-or-key-values '())
+        (s/map (fn [record-or-key-value]
+                 (select-buffered session entity key record-or-key-value opts)))
+        (s/realize-each)
+        (s/concat)
+        (s/filter some?)
+        (return-pr))))
 
 (defn select-many-cat
   "issue one select query for each record-or-key-value and concatenates
@@ -256,11 +253,10 @@
    (select-many-cat session entity key record-or-key-values {}))
 
   ([^ModelSession session ^Entity entity key record-or-key-values opts]
-   (with-context deferred-context
-     (mlet [smb-s (select-many-cat-buffered
-                   session
-                   entity
-                   key
-                   record-or-key-values
-                   opts)]
-       (s/reduce conj [] smb-s)))))
+   (ddo [smb-s (select-many-cat-buffered
+                session
+                entity
+                key
+                record-or-key-values
+                opts)]
+        (s/reduce conj [] smb-s))))
